@@ -95,7 +95,7 @@ switch ($_GET["op"]) {
          <th></th>
          <th></th>
          <th></th>
-         <th><h4 id="total">S/. '.$total.'</h4><input type="hidden" name="total_venta" id="total_venta"></th>
+         <th><h4 id="total">'.formatearMoneda($total).'</h4><input type="hidden" name="total_venta" id="total_venta"></th>
        </tfoot>';
 		break;
 
@@ -118,7 +118,7 @@ switch ($_GET["op"]) {
             "3"=>$reg->usuario,
             "4"=>$reg->tipo_comprobante,
             "5"=>$reg->serie_comprobante. '-' .$reg->num_comprobante,
-            "6"=>$reg->total_venta,
+            "6"=>formatearMoneda((float)$reg->total_venta),
             "7"=>($reg->estado=='Aceptado')?'<span class="label bg-green">Aceptado</span>':'<span class="label bg-red">Anulado</span>'
               );
 		}
@@ -177,7 +177,7 @@ switch ($_GET["op"]) {
             "3"=>$reg->abreviatura,
             "4"=>$reg->codigo,
             "5"=>$stockHtml,
-            "6"=>"S/. ".number_format($precio,2),
+            "6"=>formatearMoneda($precio),
             "7"=>$imgHtml
           
               );

@@ -90,7 +90,7 @@ if (!function_exists('darkenHexColor')) {
 
   <link rel="stylesheet" href="../public/css/AdminLTE.min.css">
   <link rel="stylesheet" href="../public/css/_all-skins.min.css">
-  <link rel="stylesheet" href="../public/css/custom-theme.css?v=20260321n">
+  <link rel="stylesheet" href="../public/css/custom-theme.css?v=20260325a">
   <!-- Morris chart --><!-- Daterange picker -->
  <link rel="stylesheet" href="img/apple-touch-ico.png">
  <link rel="stylesheet" href="img/favicon.ico">
@@ -261,33 +261,22 @@ if ($_SESSION['acceso']==1) {
 }
         ?>  
                                      <?php 
-if ($_SESSION['consultac']==1) {
-  echo '     <li class="treeview">
-          <a href="#">
-            <i class="fa fa-bar-chart"></i> <span>Consulta Compras</span>
-            <span class="pull-right-container">
-              <i class="fa fa-angle-left pull-right"></i>
-            </span>
-          </a>
-          <ul class="treeview-menu">
-            <li><a href="comprasfecha.php"><i class="fa fa-circle-o"></i>Compras por fechas</a></li>
-          </ul>
-        </li>';
-}
-        ?>  
-              
-                                                <?php 
-if ($_SESSION['consultav']==1) {
+if ($_SESSION['consultac']==1 || $_SESSION['consultav']==1) {
   echo '<li class="treeview">
           <a href="#">
-            <i class="fa fa-bar-chart"></i> <span>Consulta Ventas</span>
+            <i class="fa fa-bar-chart"></i> <span>Reportes</span>
             <span class="pull-right-container">
               <i class="fa fa-angle-left pull-right"></i>
             </span>
           </a>
-          <ul class="treeview-menu">
-            <li><a href="ventasfechacliente.php"><i class="fa fa-circle-o"></i> Consulta Ventas</a></li>
-
+          <ul class="treeview-menu">';
+  if ($_SESSION['consultac']==1) {
+    echo '<li><a href="comprasfecha.php"><i class="fa fa-circle-o"></i> Compras por fechas</a></li>';
+  }
+  if ($_SESSION['consultav']==1) {
+    echo '<li><a href="ventasfechacliente.php"><i class="fa fa-circle-o"></i> Ventas por cliente</a></li>';
+  }
+  echo '<li><a href="reportes.php"><i class="fa fa-circle-o"></i> Centro de reportes</a></li>
           </ul>
         </li>';
 }
@@ -305,7 +294,6 @@ if ($_SESSION['acceso']==1 || $_SESSION['almacen']==1 || $_SESSION['compras']==1
             <li><a href="empresa.php"><i class="fa fa-circle-o"></i> Empresa</a></li>
             <li><a href="procenter.php"><i class="fa fa-circle-o"></i> Kardex y Alertas</a></li>
             <li><a href="cuentas.php"><i class="fa fa-circle-o"></i> CxC y CxP</a></li>
-            <li><a href="caja.php"><i class="fa fa-circle-o"></i> Caja diaria</a></li>
             <li><a href="backup.php"><i class="fa fa-circle-o"></i> Backup</a></li>
           </ul>
         </li>';

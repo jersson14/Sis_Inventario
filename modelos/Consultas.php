@@ -108,20 +108,231 @@ public function ventasporcategoria($limit=8){
 }
 
 public function comprasultimos_6meses(){
-	$sql="SELECT DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_compra),0) AS total
+	$sql="SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_compra),0) AS total
 	FROM ingreso
 	WHERE fecha_hora >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
-	GROUP BY YEAR(fecha_hora), MONTH(fecha_hora)
+	GROUP BY DATE_FORMAT(fecha_hora,'%Y-%m'), DATE_FORMAT(fecha_hora,'%b %Y')
 	ORDER BY YEAR(fecha_hora), MONTH(fecha_hora)";
 	return ejecutarConsulta($sql);
 }
 
 public function ventasultimos_6meses(){
-	$sql="SELECT DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_venta),0) AS total
+	$sql="SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_venta),0) AS total
 	FROM venta
 	WHERE fecha_hora >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH)
-	GROUP BY YEAR(fecha_hora), MONTH(fecha_hora)
+	GROUP BY DATE_FORMAT(fecha_hora,'%Y-%m'), DATE_FORMAT(fecha_hora,'%b %Y')
 	ORDER BY YEAR(fecha_hora), MONTH(fecha_hora)";
+	return ejecutarConsulta($sql);
+}
+
+public function utilidadPorPeriodo($fecha_inicio,$fecha_fin){
+	$sql="SELECT
+	a.codigo,
+	a.nombre AS articulo,
+	IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
+	IFNULL(SUM(dv.cantidad),0) AS cantidad_vendida,
+	IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS venta_total,
+	IFNULL(SUM(dv.cantidad*IFNULL(cp.costo_unitario,0)),0) AS costo_estimado
+	FROM detalle_venta dv
+	INNER JOIN venta v ON v.idventa=dv.idventa
+	INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
+	LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
+	LEFT JOIN (
+		SELECT di.idarticulo,
+		CASE WHEN SUM(di.cantidad)>0 THEN SUM(di.cantidad*di.precio_compra)/SUM(di.cantidad) ELSE 0 END AS costo_unitario
+		FROM detalle_ingreso di
+		INNER JOIN ingreso i ON i.idingreso=di.idingreso
+		WHERE DATE(i.fecha_hora)>='$fecha_inicio' AND DATE(i.fecha_hora)<='$fecha_fin'
+		AND (i.estado='Aceptado' OR i.estado IS NULL OR i.estado='')
+		GROUP BY di.idarticulo
+	) cp ON cp.idarticulo=dv.idarticulo
+	WHERE DATE(v.fecha_hora)>='$fecha_inicio' AND DATE(v.fecha_hora)<='$fecha_fin'
+	AND v.estado='Aceptado'
+	GROUP BY a.idarticulo,a.codigo,a.nombre,c.nombre
+	ORDER BY venta_total DESC";
+	return ejecutarConsulta($sql);
+}
+
+public function topProductosPeriodo($fecha_inicio,$fecha_fin,$limit=20,$modo='MAS'){
+	$limit=(int)$limit;
+	if ($limit<=0) $limit=20;
+	$modo = strtoupper(trim((string)$modo));
+	$orden = ($modo==='MENOS') ? 'ASC' : 'DESC';
+	$sql="SELECT
+	a.codigo,
+	a.nombre AS articulo,
+	IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
+	IFNULL(u.abreviatura,'und') AS unidad,
+	IFNULL(SUM(CASE WHEN v.idventa IS NOT NULL THEN dv.cantidad ELSE 0 END),0) AS cantidad,
+	IFNULL(SUM(CASE WHEN v.idventa IS NOT NULL THEN ((dv.cantidad*dv.precio_venta)-dv.descuento) ELSE 0 END),0) AS total
+	FROM articulo a
+	LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
+	LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
+	LEFT JOIN detalle_venta dv ON dv.idarticulo=a.idarticulo
+	LEFT JOIN venta v ON v.idventa=dv.idventa
+		AND DATE(v.fecha_hora)>='$fecha_inicio'
+		AND DATE(v.fecha_hora)<='$fecha_fin'
+		AND v.estado='Aceptado'
+	WHERE a.condicion=1
+	GROUP BY a.idarticulo,a.codigo,a.nombre,c.nombre,u.abreviatura
+	ORDER BY total ".$orden.", cantidad ".$orden."
+	LIMIT ".$limit;
+	return ejecutarConsulta($sql);
+}
+
+public function stockCritico(){
+	$sql="SELECT
+	a.codigo,
+	a.nombre AS articulo,
+	IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
+	IFNULL(u.abreviatura,'und') AS unidad,
+	a.stock,
+	IFNULL(a.stock_minimo,1) AS stock_minimo,
+	IFNULL(DATEDIFF(CURDATE(), DATE(m.fecha_ultimo)),9999) AS dias_sin_mov,
+	CASE
+		WHEN a.stock<=0 THEN 'AGOTADO'
+		WHEN a.stock<=IFNULL(a.stock_minimo,1) THEN 'BAJO MINIMO'
+		WHEN a.stock<=IFNULL(a.stock_minimo,1)+5 THEN 'PROXIMO A AGOTARSE'
+		WHEN m.fecha_ultimo IS NULL OR DATEDIFF(CURDATE(), DATE(m.fecha_ultimo))>=30 THEN 'SIN MOVIMIENTO'
+		ELSE 'OK'
+	END AS alerta,
+	IFNULL(DATE_FORMAT(m.fecha_ultimo,'%d/%m/%Y'),'--') AS ultimo_mov
+	FROM articulo a
+	LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
+	LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
+	LEFT JOIN (
+		SELECT t.idarticulo, MAX(t.fecha_hora) AS fecha_ultimo
+		FROM (
+			SELECT di.idarticulo, i.fecha_hora
+			FROM detalle_ingreso di
+			INNER JOIN ingreso i ON i.idingreso=di.idingreso
+			UNION ALL
+			SELECT dv.idarticulo, v.fecha_hora
+			FROM detalle_venta dv
+			INNER JOIN venta v ON v.idventa=dv.idventa
+		) t
+		GROUP BY t.idarticulo
+	) m ON m.idarticulo=a.idarticulo
+	WHERE a.condicion=1
+	ORDER BY
+		CASE
+			WHEN a.stock<=0 THEN 0
+			WHEN a.stock<=IFNULL(a.stock_minimo,1) THEN 1
+			WHEN a.stock<=IFNULL(a.stock_minimo,1)+5 THEN 2
+			WHEN m.fecha_ultimo IS NULL OR DATEDIFF(CURDATE(), DATE(m.fecha_ultimo))>=30 THEN 3
+			ELSE 4
+		END ASC,
+		a.stock ASC,
+		a.nombre ASC";
+	return ejecutarConsulta($sql);
+}
+
+public function kardexValorizado($fecha_inicio,$fecha_fin){
+	$sql="SELECT
+	a.codigo,
+	a.nombre AS articulo,
+	IFNULL(u.abreviatura,'und') AS unidad,
+	IFNULL(ent.entrada,0) AS entrada,
+	IFNULL(sal.salida,0) AS salida,
+	IFNULL(a.stock,0) AS saldo,
+	IFNULL(ent.costo_promedio,0) AS costo_promedio,
+	ROUND(IFNULL(a.stock,0)*IFNULL(ent.costo_promedio,0),2) AS valor_stock
+	FROM articulo a
+	LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
+	LEFT JOIN (
+		SELECT
+		di.idarticulo,
+		IFNULL(SUM(di.cantidad),0) AS entrada,
+		CASE WHEN SUM(di.cantidad)>0 THEN SUM(di.cantidad*di.precio_compra)/SUM(di.cantidad) ELSE 0 END AS costo_promedio
+		FROM detalle_ingreso di
+		INNER JOIN ingreso i ON i.idingreso=di.idingreso
+		WHERE DATE(i.fecha_hora)>='$fecha_inicio' AND DATE(i.fecha_hora)<='$fecha_fin'
+		AND (i.estado='Aceptado' OR i.estado IS NULL OR i.estado='')
+		GROUP BY di.idarticulo
+	) ent ON ent.idarticulo=a.idarticulo
+	LEFT JOIN (
+		SELECT
+		dv.idarticulo,
+		IFNULL(SUM(dv.cantidad),0) AS salida
+		FROM detalle_venta dv
+		INNER JOIN venta v ON v.idventa=dv.idventa
+		WHERE DATE(v.fecha_hora)>='$fecha_inicio' AND DATE(v.fecha_hora)<='$fecha_fin'
+		AND v.estado='Aceptado'
+		GROUP BY dv.idarticulo
+	) sal ON sal.idarticulo=a.idarticulo
+	WHERE a.condicion=1
+	ORDER BY a.nombre ASC";
+	return ejecutarConsulta($sql);
+}
+
+public function clientesProveedoresPeriodo($fecha_inicio,$fecha_fin,$tipo='TODOS'){
+	$tipo = strtoupper(trim((string)$tipo));
+	if ($tipo==='CLIENTE') {
+		$sql="SELECT
+		'CLIENTE' AS tipo,
+		IFNULL(p.nombre,'-') AS persona,
+		IFNULL(p.num_documento,'-') AS documento,
+		IFNULL(p.telefono,'-') AS telefono,
+		COUNT(v.idventa) AS operaciones,
+		IFNULL(SUM(v.total_venta),0) AS total,
+		IFNULL(DATE_FORMAT(MAX(v.fecha_hora),'%d/%m/%Y'),'--') AS ultimo_mov
+		FROM venta v
+		LEFT JOIN persona p ON p.idpersona=v.idcliente
+		WHERE DATE(v.fecha_hora)>='$fecha_inicio' AND DATE(v.fecha_hora)<='$fecha_fin'
+		AND v.estado='Aceptado'
+		GROUP BY v.idcliente,p.nombre,p.num_documento,p.telefono
+		ORDER BY total DESC";
+		return ejecutarConsulta($sql);
+	}
+
+	if ($tipo==='PROVEEDOR') {
+		$sql="SELECT
+		'PROVEEDOR' AS tipo,
+		IFNULL(p.nombre,'-') AS persona,
+		IFNULL(p.num_documento,'-') AS documento,
+		IFNULL(p.telefono,'-') AS telefono,
+		COUNT(i.idingreso) AS operaciones,
+		IFNULL(SUM(i.total_compra),0) AS total,
+		IFNULL(DATE_FORMAT(MAX(i.fecha_hora),'%d/%m/%Y'),'--') AS ultimo_mov
+		FROM ingreso i
+		LEFT JOIN persona p ON p.idpersona=i.idproveedor
+		WHERE DATE(i.fecha_hora)>='$fecha_inicio' AND DATE(i.fecha_hora)<='$fecha_fin'
+		AND (i.estado='Aceptado' OR i.estado IS NULL OR i.estado='')
+		GROUP BY i.idproveedor,p.nombre,p.num_documento,p.telefono
+		ORDER BY total DESC";
+		return ejecutarConsulta($sql);
+	}
+
+	$sql="SELECT * FROM (
+		SELECT
+		'CLIENTE' AS tipo,
+		IFNULL(p.nombre,'-') AS persona,
+		IFNULL(p.num_documento,'-') AS documento,
+		IFNULL(p.telefono,'-') AS telefono,
+		COUNT(v.idventa) AS operaciones,
+		IFNULL(SUM(v.total_venta),0) AS total,
+		IFNULL(DATE_FORMAT(MAX(v.fecha_hora),'%d/%m/%Y'),'--') AS ultimo_mov
+		FROM venta v
+		LEFT JOIN persona p ON p.idpersona=v.idcliente
+		WHERE DATE(v.fecha_hora)>='$fecha_inicio' AND DATE(v.fecha_hora)<='$fecha_fin'
+		AND v.estado='Aceptado'
+		GROUP BY v.idcliente,p.nombre,p.num_documento,p.telefono
+		UNION ALL
+		SELECT
+		'PROVEEDOR' AS tipo,
+		IFNULL(p.nombre,'-') AS persona,
+		IFNULL(p.num_documento,'-') AS documento,
+		IFNULL(p.telefono,'-') AS telefono,
+		COUNT(i.idingreso) AS operaciones,
+		IFNULL(SUM(i.total_compra),0) AS total,
+		IFNULL(DATE_FORMAT(MAX(i.fecha_hora),'%d/%m/%Y'),'--') AS ultimo_mov
+		FROM ingreso i
+		LEFT JOIN persona p ON p.idpersona=i.idproveedor
+		WHERE DATE(i.fecha_hora)>='$fecha_inicio' AND DATE(i.fecha_hora)<='$fecha_fin'
+		AND (i.estado='Aceptado' OR i.estado IS NULL OR i.estado='')
+		GROUP BY i.idproveedor,p.nombre,p.num_documento,p.telefono
+	) q
+	ORDER BY q.total DESC";
 	return ejecutarConsulta($sql);
 }
 

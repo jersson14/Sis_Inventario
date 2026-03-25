@@ -19,12 +19,16 @@ function cargarEstadoCaja() {
     }
 
     if (r.abierta) {
+      var mApertura = window.appMoney ? window.appMoney(parseFloat(r.monto_apertura || 0), 2) : ("S/ " + parseFloat(r.monto_apertura || 0).toFixed(2));
+      var mIngresos = window.appMoney ? window.appMoney(parseFloat(r.ingresos || 0), 2) : ("S/ " + parseFloat(r.ingresos || 0).toFixed(2));
+      var mEgresos = window.appMoney ? window.appMoney(parseFloat(r.egresos || 0), 2) : ("S/ " + parseFloat(r.egresos || 0).toFixed(2));
+      var mSistema = window.appMoney ? window.appMoney(parseFloat(r.sistema || 0), 2) : ("S/ " + parseFloat(r.sistema || 0).toFixed(2));
       $("#cajaEstado").html(
         "<strong>Caja ABIERTA</strong> | ID: " + r.idcaja +
-        " | Apertura: S/ " + r.monto_apertura +
-        " | Ingresos: S/ " + r.ingresos +
-        " | Egresos: S/ " + r.egresos +
-        " | Total sistema: <strong>S/ " + r.sistema + "</strong>"
+        " | Apertura: " + mApertura +
+        " | Ingresos: " + mIngresos +
+        " | Egresos: " + mEgresos +
+        " | Total sistema: <strong>" + mSistema + "</strong>"
       );
     } else {
       $("#cajaEstado").html("<strong>Caja cerrada.</strong> Abre una caja para registrar movimientos.");

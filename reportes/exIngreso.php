@@ -43,6 +43,23 @@ class PDFCompra extends FPDF
     return utf8_decode((string)$text);
   }
 
+  public function fitText($text, $maxWidth, $suffix = '...')
+  {
+    $txt = (string)$text;
+    if ($txt === '') {
+      return '';
+    }
+    if ($this->GetStringWidth($txt) <= $maxWidth) {
+      return $txt;
+    }
+
+    $suffixWidth = $this->GetStringWidth($suffix);
+    while (strlen($txt) > 0 && $this->GetStringWidth($txt) + $suffixWidth > $maxWidth) {
+      $txt = substr($txt, 0, -1);
+    }
+    return rtrim($txt) . $suffix;
+  }
+
   public function Header()
   {
     $this->SetDrawColor(214, 223, 233);
@@ -56,7 +73,7 @@ class PDFCompra extends FPDF
     }
 
     $leftX = 36;
-    $leftW = 92;
+    $leftW = 90;
     $this->SetTextColor(255, 255, 255);
 
     $nombreEmpresa = $this->u($this->empresa["nombre"]);
@@ -67,23 +84,23 @@ class PDFCompra extends FPDF
       $this->SetFont('Arial', 'B', $fontEmpresa);
     }
     $this->SetXY($leftX, 13);
-    $this->Cell($leftW, 5.6, $nombreEmpresa, 0, 1, 'L');
+    $this->Cell($leftW, 5.6, $this->fitText($nombreEmpresa, $leftW), 0, 1, 'L');
 
     $this->SetFont('Arial', '', 10);
     $this->SetXY($leftX, 18.5);
-    $this->Cell($leftW, 4.2, $this->u("RUC: ".$this->empresa["ruc"]), 0, 1, 'L');
+    $this->Cell($leftW, 4.2, $this->fitText($this->u("RUC: ".$this->empresa["ruc"]), $leftW), 0, 1, 'L');
 
     $this->SetFont('Arial', '', 9.4);
     $this->SetXY($leftX, 22.7);
-    $this->Cell($leftW, 3.8, $this->u($this->empresa["direccion_linea1"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u($this->empresa["direccion_linea1"]), $leftW), 0, 1, 'L');
     $this->SetXY($leftX, 26.5);
-    $this->Cell($leftW, 3.8, $this->u($this->empresa["direccion_linea2"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u($this->empresa["direccion_linea2"]), $leftW), 0, 1, 'L');
 
     $this->SetFont('Arial', '', 9.3);
     $this->SetXY($leftX, 30.4);
-    $this->Cell($leftW, 3.8, $this->u("Tel: ".$this->empresa["telefono"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u("Tel: ".$this->empresa["telefono"]), $leftW), 0, 1, 'L');
     $this->SetXY($leftX, 34.2);
-    $this->Cell($leftW, 3.8, $this->u("Email: ".$this->empresa["email"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u("Email: ".$this->empresa["email"]), $leftW), 0, 1, 'L');
 
     $this->SetFillColor(245, 158, 11);
     $this->SetDrawColor(161, 98, 7);
@@ -262,6 +279,9 @@ if (!$reg) {
 
 $empresaModel = new Empresa();
 $empresa = $empresaModel->datosReporte();
+$codigoMoneda = !empty($empresa["moneda"]) ? strtoupper((string)$empresa["moneda"]) : 'PEN';
+$simboloMoneda = obtenerSimboloMoneda($codigoMoneda);
+$nombreMonedaLetras = obtenerNombreMonedaLetras($codigoMoneda);
 
 function formatearFechaComprobante($fechaRaw) {
   $fechaRaw = trim((string)$fechaRaw);
@@ -358,7 +378,7 @@ $igv = $total - $subtotal;
 
 $V = new EnLetras();
 $V->substituir_un_mil_por_mil = true;
-$con_letra = strtoupper(trim($V->ValorEnLetras(round($total, 2), " SOLES")));
+$con_letra = strtoupper(trim($V->ValorEnLetras(round($total, 2), " ".$nombreMonedaLetras)));
 $con_letra = preg_replace('/\s+/', ' ', str_replace('--', '', $con_letra));
 
 if ($pdf->GetY() > 228) {
@@ -393,14 +413,14 @@ $pdf->SetFont('Arial', 'B', 9.2);
 $pdf->SetTextColor(30, 41, 59);
 $pdf->SetXY($boxX + 2, $startY + 8);
 $pdf->Cell(30, 4.4, 'SUBTOTAL', 0, 0, 'L');
-$pdf->Cell(29, 4.4, 'S/ '.number_format($subtotal, 2), 0, 1, 'R');
+$pdf->Cell(29, 4.4, $simboloMoneda.' '.number_format($subtotal, 2), 0, 1, 'R');
 $pdf->SetX($boxX + 2);
 $pdf->Cell(30, 4.4, 'IGV ('.number_format($impuesto, 2).'%)', 0, 0, 'L');
-$pdf->Cell(29, 4.4, 'S/ '.number_format($igv, 2), 0, 1, 'R');
+$pdf->Cell(29, 4.4, $simboloMoneda.' '.number_format($igv, 2), 0, 1, 'R');
 $pdf->SetX($boxX + 2);
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(30, 4.8, 'TOTAL', 0, 0, 'L');
-$pdf->Cell(29, 4.8, 'S/ '.number_format($total, 2), 0, 1, 'R');
+$pdf->Cell(29, 4.8, $simboloMoneda.' '.number_format($total, 2), 0, 1, 'R');
 
 $nombreSalida = 'Compra_'.$reg->serie_comprobante.'-'.$reg->num_comprobante.'.pdf';
 $pdf->Output($nombreSalida, 'I');

@@ -249,6 +249,25 @@ body {
   text-align: right;
 }
 
+.reportes-panel .table-responsive {
+  width: 100%;
+}
+
+.reportes-panel table.dataTable,
+.reportes-panel table.table,
+.reportes-panel .dataTables_wrapper {
+  width: 100% !important;
+}
+
+.reportes-panel .dataTables_wrapper .row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.reportes-panel .dataTables_filter {
+  text-align: right;
+}
+
 .btn-warning {
   background-color: #f59e0b;
   border-color: #f59e0b;

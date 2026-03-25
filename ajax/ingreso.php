@@ -75,7 +75,7 @@ switch ($_GET["op"]) {
          <th></th>
          <th></th>
          <th></th>
-         <th><h4 id="total">S/. '.number_format($total,2).'</h4><input type="hidden" name="total_compra" id="total_compra"></th>
+         <th><h4 id="total">'.formatearMoneda($total).'</h4><input type="hidden" name="total_compra" id="total_compra"></th>
        </tfoot>';
 		break;
 
@@ -92,7 +92,7 @@ switch ($_GET["op"]) {
             "3"=>$reg->usuario,
             "4"=>$reg->tipo_comprobante,
             "5"=>$reg->serie_comprobante. '-' .$reg->num_comprobante,
-            "6"=>"S/. ".number_format((float)$reg->total_compra,2),
+            "6"=>formatearMoneda((float)$reg->total_compra),
             "7"=>($reg->estado=='Aceptado')?'<span class="label bg-green">Aceptado</span>':'<span class="label bg-red">Anulado</span>'
               );
 		}
@@ -128,7 +128,6 @@ switch ($_GET["op"]) {
 			$stock = (float)$reg->stock;
 			$stockFmt = number_format($stock,3);
 			$precioCompraRef = is_null($reg->precio_compra_ref) ? 0 : (float)$reg->precio_compra_ref;
-			$precioCompraFmt = number_format($precioCompraRef,2);
 			$btnAgregar = '<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\',\''.$unidadjs.'\','.$precioCompraRef.')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 
 			if ($stock<=0) {
@@ -148,7 +147,7 @@ switch ($_GET["op"]) {
             "3"=>$reg->abreviatura,
             "4"=>$reg->codigo,
             "5"=>$stockHtml,
-            "6"=>"S/. ".$precioCompraFmt,
+            "6"=>formatearMoneda((float)$precioCompraRef),
             "7"=>$imgHtml
           
               );

@@ -68,6 +68,18 @@ class Empresa
 
     public function datosReporte()
     {
+        $decode = function ($value) {
+            $txt = trim((string)$value);
+            for ($i = 0; $i < 3; $i++) {
+                $decoded = html_entity_decode($txt, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                if ($decoded === $txt) {
+                    break;
+                }
+                $txt = $decoded;
+            }
+            return trim($txt);
+        };
+
         $cfg = $this->obtener();
         if (!$cfg) {
             return array(
@@ -77,26 +89,29 @@ class Empresa
                 "direccion_linea2" => 'Abancay - Apurimac',
                 "telefono" => '932381391',
                 "email" => 'ventas@pernocentro.com',
-                "logo" => 'logo1.jpeg'
+                "logo" => 'logo1.jpeg',
+                "moneda" => 'PEN'
             );
         }
 
-        $direccion = trim((string)$cfg['direccion']);
+        $direccion = $decode($cfg['direccion']);
         $direccion_linea1 = $direccion;
         $direccion_linea2 = '';
-        if (strlen($direccion) > 70) {
-            $direccion_linea1 = substr($direccion, 0, 70);
-            $direccion_linea2 = substr($direccion, 70);
+        if ($direccion !== '') {
+            $lineas = preg_split('/\r\n|\r|\n/', wordwrap($direccion, 58, "\n", false));
+            $direccion_linea1 = isset($lineas[0]) ? trim($lineas[0]) : '';
+            $direccion_linea2 = isset($lineas[1]) ? trim($lineas[1]) : '';
         }
 
         return array(
-            "nombre" => !empty($cfg['razon_social']) ? $cfg['razon_social'] : $cfg['nombre_comercial'],
-            "ruc" => $cfg['ruc'],
-            "direccion_linea1" => $direccion_linea1,
-            "direccion_linea2" => $direccion_linea2,
-            "telefono" => !empty($cfg['telefono']) ? $cfg['telefono'] : $cfg['celular'],
-            "email" => $cfg['correo'],
-            "logo" => !empty($cfg['logo']) ? $cfg['logo'] : 'logo1.jpeg'
+            "nombre" => $decode(!empty($cfg['razon_social']) ? $cfg['razon_social'] : $cfg['nombre_comercial']),
+            "ruc" => $decode($cfg['ruc']),
+            "direccion_linea1" => $decode($direccion_linea1),
+            "direccion_linea2" => $decode($direccion_linea2),
+            "telefono" => $decode(!empty($cfg['telefono']) ? $cfg['telefono'] : $cfg['celular']),
+            "email" => $decode($cfg['correo']),
+            "logo" => !empty($cfg['logo']) ? $cfg['logo'] : 'logo1.jpeg',
+            "moneda" => !empty($cfg['moneda']) ? strtoupper($cfg['moneda']) : 'PEN'
         );
     }
 }

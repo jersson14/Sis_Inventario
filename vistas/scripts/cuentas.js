@@ -107,7 +107,8 @@ function recargarTablas() {
 }
 
 function abrirPagoCobrar(idcuenta, saldo) {
-  var monto = prompt("Saldo pendiente: S/ " + parseFloat(saldo).toFixed(2) + "\nIngresa monto a cobrar:");
+  var saldoTxt = window.appMoney ? window.appMoney(parseFloat(saldo || 0), 2) : ("S/ " + parseFloat(saldo || 0).toFixed(2));
+  var monto = prompt("Saldo pendiente: " + saldoTxt + "\nIngresa monto a cobrar:");
   if (monto === null) return;
 
   $.post("../ajax/cuentas.php?op=abonarCobrar", {
@@ -123,7 +124,8 @@ function abrirPagoCobrar(idcuenta, saldo) {
 }
 
 function abrirPagoPagar(idcuenta, saldo) {
-  var monto = prompt("Saldo pendiente: S/ " + parseFloat(saldo).toFixed(2) + "\nIngresa monto a pagar:");
+  var saldoTxt = window.appMoney ? window.appMoney(parseFloat(saldo || 0), 2) : ("S/ " + parseFloat(saldo || 0).toFixed(2));
+  var monto = prompt("Saldo pendiente: " + saldoTxt + "\nIngresa monto a pagar:");
   if (monto === null) return;
 
   $.post("../ajax/cuentas.php?op=abonarPagar", {

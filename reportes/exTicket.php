@@ -9,6 +9,7 @@ if (!isset($_SESSION['nombre'])) {
 } else {
   if ($_SESSION['ventas'] == 1) {
     require_once "../modelos/Venta.php";
+    require_once "../modelos/Empresa.php";
 
     $venta = new Venta();
     $rspta = $venta->ventacabecera($_GET["id"]);
@@ -20,13 +21,31 @@ if (!isset($_SESSION['nombre'])) {
       exit;
     }
 
-    $empresa = 'PERNO CENTRO "SEÑOR DE HUANCA"';
-    $documento = "20603558422";
-    $direccion = "Bar. Santa Rosa S/N (costado Grifo Wari), Abancay - Apurímac";
-    $telefono = "932381391";
-    $email = "ventas@pernocentro.com";
+    $empresaModel = new Empresa();
+    $cfgEmpresa = $empresaModel->datosReporte();
+    $codigoMoneda = !empty($cfgEmpresa["moneda"]) ? strtoupper((string)$cfgEmpresa["moneda"]) : 'PEN';
+    $simboloMoneda = obtenerSimboloMoneda($codigoMoneda);
 
-    $logo = file_exists(__DIR__ . "/logo1.jpeg") ? "logo1.jpeg" : "logo.png";
+    $empresa = !empty($cfgEmpresa["nombre"]) ? $cfgEmpresa["nombre"] : 'PERNO CENTRO "SEÑOR DE HUANCA"';
+    $documento = !empty($cfgEmpresa["ruc"]) ? $cfgEmpresa["ruc"] : "20603558422";
+    $direccion = trim((string)$cfgEmpresa["direccion_linea1"]." ".(string)$cfgEmpresa["direccion_linea2"]);
+    if ($direccion === '') {
+      $direccion = "Bar. Santa Rosa S/N (costado Grifo Wari), Abancay - Apurimac";
+    }
+    $telefono = !empty($cfgEmpresa["telefono"]) ? $cfgEmpresa["telefono"] : "932381391";
+    $email = !empty($cfgEmpresa["email"]) ? $cfgEmpresa["email"] : "ventas@pernocentro.com";
+
+    $logo = "logo1.jpeg";
+    if (!empty($cfgEmpresa["logo"])) {
+      $logoEmpresaFS = realpath(__DIR__ . "/../files/empresa/" . $cfgEmpresa["logo"]);
+      if ($logoEmpresaFS && file_exists($logoEmpresaFS)) {
+        $logo = "../files/empresa/" . $cfgEmpresa["logo"];
+      } elseif (file_exists(__DIR__ . "/" . $cfgEmpresa["logo"])) {
+        $logo = $cfgEmpresa["logo"];
+      }
+    } elseif (file_exists(__DIR__ . "/logo.png")) {
+      $logo = "logo.png";
+    }
 
     $total = (float)$reg->total_venta;
     $impuesto = (float)$reg->impuesto;
@@ -89,16 +108,16 @@ if (!isset($_SESSION['nombre'])) {
           <tr>
             <td class="qty"><?php echo number_format((float)$regd->cantidad, 3) . " " . e($regd->unidad); ?></td>
             <td class="desc"><?php echo e($regd->articulo); ?></td>
-            <td class="amount">S/. <?php echo number_format((float)$regd->subtotal, 2); ?></td>
+            <td class="amount"><?php echo e($simboloMoneda); ?> <?php echo number_format((float)$regd->subtotal, 2); ?></td>
           </tr>
           <?php } ?>
         </tbody>
       </table>
 
       <div class="totals">
-        <div class="totals-row"><span>Subtotal</span><span>S/. <?php echo number_format($base, 2); ?></span></div>
-        <div class="totals-row"><span>IGV (<?php echo number_format($impuesto, 2); ?>%)</span><span>S/. <?php echo number_format($igv, 2); ?></span></div>
-        <div class="totals-row totals-main"><span>Total</span><strong>S/. <?php echo number_format($total, 2); ?></strong></div>
+        <div class="totals-row"><span>Subtotal</span><span><?php echo e($simboloMoneda); ?> <?php echo number_format($base, 2); ?></span></div>
+        <div class="totals-row"><span>IGV (<?php echo number_format($impuesto, 2); ?>%)</span><span><?php echo e($simboloMoneda); ?> <?php echo number_format($igv, 2); ?></span></div>
+        <div class="totals-row totals-main"><span>Total</span><strong><?php echo e($simboloMoneda); ?> <?php echo number_format($total, 2); ?></strong></div>
       </div>
 
       <p class="info-line" style="margin-top:8px;"><strong>Items:</strong> <?php echo number_format($cantidadTotal, 3); ?></p>

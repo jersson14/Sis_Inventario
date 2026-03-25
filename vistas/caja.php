@@ -4,6 +4,11 @@ session_start();
 if (!isset($_SESSION['nombre'])) {
   header("Location: login.html");
 }else{
+$moduloCajaHabilitado = false;
+if (!$moduloCajaHabilitado) {
+  header("Location: escritorio.php");
+  exit;
+}
 
 require 'header.php';
 if ($_SESSION['compras']==1 || $_SESSION['ventas']==1) {
@@ -70,7 +75,7 @@ if ($_SESSION['compras']==1 || $_SESSION['ventas']==1) {
             <hr>
             <h4>Historial de cajas</h4>
             <table id="tblhistcaja" class="table table-striped table-bordered table-condensed table-hover">
-              <thead><th>ID</th><th>Apertura</th><th>Cierre</th><th>Apertura S/</th><th>Ingresos S/</th><th>Egresos S/</th><th>Sistema S/</th><th>Real S/</th><th>Diferencia</th><th>Estado</th></thead>
+              <thead><th>ID</th><th>Apertura</th><th>Cierre</th><th>Monto apertura</th><th>Ingresos</th><th>Egresos</th><th>Total sistema</th><th>Total real</th><th>Diferencia</th><th>Estado</th></thead>
               <tbody></tbody>
             </table>
           </div>

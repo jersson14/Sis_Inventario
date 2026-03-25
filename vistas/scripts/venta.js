@@ -4,7 +4,9 @@ var empresaDefaults = {
 	serie_boleta: "B001",
 	serie_factura: "F001",
 	serie_ticket: "T001",
-	impuesto_default: 18
+	impuesto_default: 18,
+	moneda: "PEN",
+	simbolo_moneda: "S/"
 };
 
 function notifyVenta(type, message){
@@ -80,6 +82,8 @@ function cargarDefaultsEmpresa(){
 			empresaDefaults.serie_factura = r.serie_factura || empresaDefaults.serie_factura;
 			empresaDefaults.serie_ticket = r.serie_ticket || empresaDefaults.serie_ticket;
 			empresaDefaults.impuesto_default = parseFloat(r.impuesto_default || empresaDefaults.impuesto_default);
+			empresaDefaults.moneda = r.moneda || empresaDefaults.moneda;
+			empresaDefaults.simbolo_moneda = r.simbolo_moneda || empresaDefaults.simbolo_moneda;
 		}catch(e){}
 		aplicarSerieImpuesto();
 	});
@@ -96,7 +100,7 @@ function limpiar(){
 
 	$("#total_venta").val("");
 	$(".filas").remove();
-	$("#total").html("S/. 0.00");
+	$("#total").html(window.appMoney ? window.appMoney(0,2) : ((window.appCurrencySymbol || "S/") + " 0.00"));
 	actualizarContadorItems();
 
 	//obtenemos la fecha actual
@@ -381,7 +385,7 @@ function calcularTotales(){
 	for (var i = 0; i < sub.length; i++) {
 		total += parseFloat(document.getElementsByName("subtotal")[i].value || 0);
 	}
-	$("#total").html("S/. " + total.toFixed(2));
+	$("#total").html(window.appMoney ? window.appMoney(total,2) : ((window.appCurrencySymbol || "S/") + " " + total.toFixed(2)));
 	$("#total_venta").val(total.toFixed(2));
 	evaluar();
 }

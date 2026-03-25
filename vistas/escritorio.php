@@ -26,6 +26,7 @@ if ($_SESSION['escritorio'] == 1) {
   $rsptavm = $consulta->totalventasmes();
   $regvm = $rsptavm->fetch_object();
   $totalvm = $regvm ? (float)$regvm->total_venta : 0;
+  $codigoMoneda = function_exists('obtenerMonedaEmpresaCodigo') ? obtenerMonedaEmpresaCodigo() : 'PEN';
 
   $rskpi = $consulta->kpisgenerales();
   $kpi = $rskpi->fetch_object();
@@ -57,29 +58,30 @@ if ($_SESSION['escritorio'] == 1) {
 
   $compras6 = $consulta->comprasultimos_6meses();
   while ($reg = $compras6->fetch_object()) {
-    $compras6Map[$reg->fecha] = round((float)$reg->total, 2);
+    $periodo = isset($reg->periodo) ? $reg->periodo : '';
+    if ($periodo !== '') {
+      $compras6Map[$periodo] = round((float)$reg->total, 2);
+    }
   }
 
   $ventas6 = $consulta->ventasultimos_6meses();
   while ($reg = $ventas6->fetch_object()) {
-    $ventas6Map[$reg->fecha] = round((float)$reg->total, 2);
-  }
-
-  $labelsComparativo = array();
-  foreach ($compras6Map as $lbl => $dummy) {
-    $labelsComparativo[] = $lbl;
-  }
-  foreach ($ventas6Map as $lbl => $dummy) {
-    if (!in_array($lbl, $labelsComparativo, true)) {
-      $labelsComparativo[] = $lbl;
+    $periodo = isset($reg->periodo) ? $reg->periodo : '';
+    if ($periodo !== '') {
+      $ventas6Map[$periodo] = round((float)$reg->total, 2);
     }
   }
 
+  $periodosComparativo = array();
+  for ($i = 5; $i >= 0; $i--) {
+    $periodosComparativo[] = date("Y-m", strtotime("-".$i." month"));
+  }
   $dataCompras6 = array();
   $dataVentas6 = array();
-  foreach ($labelsComparativo as $lbl) {
-    $dataCompras6[] = isset($compras6Map[$lbl]) ? $compras6Map[$lbl] : 0;
-    $dataVentas6[] = isset($ventas6Map[$lbl]) ? $ventas6Map[$lbl] : 0;
+  foreach ($periodosComparativo as $periodo) {
+    $labelsComparativo[] = date("M Y", strtotime($periodo . "-01"));
+    $dataCompras6[] = isset($compras6Map[$periodo]) ? $compras6Map[$periodo] : 0;
+    $dataVentas6[] = isset($ventas6Map[$periodo]) ? $ventas6Map[$periodo] : 0;
   }
 
   $labelsTop = array();
@@ -123,7 +125,7 @@ if ($_SESSION['escritorio'] == 1) {
           <div class="kpi-icon"><i class="fa fa-line-chart"></i></div>
           <div class="kpi-meta">
             <span>Ventas de Hoy</span>
-            <strong>S/. <?php echo number_format($totalv, 2); ?></strong>
+            <strong><?php echo formatearMoneda($totalv, $codigoMoneda); ?></strong>
           </div>
         </a>
       </div>
@@ -132,7 +134,7 @@ if ($_SESSION['escritorio'] == 1) {
           <div class="kpi-icon"><i class="fa fa-shopping-basket"></i></div>
           <div class="kpi-meta">
             <span>Compras de Hoy</span>
-            <strong>S/. <?php echo number_format($totalc, 2); ?></strong>
+            <strong><?php echo formatearMoneda($totalc, $codigoMoneda); ?></strong>
           </div>
         </a>
       </div>
@@ -150,7 +152,7 @@ if ($_SESSION['escritorio'] == 1) {
           <div class="kpi-icon"><i class="fa fa-calendar"></i></div>
           <div class="kpi-meta">
             <span>Balance del Mes</span>
-            <strong>S/. <?php echo number_format($totalvm - $totalcm, 2); ?></strong>
+            <strong><?php echo formatearMoneda($totalvm - $totalcm, $codigoMoneda); ?></strong>
           </div>
         </div>
       </div>
@@ -160,13 +162,13 @@ if ($_SESSION['escritorio'] == 1) {
       <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
         <div class="mini-kpi">
           <label>Ventas del Mes</label>
-          <strong>S/. <?php echo number_format($totalvm, 2); ?></strong>
+          <strong><?php echo formatearMoneda($totalvm, $codigoMoneda); ?></strong>
         </div>
       </div>
       <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
         <div class="mini-kpi">
           <label>Compras del Mes</label>
-          <strong>S/. <?php echo number_format($totalcm, 2); ?></strong>
+          <strong><?php echo formatearMoneda($totalcm, $codigoMoneda); ?></strong>
         </div>
       </div>
       <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
@@ -271,7 +273,7 @@ if ($_SESSION['escritorio'] == 1) {
                   <td><?php echo $mov["fecha"]; ?></td>
                   <td><?php echo $mov["documento"]; ?></td>
                   <td><?php echo $mov["persona"]; ?></td>
-                  <td>S/. <?php echo number_format($mov["total"], 2); ?></td>
+                  <td><?php echo formatearMoneda($mov["total"], $codigoMoneda); ?></td>
                 </tr>
                 <?php } } ?>
               </tbody>
@@ -308,8 +310,9 @@ require 'footer.php';
   Chart.defaults.global.defaultFontFamily = '"Trebuchet MS", "Verdana", "Segoe UI", sans-serif';
   Chart.defaults.global.defaultFontColor = '#334155';
 
+  var currencySymbol = window.appCurrencySymbol || <?php echo json_encode(obtenerSimboloMoneda($codigoMoneda)); ?>;
   var moneyTick = function(value){
-    return 'S/. ' + Number(value).toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    return currencySymbol + ' ' + Number(value).toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
   };
 
   new Chart(document.getElementById('chartComparativo').getContext('2d'), {
@@ -365,7 +368,7 @@ require 'footer.php';
     data: {
       labels: labelsCompras10,
       datasets: [{
-        label: 'Compras (S/.)',
+        label: 'Compras (' + currencySymbol + ')',
         data: dataCompras10,
         backgroundColor: 'rgba(2,132,199,0.22)',
         borderColor: '#0284c7',
@@ -387,7 +390,7 @@ require 'footer.php';
     data: {
       labels: labelsVentas12,
       datasets: [{
-        label: 'Ventas (S/.)',
+        label: 'Ventas (' + currencySymbol + ')',
         data: dataVentas12,
         backgroundColor: 'rgba(22,163,74,0.22)',
         borderColor: '#16a34a',
@@ -409,7 +412,7 @@ require 'footer.php';
     data: {
       labels: labelsTop.length ? labelsTop : ['Sin datos'],
       datasets: [{
-        label: 'Monto vendido (S/.)',
+        label: 'Monto vendido (' + currencySymbol + ')',
         data: dataTop.length ? dataTop : [0],
         backgroundColor: 'rgba(245,158,11,0.26)',
         borderColor: '#d97706',

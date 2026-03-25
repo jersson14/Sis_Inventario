@@ -12,6 +12,26 @@ if ($_SESSION['almacen']==1) {
 
 //incluimos a la clase PDF_MC_Table
 require('PDF_MC_Table.php');
+require_once "../modelos/Empresa.php";
+require_once "../modelos/Articulo.php";
+
+$empresaModel = new Empresa();
+$empresa = $empresaModel->datosReporte();
+
+$logoPath = "";
+if (!empty($empresa["logo"])) {
+  $logoEmpresa = realpath(__DIR__."/../files/empresa/".$empresa["logo"]);
+  if ($logoEmpresa && file_exists($logoEmpresa)) {
+    $logoPath = $logoEmpresa;
+  }
+}
+if ($logoPath === "") {
+  if (file_exists(__DIR__."/logo1.jpeg")) {
+    $logoPath = __DIR__."/logo1.jpeg";
+  } elseif (file_exists(__DIR__."/logo.png")) {
+    $logoPath = __DIR__."/logo.png";
+  }
+}
 
 //instanciamos la clase para generar el documento pdf
 $pdf=new PDF_MC_Table();
@@ -19,15 +39,29 @@ $pdf=new PDF_MC_Table();
 //agregamos la primera pagina al documento pdf
 $pdf->AddPage();
 
-//seteamos el inicio del margen superior en 25 pixeles
-$y_axis_initial=25;
+if ($logoPath !== "") {
+  $pdf->Image($logoPath, 10, 10, 22, 22);
+}
 
-//seteamos el tipo de letra y creamos el titulo de la pagina. No se repetira como encabezado
+$pdf->SetFont('Arial','B',11);
+$pdf->SetXY(36,10);
+$pdf->Cell(120,5,utf8_decode((string)$empresa["nombre"]),0,1,'L');
+$pdf->SetFont('Arial','',9.5);
+$pdf->SetX(36);
+$pdf->Cell(120,4,'RUC: '.utf8_decode((string)$empresa["ruc"]),0,1,'L');
+$pdf->SetX(36);
+$pdf->Cell(120,4,utf8_decode((string)$empresa["direccion_linea1"]),0,1,'L');
+if (!empty($empresa["direccion_linea2"])) {
+  $pdf->SetX(36);
+  $pdf->Cell(120,4,utf8_decode((string)$empresa["direccion_linea2"]),0,1,'L');
+}
+$pdf->SetX(36);
+$pdf->Cell(120,4,'Tel: '.utf8_decode((string)$empresa["telefono"]).'  |  '.utf8_decode((string)$empresa["email"]),0,1,'L');
+
+$pdf->SetY(36);
 $pdf->SetFont('Arial','B',12);
-
-$pdf->Cell(40,6,'',0,0,'C');
-$pdf->Cell(100,6,'LISTA DE ARTICULOS',1,0,'C');
-$pdf->Ln(10);
+$pdf->Cell(190,8,'LISTA DE ARTICULOS',1,1,'C');
+$pdf->Ln(2);
 
 //creamos las celdas para los titulos de cada columna y le asignamos un fondo gris y el tipo de letra
 $pdf->SetFillColor(232,232,232);
@@ -40,7 +74,6 @@ $pdf->Cell(35,6,utf8_decode('Descripcion'),1,0,'C',1);
 $pdf->Ln(10);
 
 //creamos las filas de los registros según la consulta mysql
-require_once "../modelos/Articulo.php";
 $articulo = new Articulo();
 
 $rspta = $articulo->listar();

@@ -1,3 +1,7 @@
+<?php
+$appCurrencyCode = function_exists('obtenerMonedaEmpresaCodigo') ? obtenerMonedaEmpresaCodigo() : 'PEN';
+$appCurrencySymbol = function_exists('obtenerSimboloMoneda') ? obtenerSimboloMoneda($appCurrencyCode) : 'S/';
+?>
   <footer class="main-footer">
     <div class="pull-right hidden-xs">
       <b>Version</b> 1.0.0
@@ -28,5 +32,20 @@
 <script src="../public/js/bootbox.min.js"></script>
 <script src="../public/js/bootstrap-select.min.js"></script>
 <script src="../public/js/app-notify.js?v=20260321b"></script>
+<script>
+window.appCurrencyCode = <?php echo json_encode($appCurrencyCode); ?>;
+window.appCurrencySymbol = <?php echo json_encode($appCurrencySymbol); ?>;
+window.appMoney = function(value, decimals) {
+  var num = Number(value);
+  if (!isFinite(num)) {
+    num = 0;
+  }
+  var dec = (typeof decimals === "number") ? decimals : 2;
+  return window.appCurrencySymbol + " " + num.toLocaleString("es-PE", {
+    minimumFractionDigits: dec,
+    maximumFractionDigits: dec
+  });
+};
+</script>
 </body>
 </html>

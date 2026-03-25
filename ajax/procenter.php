@@ -53,8 +53,8 @@ switch ($_GET['op']) {
                 'entrada' => number_format($entrada, 3),
                 'salida' => number_format($salida, 3),
                 'saldo' => number_format($saldo, 3),
-                'costo' => number_format((float)$reg->costo, 2),
-                'precio_ref' => number_format((float)$reg->precio_ref, 2)
+                'costo' => (float)$reg->costo,
+                'precio_ref' => (float)$reg->precio_ref
             );
         }
 
@@ -125,7 +125,7 @@ switch ($_GET['op']) {
                 '0' => $reg->codigo,
                 '1' => $reg->nombre,
                 '2' => number_format((float)$reg->cantidad, 3) . ' ' . $reg->unidad,
-                '3' => 'S/ ' . number_format((float)$reg->total, 2)
+                '3' => formatearMoneda((float)$reg->total)
             );
         }
 
@@ -161,9 +161,9 @@ switch ($_GET['op']) {
                 '0' => $grupo,
                 '1' => $detalle,
                 '2' => number_format((float)$reg->cantidad, 3),
-                '3' => 'S/ ' . number_format((float)$reg->venta, 2),
-                '4' => 'S/ ' . number_format((float)$reg->costo, 2),
-                '5' => 'S/ ' . number_format((float)$reg->utilidad, 2)
+                '3' => formatearMoneda((float)$reg->venta),
+                '4' => formatearMoneda((float)$reg->costo),
+                '5' => formatearMoneda((float)$reg->utilidad)
             );
         }
 

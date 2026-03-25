@@ -68,7 +68,7 @@ switch ($_GET['op']) {
                     '0' => date('d/m/Y H:i', strtotime($reg->fecha_hora)),
                     '1' => $reg->tipo,
                     '2' => $reg->concepto,
-                    '3' => 'S/ ' . number_format((float)$reg->monto, 2),
+                    '3' => formatearMoneda((float)$reg->monto),
                     '4' => $reg->usuario
                 );
             }
@@ -91,12 +91,12 @@ switch ($_GET['op']) {
                 '0' => $reg->idcaja,
                 '1' => date('d/m/Y H:i', strtotime($reg->fecha_apertura)),
                 '2' => empty($reg->fecha_cierre) ? '-' : date('d/m/Y H:i', strtotime($reg->fecha_cierre)),
-                '3' => 'S/ ' . number_format((float)$reg->monto_apertura, 2),
-                '4' => 'S/ ' . number_format((float)$reg->ingresos, 2),
-                '5' => 'S/ ' . number_format((float)$reg->egresos, 2),
-                '6' => 'S/ ' . number_format((float)$reg->monto_cierre_sistema, 2),
-                '7' => 'S/ ' . number_format((float)$reg->monto_cierre_real, 2),
-                '8' => 'S/ ' . number_format((float)$reg->diferencia, 2),
+                '3' => formatearMoneda((float)$reg->monto_apertura),
+                '4' => formatearMoneda((float)$reg->ingresos),
+                '5' => formatearMoneda((float)$reg->egresos),
+                '6' => formatearMoneda((float)$reg->monto_cierre_sistema),
+                '7' => formatearMoneda((float)$reg->monto_cierre_real),
+                '8' => formatearMoneda((float)$reg->diferencia),
                 '9' => $estado
             );
         }

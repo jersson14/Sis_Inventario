@@ -4,7 +4,9 @@ var empresaDefaultsIngreso = {
 	serie_boleta: "B001",
 	serie_factura: "F001",
 	serie_ticket: "T001",
-	impuesto_default: 18
+	impuesto_default: 18,
+	moneda: "PEN",
+	simbolo_moneda: "S/"
 };
 
 function notifyIngreso(type, message){
@@ -55,6 +57,8 @@ function cargarDefaultsEmpresaIngreso(){
 			empresaDefaultsIngreso.serie_factura = r.serie_factura || empresaDefaultsIngreso.serie_factura;
 			empresaDefaultsIngreso.serie_ticket = r.serie_ticket || empresaDefaultsIngreso.serie_ticket;
 			empresaDefaultsIngreso.impuesto_default = parseFloat(r.impuesto_default || empresaDefaultsIngreso.impuesto_default);
+			empresaDefaultsIngreso.moneda = r.moneda || empresaDefaultsIngreso.moneda;
+			empresaDefaultsIngreso.simbolo_moneda = r.simbolo_moneda || empresaDefaultsIngreso.simbolo_moneda;
 		}catch(e){}
 		aplicarSerieImpuestoIngreso();
 	});
@@ -71,7 +75,7 @@ function limpiar(){
 
 	$("#total_compra").val("");
 	$(".filas").remove();
-	$("#total").html("S/. 0.00");
+	$("#total").html(window.appMoney ? window.appMoney(0,2) : ((window.appCurrencySymbol || "S/") + " 0.00"));
 	actualizarContadorItems();
 
 	//obtenemos la fecha actual
@@ -328,7 +332,7 @@ function calcularTotales(){
 	for (var i = 0; i < sub.length; i++) {
 		total += parseFloat(document.getElementsByName("subtotal")[i].value || 0);
 	}
-	$("#total").html("S/. " + total.toFixed(2));
+	$("#total").html(window.appMoney ? window.appMoney(total,2) : ((window.appCurrencySymbol || "S/") + " " + total.toFixed(2)));
 	$("#total_compra").val(total.toFixed(2));
 	evaluar();
 }

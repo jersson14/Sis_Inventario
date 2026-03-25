@@ -49,6 +49,8 @@ function construirKardex(data) {
   var body = "";
   for (var i = 0; i < data.movimientos.length; i++) {
     var r = data.movimientos[i];
+    var costoTxt = window.appMoney ? window.appMoney(parseFloat(r.costo || 0), 2) : ("S/ " + parseFloat(r.costo || 0).toFixed(2));
+    var precioRefTxt = window.appMoney ? window.appMoney(parseFloat(r.precio_ref || 0), 2) : ("S/ " + parseFloat(r.precio_ref || 0).toFixed(2));
     body += "<tr>" +
       "<td>" + r.fecha + "</td>" +
       "<td><span class='label " + (r.tipo === "INGRESO" ? "bg-aqua" : "bg-green") + "'>" + r.tipo + "</span></td>" +
@@ -57,8 +59,8 @@ function construirKardex(data) {
       "<td>" + r.entrada + "</td>" +
       "<td>" + r.salida + "</td>" +
       "<td>" + r.saldo + "</td>" +
-      "<td>S/ " + r.costo + "</td>" +
-      "<td>S/ " + r.precio_ref + "</td>" +
+      "<td>" + costoTxt + "</td>" +
+      "<td>" + precioRefTxt + "</td>" +
       "</tr>";
   }
   $("#tblkardex tbody").html(body);

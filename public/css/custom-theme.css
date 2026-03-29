@@ -670,6 +670,41 @@ body {
   height: 250px !important;
 }
 
+.dashboard-filter-box {
+  margin-bottom: 8px;
+}
+
+.dashboard-filter-box .box-body {
+  min-height: auto;
+  padding: 12px 14px 10px;
+}
+
+.dashboard-filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.dashboard-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 68px;
+}
+
+.dashboard-filter-actions .text-muted {
+  margin-left: 4px !important;
+}
+
+@media (max-width: 991px) {
+  .dashboard-filter-actions {
+    justify-content: flex-start;
+    min-height: auto;
+    padding-top: 8px;
+  }
+}
+
 body.login-page {
   min-height: 100vh;
   margin: 0;

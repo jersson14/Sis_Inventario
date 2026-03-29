@@ -11,21 +11,35 @@ if ($_SESSION['escritorio'] == 1) {
   require_once "../modelos/Consultas.php";
   $consulta = new Consultas();
 
-  $rsptac = $consulta->totalcomprahoy();
+  $hoy = date("Y-m-d");
+  $inicioDefault = date("Y-m-01");
+
+  $fechaInicio = isset($_GET["fecha_inicio"]) ? trim($_GET["fecha_inicio"]) : $inicioDefault;
+  $fechaFin = isset($_GET["fecha_fin"]) ? trim($_GET["fecha_fin"]) : $hoy;
+
+  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaInicio)) {
+    $fechaInicio = $inicioDefault;
+  }
+  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaFin)) {
+    $fechaFin = $hoy;
+  }
+  if (strtotime($fechaInicio) > strtotime($fechaFin)) {
+    $tmpFecha = $fechaInicio;
+    $fechaInicio = $fechaFin;
+    $fechaFin = $tmpFecha;
+  }
+
+  $rangoTexto = date("d/m/Y", strtotime($fechaInicio)) . " - " . date("d/m/Y", strtotime($fechaFin));
+
+  $rsptac = $consulta->totalcomprarango($fechaInicio, $fechaFin);
   $regc = $rsptac->fetch_object();
   $totalc = $regc ? (float)$regc->total_compra : 0;
 
-  $rsptav = $consulta->totalventahoy();
+  $rsptav = $consulta->totalventarango($fechaInicio, $fechaFin);
   $regv = $rsptav->fetch_object();
   $totalv = $regv ? (float)$regv->total_venta : 0;
-
-  $rsptacm = $consulta->totalcomprasemes();
-  $regcm = $rsptacm->fetch_object();
-  $totalcm = $regcm ? (float)$regcm->total_compra : 0;
-
-  $rsptavm = $consulta->totalventasmes();
-  $regvm = $rsptavm->fetch_object();
-  $totalvm = $regvm ? (float)$regvm->total_venta : 0;
+  $totalcm = $totalc;
+  $totalvm = $totalv;
   $codigoMoneda = function_exists('obtenerMonedaEmpresaCodigo') ? obtenerMonedaEmpresaCodigo() : 'PEN';
 
   $rskpi = $consulta->kpisgenerales();
@@ -36,9 +50,16 @@ if ($_SESSION['escritorio'] == 1) {
   $proveedores = $kpi ? (int)$kpi->proveedores : 0;
   $stockTotal = $kpi ? (float)$kpi->stock_total : 0;
 
+  $diasPeriodo = (int)floor((strtotime($fechaFin) - strtotime($fechaInicio)) / 86400) + 1;
+  if ($diasPeriodo <= 0) {
+    $diasPeriodo = 1;
+  }
+  $promedioVentas = $totalv / $diasPeriodo;
+  $promedioCompras = $totalc / $diasPeriodo;
+
   $labelsCompras10 = array();
   $dataCompras10 = array();
-  $compras10 = $consulta->comprasultimos_10dias();
+  $compras10 = $consulta->comprasdiariasrango($fechaInicio, $fechaFin);
   while ($reg = $compras10->fetch_object()) {
     $labelsCompras10[] = date("d/m", strtotime($reg->fecha));
     $dataCompras10[] = round((float)$reg->total, 2);
@@ -46,7 +67,7 @@ if ($_SESSION['escritorio'] == 1) {
 
   $labelsVentas12 = array();
   $dataVentas12 = array();
-  $ventas12 = $consulta->ventasultimos_12meses();
+  $ventas12 = $consulta->ventasmensualesrango($fechaInicio, $fechaFin);
   while ($reg = $ventas12->fetch_object()) {
     $labelsVentas12[] = $reg->fecha;
     $dataVentas12[] = round((float)$reg->total, 2);
@@ -56,7 +77,7 @@ if ($_SESSION['escritorio'] == 1) {
   $compras6Map = array();
   $ventas6Map = array();
 
-  $compras6 = $consulta->comprasultimos_6meses();
+  $compras6 = $consulta->comprasmensualesrango($fechaInicio, $fechaFin);
   while ($reg = $compras6->fetch_object()) {
     $periodo = isset($reg->periodo) ? $reg->periodo : '';
     if ($periodo !== '') {
@@ -64,7 +85,7 @@ if ($_SESSION['escritorio'] == 1) {
     }
   }
 
-  $ventas6 = $consulta->ventasultimos_6meses();
+  $ventas6 = $consulta->ventasmensualesrango($fechaInicio, $fechaFin);
   while ($reg = $ventas6->fetch_object()) {
     $periodo = isset($reg->periodo) ? $reg->periodo : '';
     if ($periodo !== '') {
@@ -73,9 +94,17 @@ if ($_SESSION['escritorio'] == 1) {
   }
 
   $periodosComparativo = array();
-  for ($i = 5; $i >= 0; $i--) {
-    $periodosComparativo[] = date("Y-m", strtotime("-".$i." month"));
+  $cursorMes = strtotime(date("Y-m-01", strtotime($fechaInicio)));
+  $finMes = strtotime(date("Y-m-01", strtotime($fechaFin)));
+  while ($cursorMes <= $finMes) {
+    $periodosComparativo[] = date("Y-m", $cursorMes);
+    $cursorMes = strtotime("+1 month", $cursorMes);
   }
+
+  if (count($periodosComparativo) === 0) {
+    $periodosComparativo[] = date("Y-m", strtotime($fechaInicio));
+  }
+
   $dataCompras6 = array();
   $dataVentas6 = array();
   foreach ($periodosComparativo as $periodo) {
@@ -86,7 +115,7 @@ if ($_SESSION['escritorio'] == 1) {
 
   $labelsTop = array();
   $dataTop = array();
-  $topProductos = $consulta->topproductosvendidos(7);
+  $topProductos = $consulta->topproductosvendidosrango($fechaInicio, $fechaFin, 7);
   while ($reg = $topProductos->fetch_object()) {
     $labelsTop[] = $reg->producto;
     $dataTop[] = round((float)$reg->total, 2);
@@ -94,14 +123,14 @@ if ($_SESSION['escritorio'] == 1) {
 
   $labelsCategoria = array();
   $dataCategoria = array();
-  $ventasCategoria = $consulta->ventasporcategoria(8);
+  $ventasCategoria = $consulta->ventasporcategoriarango($fechaInicio, $fechaFin, 8);
   while ($reg = $ventasCategoria->fetch_object()) {
     $labelsCategoria[] = $reg->categoria;
     $dataCategoria[] = round((float)$reg->total, 2);
   }
 
   $movimientos = array();
-  $rsmov = $consulta->ultimomovimientos(10);
+  $rsmov = $consulta->ultimomovimientosrango($fechaInicio, $fechaFin, 10);
   while ($reg = $rsmov->fetch_object()) {
     $movimientos[] = array(
       "tipo" => $reg->tipo,
@@ -119,12 +148,32 @@ if ($_SESSION['escritorio'] == 1) {
       <p>Resumen interactivo de compras, ventas e inventario.</p>
     </div>
 
+    <div class="box dashboard-box dashboard-filter-box">
+      <div class="box-body">
+        <form method="get" action="escritorio.php" class="row dashboard-filter-form">
+          <div class="col-md-3 col-sm-6 col-xs-12">
+            <label>Desde</label>
+            <input type="date" class="form-control" name="fecha_inicio" value="<?php echo htmlspecialchars($fechaInicio); ?>" max="<?php echo htmlspecialchars($fechaFin); ?>">
+          </div>
+          <div class="col-md-3 col-sm-6 col-xs-12">
+            <label>Hasta</label>
+            <input type="date" class="form-control" name="fecha_fin" value="<?php echo htmlspecialchars($fechaFin); ?>" min="<?php echo htmlspecialchars($fechaInicio); ?>">
+          </div>
+          <div class="col-md-6 col-sm-12 col-xs-12 dashboard-filter-actions">
+            <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Aplicar filtros</button>
+            <a href="escritorio.php" class="btn btn-default"><i class="fa fa-refresh"></i> Limpiar</a>
+            <span class="text-muted" style="margin-left:12px;">Rango activo: <strong><?php echo htmlspecialchars($rangoTexto); ?></strong></span>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="row dashboard-kpis">
       <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12">
         <a href="venta.php" class="kpi-card kpi-sales">
           <div class="kpi-icon"><i class="fa fa-line-chart"></i></div>
           <div class="kpi-meta">
-            <span>Ventas de Hoy</span>
+            <span>Ventas del Periodo</span>
             <strong><?php echo formatearMoneda($totalv, $codigoMoneda); ?></strong>
           </div>
         </a>
@@ -133,7 +182,7 @@ if ($_SESSION['escritorio'] == 1) {
         <a href="ingreso.php" class="kpi-card kpi-buy">
           <div class="kpi-icon"><i class="fa fa-shopping-basket"></i></div>
           <div class="kpi-meta">
-            <span>Compras de Hoy</span>
+            <span>Compras del Periodo</span>
             <strong><?php echo formatearMoneda($totalc, $codigoMoneda); ?></strong>
           </div>
         </a>
@@ -151,7 +200,7 @@ if ($_SESSION['escritorio'] == 1) {
         <div class="kpi-card kpi-month">
           <div class="kpi-icon"><i class="fa fa-calendar"></i></div>
           <div class="kpi-meta">
-            <span>Balance del Mes</span>
+            <span>Balance del Periodo</span>
             <strong><?php echo formatearMoneda($totalvm - $totalcm, $codigoMoneda); ?></strong>
           </div>
         </div>
@@ -161,14 +210,14 @@ if ($_SESSION['escritorio'] == 1) {
     <div class="row dashboard-kpis secondary">
       <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
         <div class="mini-kpi">
-          <label>Ventas del Mes</label>
-          <strong><?php echo formatearMoneda($totalvm, $codigoMoneda); ?></strong>
+          <label>Promedio Ventas / Dia</label>
+          <strong><?php echo formatearMoneda($promedioVentas, $codigoMoneda); ?></strong>
         </div>
       </div>
       <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
         <div class="mini-kpi">
-          <label>Compras del Mes</label>
-          <strong><?php echo formatearMoneda($totalcm, $codigoMoneda); ?></strong>
+          <label>Promedio Compras / Dia</label>
+          <strong><?php echo formatearMoneda($promedioCompras, $codigoMoneda); ?></strong>
         </div>
       </div>
       <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
@@ -179,7 +228,7 @@ if ($_SESSION['escritorio'] == 1) {
       </div>
       <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
         <div class="mini-kpi">
-          <label>Proveedores / Categorías / Artículos</label>
+          <label>Proveedores / Categorias / Articulos</label>
           <strong><?php echo $proveedores; ?> / <?php echo $categoriasActivas; ?> / <?php echo $articulosActivos; ?></strong>
         </div>
       </div>
@@ -189,7 +238,7 @@ if ($_SESSION['escritorio'] == 1) {
       <div class="col-lg-8 col-md-8 col-sm-12 col-xs-12">
         <div class="box dashboard-box">
           <div class="box-header with-border">
-            <h3 class="box-title">Comparativo Compras vs Ventas (Últimos 6 meses)</h3>
+            <h3 class="box-title">Comparativo Compras vs Ventas (Rango Seleccionado)</h3>
           </div>
           <div class="box-body">
             <canvas id="chartComparativo" height="120"></canvas>
@@ -199,7 +248,7 @@ if ($_SESSION['escritorio'] == 1) {
       <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
         <div class="box dashboard-box">
           <div class="box-header with-border">
-            <h3 class="box-title">Ventas por Categoría (Mes Actual)</h3>
+            <h3 class="box-title">Ventas por Categoria (Rango Seleccionado)</h3>
           </div>
           <div class="box-body">
             <canvas id="chartCategoria" height="170"></canvas>
@@ -212,7 +261,7 @@ if ($_SESSION['escritorio'] == 1) {
       <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
         <div class="box dashboard-box">
           <div class="box-header with-border">
-            <h3 class="box-title">Compras de los Últimos 10 Días</h3>
+            <h3 class="box-title">Compras por Dia (Rango Seleccionado)</h3>
           </div>
           <div class="box-body">
             <canvas id="chartCompras10" height="150"></canvas>
@@ -222,7 +271,7 @@ if ($_SESSION['escritorio'] == 1) {
       <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
         <div class="box dashboard-box">
           <div class="box-header with-border">
-            <h3 class="box-title">Ventas de los Últimos 12 Meses</h3>
+            <h3 class="box-title">Ventas por Mes (Rango Seleccionado)</h3>
           </div>
           <div class="box-body">
             <canvas id="chartVentas12" height="150"></canvas>
@@ -245,7 +294,7 @@ if ($_SESSION['escritorio'] == 1) {
       <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
         <div class="box dashboard-box">
           <div class="box-header with-border">
-            <h3 class="box-title">Últimos Movimientos</h3>
+            <h3 class="box-title">Ultimos Movimientos</h3>
           </div>
           <div class="box-body table-responsive">
             <table class="table table-striped table-condensed">

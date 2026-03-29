@@ -20,10 +20,39 @@ switch ($_GET["op"]) {
 	case 'guardaryeditar':
 	if (empty($idingreso)) {
 		$rspta=$ingreso->insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$total_compra,$_POST["idarticulo"],$_POST["cantidad"],$_POST["precio_compra"],$_POST["precio_venta"]);
-		echo $rspta ? "Datos registrados correctamente" : "No se pudo registrar los datos";
+		if (is_array($rspta)) {
+			if (!empty($rspta["ok"])) {
+				echo json_encode(array(
+					"ok"=>true,
+					"message"=>"Datos registrados correctamente",
+					"serie_comprobante"=>isset($rspta["serie_comprobante"])?$rspta["serie_comprobante"]:"",
+					"num_comprobante"=>isset($rspta["num_comprobante"])?$rspta["num_comprobante"]:""
+				));
+			}else{
+				echo json_encode(array(
+					"ok"=>false,
+					"message"=>isset($rspta["message"])?$rspta["message"]:"No se pudo registrar los datos"
+				));
+			}
+		}else{
+			echo json_encode(array(
+				"ok"=>(bool)$rspta,
+				"message"=>$rspta ? "Datos registrados correctamente" : "No se pudo registrar los datos"
+			));
+		}
 	}else{
-        
+		echo json_encode(array(
+			"ok"=>false,
+			"message"=>"Edicion de ingreso no disponible desde este formulario"
+		));
 	}
+		break;
+
+	case 'siguienteCorrelativo':
+		$tipo = isset($_GET["tipo_comprobante"]) ? limpiarCadena($_GET["tipo_comprobante"]) : "Boleta";
+		$serie = isset($_GET["serie_comprobante"]) ? limpiarCadena($_GET["serie_comprobante"]) : "";
+		$rspta = $ingreso->obtenerSiguienteCorrelativo($tipo, $serie);
+		echo json_encode($rspta);
 		break;
 	
 

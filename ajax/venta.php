@@ -28,6 +28,8 @@ switch ($_GET["op"]) {
 				echo json_encode(array(
 					"ok"=>true,
 					"message"=>"Datos registrados correctamente",
+					"serie_comprobante"=>isset($rspta["serie_comprobante"])?$rspta["serie_comprobante"]:"",
+					"num_comprobante"=>isset($rspta["num_comprobante"])?$rspta["num_comprobante"]:"",
 					"alertas"=>isset($rspta["alertas"])?$rspta["alertas"]:array()
 				));
 			}else{
@@ -46,6 +48,13 @@ switch ($_GET["op"]) {
 	}else{
         
 	}
+		break;
+
+	case 'siguienteCorrelativo':
+		$tipo = isset($_GET["tipo_comprobante"]) ? limpiarCadena($_GET["tipo_comprobante"]) : "Boleta";
+		$serie = isset($_GET["serie_comprobante"]) ? limpiarCadena($_GET["serie_comprobante"]) : "";
+		$rspta = $venta->obtenerSiguienteCorrelativo($tipo, $serie);
+		echo json_encode($rspta);
 		break;
 	
 
@@ -153,18 +162,19 @@ switch ($_GET["op"]) {
 			$unidadjs = addslashes($reg->abreviatura);
 			$precio = is_null($reg->precio_venta) ? 0 : (float)$reg->precio_venta;
 			$stock = (float)$reg->stock;
-			$stockFmt = number_format($stock,3);
+			$stockVisible = $stock > 0 ? $stock : 0;
+			$stockFmt = number_format($stockVisible,3);
 			$stockMinimo = isset($reg->stock_minimo) ? (float)$reg->stock_minimo : 0;
 			$umbralBajo = max($stockMinimo, 5);
 
-			if ($stock<=0) {
+			if ($stockVisible<=0) {
 				$btnAgregar='<button class="btn btn-add-item btn-add-disabled" type="button" disabled title="Sin stock"><i class="fa fa-ban"></i> Sin stock</button>';
 				$stockHtml='<span class="stock-pill stock-empty">'.$stockFmt.'</span>';
-			} elseif ($stock<=$umbralBajo) {
-				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\')"><i class="fa fa-plus-circle"></i> Agregar</button>';
+			} elseif ($stockVisible<=$umbralBajo) {
+				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\','.$stockVisible.')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 				$stockHtml='<span class="stock-pill stock-low">'.$stockFmt.'</span>';
 			} else {
-				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\')"><i class="fa fa-plus-circle"></i> Agregar</button>';
+				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\','.$stockVisible.')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 				$stockHtml='<span class="stock-pill stock-ok">'.$stockFmt.'</span>';
 			}
 
@@ -209,7 +219,8 @@ switch ($_GET["op"]) {
 				"idarticulo"=>$reg['idarticulo'],
 				"nombre"=>$reg['nombre'],
 				"precio_venta"=>(float)$reg['precio_venta'],
-				"unidad"=>$reg['abreviatura']
+				"unidad"=>$reg['abreviatura'],
+				"stock"=>(float)$reg['stock']
 			));
 			break;
 }

@@ -363,6 +363,112 @@ public function ultimomovimientos($limit=10){
 	return ejecutarConsulta($sql);
 }
 
+public function totalcomprarango($fecha_inicio,$fecha_fin){
+	$sql="SELECT IFNULL(SUM(total_compra),0) AS total_compra
+	FROM ingreso
+	WHERE DATE(fecha_hora)>='$fecha_inicio' AND DATE(fecha_hora)<='$fecha_fin'";
+	return ejecutarConsulta($sql);
+}
+
+public function totalventarango($fecha_inicio,$fecha_fin){
+	$sql="SELECT IFNULL(SUM(total_venta),0) AS total_venta
+	FROM venta
+	WHERE DATE(fecha_hora)>='$fecha_inicio' AND DATE(fecha_hora)<='$fecha_fin'";
+	return ejecutarConsulta($sql);
+}
+
+public function comprasdiariasrango($fecha_inicio,$fecha_fin){
+	$sql="SELECT DATE(fecha_hora) AS fecha, IFNULL(SUM(total_compra),0) AS total
+	FROM ingreso
+	WHERE DATE(fecha_hora)>='$fecha_inicio' AND DATE(fecha_hora)<='$fecha_fin'
+	GROUP BY DATE(fecha_hora)
+	ORDER BY DATE(fecha_hora) ASC";
+	return ejecutarConsulta($sql);
+}
+
+public function ventasmensualesrango($fecha_inicio,$fecha_fin){
+	$sql="SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_venta),0) AS total
+	FROM venta
+	WHERE DATE(fecha_hora)>='$fecha_inicio' AND DATE(fecha_hora)<='$fecha_fin'
+	GROUP BY DATE_FORMAT(fecha_hora,'%Y-%m'), DATE_FORMAT(fecha_hora,'%b %Y')
+	ORDER BY YEAR(fecha_hora), MONTH(fecha_hora)";
+	return ejecutarConsulta($sql);
+}
+
+public function comprasmensualesrango($fecha_inicio,$fecha_fin){
+	$sql="SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_compra),0) AS total
+	FROM ingreso
+	WHERE DATE(fecha_hora)>='$fecha_inicio' AND DATE(fecha_hora)<='$fecha_fin'
+	GROUP BY DATE_FORMAT(fecha_hora,'%Y-%m'), DATE_FORMAT(fecha_hora,'%b %Y')
+	ORDER BY YEAR(fecha_hora), MONTH(fecha_hora)";
+	return ejecutarConsulta($sql);
+}
+
+public function ventasporcategoriarango($fecha_inicio,$fecha_fin,$limit=8){
+	$limit=(int)$limit;
+	if ($limit<=0) $limit=8;
+	$sql="SELECT c.nombre AS categoria,
+	IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
+	FROM detalle_venta dv
+	INNER JOIN venta v ON v.idventa=dv.idventa
+	INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
+	INNER JOIN categoria c ON c.idcategoria=a.idcategoria
+	WHERE v.estado='Aceptado'
+	AND DATE(v.fecha_hora)>='$fecha_inicio'
+	AND DATE(v.fecha_hora)<='$fecha_fin'
+	GROUP BY c.idcategoria, c.nombre
+	ORDER BY total DESC
+	LIMIT ".$limit;
+	return ejecutarConsulta($sql);
+}
+
+public function topproductosvendidosrango($fecha_inicio,$fecha_fin,$limit=7){
+	$limit=(int)$limit;
+	if ($limit<=0) $limit=7;
+	$sql="SELECT a.nombre AS producto,
+	IFNULL(SUM(dv.cantidad),0) AS cantidad,
+	IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
+	FROM detalle_venta dv
+	INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
+	INNER JOIN venta v ON v.idventa=dv.idventa
+	WHERE v.estado='Aceptado'
+	AND DATE(v.fecha_hora)>='$fecha_inicio'
+	AND DATE(v.fecha_hora)<='$fecha_fin'
+	GROUP BY dv.idarticulo, a.nombre
+	ORDER BY total DESC
+	LIMIT ".$limit;
+	return ejecutarConsulta($sql);
+}
+
+public function ultimomovimientosrango($fecha_inicio,$fecha_fin,$limit=10){
+	$limit=(int)$limit;
+	if ($limit<=0) $limit=10;
+	$sql="SELECT * FROM (
+		SELECT
+		'Venta' AS tipo,
+		v.fecha_hora AS fecha,
+		CONCAT(v.tipo_comprobante,' ',v.serie_comprobante,'-',v.num_comprobante) AS documento,
+		IFNULL(p.nombre,'-') AS persona,
+		v.total_venta AS total
+		FROM venta v
+		LEFT JOIN persona p ON p.idpersona=v.idcliente
+		WHERE DATE(v.fecha_hora)>='$fecha_inicio' AND DATE(v.fecha_hora)<='$fecha_fin'
+		UNION ALL
+		SELECT
+		'Compra' AS tipo,
+		i.fecha_hora AS fecha,
+		CONCAT(i.tipo_comprobante,' ',i.serie_comprobante,'-',i.num_comprobante) AS documento,
+		IFNULL(p.nombre,'-') AS persona,
+		i.total_compra AS total
+		FROM ingreso i
+		LEFT JOIN persona p ON p.idpersona=i.idproveedor
+		WHERE DATE(i.fecha_hora)>='$fecha_inicio' AND DATE(i.fecha_hora)<='$fecha_fin'
+	) t
+	ORDER BY t.fecha DESC
+	LIMIT ".$limit;
+	return ejecutarConsulta($sql);
+}
+
 
 }
 

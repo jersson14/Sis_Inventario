@@ -8,6 +8,10 @@ var empresaDefaults = {
 	moneda: "PEN",
 	simbolo_moneda: "S/"
 };
+var posScanTimer = null;
+var posCodeQueue = [];
+var posProcessing = false;
+var correlativoRequestId = 0;
 
 function notifyVenta(type, message){
 	if (typeof appNotify === "function") {
@@ -47,12 +51,30 @@ function init(){
    });
    cargarDefaultsEmpresa();
 
-   $("#btnBuscarCodigo").on("click", buscarCodigoRapido);
+   $("#num_comprobante").prop("readonly", true);
+
+   $("#btnBuscarCodigo").on("click", function(){
+   	encolarCodigoPOS($("#codigo_rapido").val());
+   });
    $("#codigo_rapido").on("keypress", function(e){
    	if (e.which===13) {
    		e.preventDefault();
-   		buscarCodigoRapido();
+   		clearTimeout(posScanTimer);
+   		encolarCodigoPOS($(this).val());
    	}
+   });
+   $("#codigo_rapido").on("input", function(){
+   	clearTimeout(posScanTimer);
+   	var codigoLeido = ($(this).val() || "").trim();
+   	if (!codigoLeido || codigoLeido.length < 3) {
+   		return;
+   	}
+   	posScanTimer = setTimeout(function(){
+   		encolarCodigoPOS(codigoLeido);
+   	}, 220);
+   });
+   $("#serie_comprobante").on("change blur", function(){
+   	cargarCorrelativoComprobante();
    });
 
    $(document).on("keydown", function(e){
@@ -92,6 +114,7 @@ function cargarDefaultsEmpresa(){
 //funcion limpiar
 function limpiar(){
 
+	$("#idventa").val("");
 	$("#idcliente").val("");
 	$("#cliente").val("");
 	$("#serie_comprobante").val("");
@@ -186,8 +209,8 @@ function listarArticulos(){
 		"iDisplayLength":10,//paginacion
 		"order":[[1,"asc"]],//ordenar por nombre
 		"language":{
-			"sSearch":"Buscar artículo:",
-			"sSearchPlaceholder":"Nombre o código"
+			"sSearch":"Buscar artÃ­culo:",
+			"sSearchPlaceholder":"Nombre o cÃ³digo"
 		},
 		"initComplete":function(){
 			$("#tblarticulos, #tblarticulos_wrapper").css("width","100%");
@@ -204,6 +227,9 @@ function listarArticulos(){
 //funcion para guardaryeditar
 function guardaryeditar(e){
      e.preventDefault();//no se activara la accion predeterminada 
+     if (!validarStockDetalleAntesGuardar()) {
+     	return;
+     }
      //$("#btnGuardar").prop("disabled",true);
      var formData=new FormData($("#formulario")[0]);
 
@@ -241,10 +267,8 @@ function guardaryeditar(e){
      			mostrarform(false);
      			listar();
      		}
-     	}
+    	}
      });
-
-     limpiar();
 }
 
 function mostrar(idventa){
@@ -278,7 +302,7 @@ function mostrar(idventa){
 
 //funcion para desactivar
 function anular(idventa){
-	bootbox.confirm("¿Esta seguro de desactivar este dato?", function(result){
+	bootbox.confirm("Â¿Esta seguro de desactivar este dato?", function(result){
 		if (result) {
 			$.post("../ajax/venta.php?op=anular", {idventa : idventa}, function(e){
 				notifyVenta("warning", e);
@@ -312,33 +336,74 @@ function aplicarSerieImpuesto(){
 		$("#serie_comprobante").val(empresaDefaults.serie_boleta || "B001");
 		$("#impuesto").val("0");
 	}
+	cargarCorrelativoComprobante();
 }
 
-function agregarDetalle(idarticulo,articulo,precio_venta,unidad){
+function cargarCorrelativoComprobante(){
+	var tipo = ($("#tipo_comprobante").val() || "Boleta").trim();
+	var serie = ($("#serie_comprobante").val() || "").trim();
+	if (!serie) {
+		$("#num_comprobante").val("");
+		return;
+	}
+	correlativoRequestId++;
+	var reqId = correlativoRequestId;
+	$.get("../ajax/venta.php?op=siguienteCorrelativo", {
+		tipo_comprobante: tipo,
+		serie_comprobante: serie
+	}, function(resp){
+		if (reqId !== correlativoRequestId) {
+			return;
+		}
+		var r = {};
+		try {
+			r = JSON.parse(resp);
+		} catch (e) {
+			return;
+		}
+		if (!r.ok) {
+			return;
+		}
+		$("#serie_comprobante").val(r.serie_comprobante || serie);
+		$("#num_comprobante").val(r.numero || "");
+	});
+}
+
+function agregarDetalle(idarticulo,articulo,precio_venta,unidad,stockDisponible){
 	var cantidad=1;
 	var descuento=0;
 	var unidadTexto = unidad || "und";
+	var stockDisponibleNum = parseFloat(stockDisponible || 0);
 	var articulos = document.getElementsByName("idarticulo[]");
 	var cantidades = document.getElementsByName("cantidad[]");
-
+	var stocksDisponibles = document.getElementsByName("stock_disponible[]");
+	if (stockDisponibleNum <= 0) {
+		notifyVenta("warning", "Este articulo no tiene stock disponible.");
+		return;
+	}
 	if (idarticulo!="") {
 		for (var i = 0; i < articulos.length; i++) {
 			if (parseInt(articulos[i].value, 10) === parseInt(idarticulo, 10)) {
-				var nuevaCantidad = (parseFloat(cantidades[i].value || 0) + 1).toFixed(3);
+				var stockFila = parseFloat((stocksDisponibles[i] && stocksDisponibles[i].value) ? stocksDisponibles[i].value : stockDisponibleNum);
+				var nuevaCantidadNum = parseFloat(cantidades[i].value || 0) + 1;
+				if (nuevaCantidadNum > stockFila) {
+					notifyVenta("warning", "No puedes vender mas de " + stockFila.toFixed(3) + " " + unidadTexto + " para este articulo.");
+					return;
+				}
+				var nuevaCantidad = nuevaCantidadNum.toFixed(3);
 				cantidades[i].value = nuevaCantidad;
 				modificarSubtotales();
 				$('#myModal').modal('hide');
-				notifyVenta("info", "El artículo ya estaba agregado. Se incrementó la cantidad.");
+				notifyVenta("info", "El articulo ya estaba agregado. Se incremento la cantidad.");
 				return;
 			}
 		}
-
 		var subtotal=cantidad*precio_venta;
 		var fila='<tr class="filas" id="fila'+cont+'">'+
         '<td><button type="button" class="btn btn-danger" onclick="eliminarDetalle('+cont+')">X</button></td>'+
-        '<td><input type="hidden" name="idarticulo[]" value="'+idarticulo+'">'+articulo+'</td>'+
+        '<td><input type="hidden" name="idarticulo[]" value="'+idarticulo+'"><input type="hidden" name="stock_disponible[]" value="'+stockDisponibleNum.toFixed(3)+'">'+articulo+'</td>'+
         '<td>'+unidadTexto+'</td>'+
-        '<td><input type="number" step="0.001" min="0.001" name="cantidad[]" id="cantidad[]" value="'+cantidad+'" oninput="modificarSubtotales()"></td>'+
+        '<td><input type="number" step="0.001" min="0.001" max="'+stockDisponibleNum.toFixed(3)+'" name="cantidad[]" id="cantidad[]" value="'+cantidad+'" oninput="modificarSubtotales()"></td>'+
         '<td><input type="number" step="0.01" min="0.01" name="precio_venta[]" id="precio_venta[]" value="'+precio_venta+'" oninput="modificarSubtotales()"></td>'+
         '<td><input type="number" step="0.01" min="0.00" name="descuento[]" value="'+descuento+'" oninput="modificarSubtotales()"></td>'+
         '<td><span id="subtotal'+cont+'" name="subtotal">'+subtotal+'</span></td>'+
@@ -350,34 +415,61 @@ function agregarDetalle(idarticulo,articulo,precio_venta,unidad){
 		modificarSubtotales();
 		actualizarContadorItems();
 		$('#myModal').modal('hide');
-		notifyVenta("success", "Artículo agregado a la venta.");
-
+		notifyVenta("success", "Articulo agregado a la venta.");
 	}else{
-		notifyVenta("warning", "No se pudo agregar el artículo. Revisa la información del producto.");
+		notifyVenta("warning", "No se pudo agregar el articulo. Revisa la informacion del producto.");
 	}
 }
-
 function modificarSubtotales(){
 	var cant=document.getElementsByName("cantidad[]");
 	var prev=document.getElementsByName("precio_venta[]");
 	var desc=document.getElementsByName("descuento[]");
 	var sub=document.getElementsByName("subtotal");
-
-
+	var stockDisp=document.getElementsByName("stock_disponible[]");
+	var huboAjusteStock=false;
 	for (var i = 0; i < cant.length; i++) {
 		var inpV=cant[i];
 		var inpP=prev[i];
 		var inpS=sub[i];
 		var des=desc[i];
-
-
+		var maxStock = parseFloat((stockDisp[i] && stockDisp[i].value) ? stockDisp[i].value : 0);
+		var cantidadActual = parseFloat(inpV.value || 0);
+		if (cantidadActual <= 0) {
+			cantidadActual = 0.001;
+		}
+		if (maxStock > 0 && cantidadActual > maxStock) {
+			cantidadActual = maxStock;
+			huboAjusteStock = true;
+		}
+		inpV.value = Number(cantidadActual).toFixed(3);
 		inpS.value=((parseFloat(inpV.value||0)*parseFloat(inpP.value||0))-parseFloat(des.value||0)).toFixed(2);
 		document.getElementsByName("subtotal")[i].innerHTML=inpS.value;
 	}
-
+	if (huboAjusteStock) {
+		notifyVenta("warning", "Se ajusto la cantidad al stock disponible.");
+	}
 	calcularTotales();
 }
-
+function validarStockDetalleAntesGuardar(){
+	var cant=document.getElementsByName("cantidad[]");
+	var stockDisp=document.getElementsByName("stock_disponible[]");
+	for (var i = 0; i < cant.length; i++) {
+		var cantidad = parseFloat(cant[i].value || 0);
+		var stock = parseFloat((stockDisp[i] && stockDisp[i].value) ? stockDisp[i].value : 0);
+		if (isNaN(cantidad) || cantidad <= 0) {
+			notifyVenta("warning", "Hay un articulo con cantidad invalida. Corrige antes de guardar.");
+			return false;
+		}
+		if (isNaN(stock) || stock < 0) {
+			stock = 0;
+		}
+		if (cantidad > stock) {
+			notifyVenta("warning", "Hay un articulo con cantidad mayor al stock disponible. Corrige antes de guardar.");
+			return false;
+		}
+	}
+	return true;
+}
 function calcularTotales(){
 	var sub = document.getElementsByName("subtotal");
 	var total=0.0;
@@ -421,14 +513,41 @@ function estilizarBuscadorCatalogo(){
 	if ($filtro.length) {
 		$filtro.addClass("catalog-search-wrap");
 		$filtro.find("label").addClass("catalog-search-label");
-		$filtro.find("input").addClass("catalog-search-input").attr("placeholder","Buscar por nombre o código");
+		$filtro.find("input").addClass("catalog-search-input").attr("placeholder","Buscar por nombre o cÃ³digo");
 	}
 }
 
-function buscarCodigoRapido(){
-	var codigo = ($("#codigo_rapido").val() || "").trim();
+function encolarCodigoPOS(codigo){
+	var limpio = (codigo || "").trim();
+	if (!limpio) {
+		notifyVenta("warning", "Ingresa o escanea un codigo de producto.");
+		return;
+	}
+	clearTimeout(posScanTimer);
+	posCodeQueue.push(limpio);
+	$("#codigo_rapido").val("");
+	procesarColaPOS();
+}
+
+function procesarColaPOS(){
+	if (posProcessing || posCodeQueue.length === 0) {
+		return;
+	}
+	posProcessing = true;
+	var codigo = posCodeQueue.shift();
+	buscarCodigoRapido(codigo, function(){
+		posProcessing = false;
+		procesarColaPOS();
+	});
+}
+
+function buscarCodigoRapido(codigoForzado, callback){
+	var codigo = (codigoForzado || $("#codigo_rapido").val() || "").trim();
 	if (!codigo) {
 		notifyVenta("warning", "Ingresa o escanea un codigo de producto.");
+		if (typeof callback === "function") {
+			callback();
+		}
 		return;
 	}
 
@@ -438,18 +557,28 @@ function buscarCodigoRapido(){
 			r = JSON.parse(resp);
 		} catch (e) {
 			notifyVenta("error", "No se pudo buscar el articulo por codigo.");
+			if (typeof callback === "function") {
+				callback();
+			}
 			return;
 		}
 
 		if (!r.ok) {
 			notifyVenta("warning", r.message || "No se encontro el articulo");
+			if (typeof callback === "function") {
+				callback();
+			}
 			return;
 		}
 
-		agregarDetalle(r.idarticulo, r.nombre, r.precio_venta || 0, r.unidad || "und");
-		$("#codigo_rapido").val("").focus();
+		agregarDetalle(r.idarticulo, r.nombre, r.precio_venta || 0, r.unidad || "und", r.stock || 0);
+		$("#codigo_rapido").focus();
+		if (typeof callback === "function") {
+			callback();
+		}
 	});
 }
 
 init();
+
 

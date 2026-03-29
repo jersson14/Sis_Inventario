@@ -8,6 +8,7 @@ var empresaDefaultsIngreso = {
 	moneda: "PEN",
 	simbolo_moneda: "S/"
 };
+var correlativoRequestIdIngreso = 0;
 
 function notifyIngreso(type, message){
 	if (typeof appNotify === "function") {
@@ -46,6 +47,10 @@ function init(){
    	}, 80);
    });
    cargarDefaultsEmpresaIngreso();
+   $("#num_comprobante").prop("readonly", true);
+   $("#serie_comprobante").on("change blur", function(){
+   	cargarCorrelativoIngreso();
+   });
 
 }
 
@@ -67,6 +72,7 @@ function cargarDefaultsEmpresaIngreso(){
 //funcion limpiar
 function limpiar(){
 
+	$("#idingreso").val("");
 	$("#idproveedor").val("");
 	$("#proveedor").val("");
 	$("#serie_comprobante").val("");
@@ -187,13 +193,32 @@ function guardaryeditar(e){
      	contentType: false,
      	processData: false,
      	success: function(datos){
-     		notifyIngreso("success", datos);
-     		mostrarform(false);
-     		listar();
+     		var r = null;
+     		try {
+     			r = JSON.parse(datos);
+     		} catch (e) {
+     			r = null;
+     		}
+
+     		if (r && typeof r.ok !== "undefined") {
+     			if (r.ok) {
+     				notifyIngreso("success", r.message || "Datos registrados correctamente");
+     				mostrarform(false);
+     				listar();
+     			} else {
+     				notifyIngreso("error", r.message || "No se pudo registrar el ingreso.");
+     			}
+     	} else {
+     		if ((datos || "").trim() === "") {
+     			notifyIngreso("error", "No se recibio respuesta del servidor.");
+     		} else {
+     			notifyIngreso("success", datos);
+     			mostrarform(false);
+     			listar();
+     		}
+     	}
      	}
      });
-
-     limpiar();
 }
 
 function mostrar(idingreso){
@@ -262,6 +287,37 @@ function aplicarSerieImpuestoIngreso(){
 		$("#serie_comprobante").val(empresaDefaultsIngreso.serie_boleta || "B001");
 		$("#impuesto").val("0");
 	}
+	cargarCorrelativoIngreso();
+}
+
+function cargarCorrelativoIngreso(){
+	var tipo = ($("#tipo_comprobante").val() || "Boleta").trim();
+	var serie = ($("#serie_comprobante").val() || "").trim();
+	if (!serie) {
+		$("#num_comprobante").val("");
+		return;
+	}
+	correlativoRequestIdIngreso++;
+	var reqId = correlativoRequestIdIngreso;
+	$.get("../ajax/ingreso.php?op=siguienteCorrelativo", {
+		tipo_comprobante: tipo,
+		serie_comprobante: serie
+	}, function(resp){
+		if (reqId !== correlativoRequestIdIngreso) {
+			return;
+		}
+		var r = {};
+		try {
+			r = JSON.parse(resp);
+		} catch (e) {
+			return;
+		}
+		if (!r.ok) {
+			return;
+		}
+		$("#serie_comprobante").val(r.serie_comprobante || serie);
+		$("#num_comprobante").val(r.numero || "");
+	});
 }
 
 function agregarDetalle(idarticulo,articulo,unidad,precio_compra_ref){

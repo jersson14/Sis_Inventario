@@ -79,9 +79,9 @@ if ($_SESSION['ventas']==1) {
       <label for="">Serie: </label>
       <input class="form-control" type="text" name="serie_comprobante" id="serie_comprobante" maxlength="7" placeholder="Serie">
     </div>
-     <div class="form-group col-lg-2 col-md-2 col-xs-6">
+    <div class="form-group col-lg-2 col-md-2 col-xs-6">
       <label for="">Número: </label>
-      <input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Número" required>
+      <input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Auto" readonly required>
     </div>
     <div class="form-group col-lg-2 col-md-2 col-xs-6">
       <label for="">Impuesto: </label>
@@ -95,12 +95,12 @@ if ($_SESSION['ventas']==1) {
     <div class="form-group col-lg-5 col-md-5 col-sm-6 col-xs-12">
       <label>POS rapido (codigo de barras / codigo)</label>
       <div class="input-group">
-        <input type="text" class="form-control" id="codigo_rapido" placeholder="Escanea o escribe codigo y presiona Enter">
+        <input type="text" class="form-control" id="codigo_rapido" placeholder="Escanea o escribe codigo (se agrega automatico)">
         <span class="input-group-btn">
           <button class="btn btn-success" type="button" id="btnBuscarCodigo"><i class="fa fa-barcode"></i> Agregar</button>
         </span>
       </div>
-      <small class="text-muted">Atajos: <b>F2</b> catalogo, <b>Ctrl+B</b> foco codigo, <b>F4</b> guardar</small>
+      <small class="text-muted">Atajos: <b>F2</b> catalogo, <b>Ctrl+B</b> foco codigo, <b>F4</b> guardar. El escaner agrega automaticamente.</small>
     </div>
 <div class="form-group col-lg-12 col-md-12 col-xs-12">
      <table id="detalles" class="table table-striped table-bordered table-condensed table-hover">
@@ -199,7 +199,7 @@ if ($_SESSION['ventas']==1) {
 
 require 'footer.php';
  ?>
- <script src="scripts/venta.js?v=20260321b"></script>
+ <script src="scripts/venta.js?v=20260329b"></script>
  <?php 
 }
 

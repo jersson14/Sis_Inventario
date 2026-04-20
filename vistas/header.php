@@ -90,7 +90,7 @@ if (!function_exists('darkenHexColor')) {
 
   <link rel="stylesheet" href="../public/css/AdminLTE.min.css">
   <link rel="stylesheet" href="../public/css/_all-skins.min.css">
-  <link rel="stylesheet" href="../public/css/custom-theme.css?v=20260420a">
+  <link rel="stylesheet" href="../public/css/custom-theme.css?v=20260420h">
   <!-- Morris chart --><!-- Daterange picker -->
  <link rel="stylesheet" href="img/apple-touch-ico.png">
  <link rel="stylesheet" href="img/favicon.ico">
@@ -125,12 +125,6 @@ if (!function_exists('darkenHexColor')) {
       <span class="logo-lg">
         <span class="brand-logo-lg-wrap">
           <img src="<?php echo htmlspecialchars($brandLogo); ?>" alt="Logo Empresa" class="brand-logo-img" onerror="this.src='logo1.jpeg'">
-          <span class="brand-logo-text">
-            <strong><?php echo htmlspecialchars($brandNombre); ?></strong>
-            <?php if (!empty($brandSub)) { ?>
-            <small><?php echo htmlspecialchars($brandSub); ?></small>
-            <?php } ?>
-          </span>
         </span>
       </span>
     </a>

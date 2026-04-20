@@ -40,22 +40,22 @@ $pdf=new PDF_MC_Table();
 $pdf->AddPage();
 
 if ($logoPath !== "") {
-  $pdf->Image($logoPath, 10, 10, 22, 22);
+  $pdf->Image($logoPath, 10, 10, 32, 18);
 }
 
 $pdf->SetFont('Arial','B',11);
-$pdf->SetXY(36,10);
+$pdf->SetXY(44,10);
 $pdf->Cell(120,5,utf8_decode((string)$empresa["nombre"]),0,1,'L');
 $pdf->SetFont('Arial','',9.5);
-$pdf->SetX(36);
+$pdf->SetX(44);
 $pdf->Cell(120,4,'RUC: '.utf8_decode((string)$empresa["ruc"]),0,1,'L');
-$pdf->SetX(36);
+$pdf->SetX(44);
 $pdf->Cell(120,4,utf8_decode((string)$empresa["direccion_linea1"]),0,1,'L');
 if (!empty($empresa["direccion_linea2"])) {
-  $pdf->SetX(36);
+  $pdf->SetX(44);
   $pdf->Cell(120,4,utf8_decode((string)$empresa["direccion_linea2"]),0,1,'L');
 }
-$pdf->SetX(36);
+$pdf->SetX(44);
 $pdf->Cell(120,4,'Tel: '.utf8_decode((string)$empresa["telefono"]).'  |  '.utf8_decode((string)$empresa["email"]),0,1,'L');
 
 $pdf->SetY(36);

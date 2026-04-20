@@ -29,6 +29,20 @@ if ($_SESSION['compras']==1) {
 <!--box-header-->
 <!--centro-->
 <div class="panel-body table-responsive" id="listadoregistros">
+  <div class="row" style="margin-bottom:10px;">
+    <div class="col-md-3 col-sm-6 col-xs-12">
+      <label>Desde</label>
+      <input type="date" id="filtro_ingreso_inicio" class="form-control">
+    </div>
+    <div class="col-md-3 col-sm-6 col-xs-12">
+      <label>Hasta</label>
+      <input type="date" id="filtro_ingreso_fin" class="form-control">
+    </div>
+    <div class="col-md-6 col-sm-12 col-xs-12" style="padding-top:25px;">
+      <button type="button" class="btn btn-primary" id="btnFiltrarIngreso"><i class="fa fa-filter"></i> Filtrar</button>
+      <button type="button" class="btn btn-default" id="btnLimpiarFiltroIngreso"><i class="fa fa-eraser"></i> Limpiar</button>
+    </div>
+  </div>
   <table id="tbllistado" class="table table-striped table-bordered table-condensed table-hover">
     <thead>
       <th>Opciones</th>
@@ -62,10 +76,13 @@ if ($_SESSION['compras']==1) {
       <select name="idproveedor" id="idproveedor" class="form-control selectpicker" data-live-search="true" required>
         
       </select>
+      <button type="button" class="btn btn-default btn-sm" id="btnNuevoProveedor" data-toggle="modal" data-target="#modalProveedorIngreso" style="margin-top:8px;">
+        <i class="fa fa-truck"></i> Nuevo proveedor
+      </button>
     </div>
       <div class="form-group col-lg-4 col-md-4 col-xs-12">
       <label for="">Fecha(*): </label>
-      <input class="form-control" type="date" name="fecha_hora" id="fecha_hora" required>
+      <input class="form-control" type="datetime-local" name="fecha_hora" id="fecha_hora" required>
     </div>
      <div class="form-group col-lg-6 col-md-6 col-xs-12">
       <label for="">Tipo Comprobante(*): </label>
@@ -81,7 +98,7 @@ if ($_SESSION['compras']==1) {
     </div>
     <div class="form-group col-lg-2 col-md-2 col-xs-6">
       <label for="">Número: </label>
-      <input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Auto" readonly required>
+      <input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Editable" required>
     </div>
     <div class="form-group col-lg-2 col-md-2 col-xs-6">
       <label for="">Impuesto: </label>
@@ -182,6 +199,52 @@ if ($_SESSION['compras']==1) {
     </div>
   </div>
   <!-- fin Modal-->
+  <div class="modal fade" id="modalProveedorIngreso" tabindex="-1" role="dialog" aria-labelledby="modalProveedorIngresoLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <form id="formProveedorRapido" autocomplete="off">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="modalProveedorIngresoLabel"><i class="fa fa-truck"></i> Nuevo proveedor</h4>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Nombre (*)</label>
+              <input type="text" class="form-control" name="nombre" id="prv_nombre" maxlength="100" required>
+            </div>
+            <div class="form-group">
+              <label>Tipo documento</label>
+              <select class="form-control" name="tipo_documento" id="prv_tipo_documento">
+                <option value="DNI">DNI</option>
+                <option value="RUC">RUC</option>
+                <option value="CEDULA">CEDULA</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Numero documento</label>
+              <input type="text" class="form-control" name="num_documento" id="prv_num_documento" maxlength="20">
+            </div>
+            <div class="form-group">
+              <label>Direccion</label>
+              <input type="text" class="form-control" name="direccion" id="prv_direccion" maxlength="70">
+            </div>
+            <div class="form-group">
+              <label>Telefono</label>
+              <input type="text" class="form-control" name="telefono" id="prv_telefono" maxlength="20">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" class="form-control" name="email" id="prv_email" maxlength="50">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>
+            <button type="submit" class="btn btn-primary" id="btnGuardarProveedorRapido"><i class="fa fa-save"></i> Guardar proveedor</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 <?php 
 }else{
  require 'noacceso.php'; 
@@ -189,7 +252,7 @@ if ($_SESSION['compras']==1) {
 
 require 'footer.php';
  ?>
- <script src="scripts/ingreso.js?v=20260329b"></script>
+ <script src="scripts/ingreso.js?v=20260420c"></script>
  <?php 
 }
 

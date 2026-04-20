@@ -192,5 +192,6 @@ WHERE login = 'jersson123';
 - [ ] Permisos de carpetas `files/*` correctos
 
 ---
-
+ 
+ 
 Si luego quieres, te armo una segunda version del README orientada a cliente final (manual de uso por modulo) y otra tecnica para desarrolladores (debug, estructura SQL, convenciones, roadmap).

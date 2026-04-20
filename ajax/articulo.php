@@ -8,10 +8,17 @@ $idcategoria=isset($_POST["idcategoria"])? limpiarCadena($_POST["idcategoria"]):
 $idunidad=isset($_POST["idunidad"])? limpiarCadena($_POST["idunidad"]):"";
 $codigo=isset($_POST["codigo"])? limpiarCadena($_POST["codigo"]):"";
 $nombre=isset($_POST["nombre"])? limpiarCadena($_POST["nombre"]):"";
-$stock=isset($_POST["stock"])? limpiarCadena($_POST["stock"]):"";
-$stock_minimo=isset($_POST["stock_minimo"])? limpiarCadena($_POST["stock_minimo"]):"1.000";
+$stock=isset($_POST["stock"])? (int)round((float)limpiarCadena($_POST["stock"])):0;
+$stock_minimo=isset($_POST["stock_minimo"])? (int)round((float)limpiarCadena($_POST["stock_minimo"])):1;
 $descripcion=isset($_POST["descripcion"])? limpiarCadena($_POST["descripcion"]):"";
 $imagen=isset($_POST["imagen"])? limpiarCadena($_POST["imagen"]):"";
+
+if ($stock < 0) {
+	$stock = 0;
+}
+if ($stock_minimo < 0) {
+	$stock_minimo = 0;
+}
 
 switch ($_GET["op"]) {
 	case 'guardaryeditar':
@@ -46,6 +53,10 @@ switch ($_GET["op"]) {
 	
 	case 'mostrar':
 		$rspta=$articulo->mostrar($idarticulo);
+		if (is_array($rspta)) {
+			$rspta["stock"] = (int)round((float)$rspta["stock"]);
+			$rspta["stock_minimo"] = (int)round((float)$rspta["stock_minimo"]);
+		}
 		echo json_encode($rspta);
 		break;
 
@@ -60,8 +71,8 @@ switch ($_GET["op"]) {
             "2"=>$reg->categoria,
             "3"=>$reg->abreviatura,
             "4"=>$reg->codigo,
-            "5"=>$reg->stock,
-            "6"=>$reg->stock_minimo,
+            "5"=>(int)round((float)$reg->stock),
+            "6"=>(int)round((float)$reg->stock_minimo),
             "7"=>"<img src='../files/articulos/".$reg->imagen."' height='50px' width='50px'>",
             "8"=>$reg->descripcion,
             "9"=>($reg->condicion)?'<span class="label bg-green">Activado</span>':'<span class="label bg-red">Desactivado</span>'

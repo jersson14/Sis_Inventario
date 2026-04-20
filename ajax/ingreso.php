@@ -15,6 +15,16 @@ $fecha_hora=isset($_POST["fecha_hora"])? limpiarCadena($_POST["fecha_hora"]):"";
 $impuesto=isset($_POST["impuesto"])? limpiarCadena($_POST["impuesto"]):"";
 $total_compra=isset($_POST["total_compra"])? limpiarCadena($_POST["total_compra"]):"";
 
+if (!function_exists('fechaFiltroSeguroIngreso')) {
+	function fechaFiltroSeguroIngreso($valor) {
+		$valor = trim((string)$valor);
+		if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
+			return $valor;
+		}
+		return '';
+	}
+}
+
 
 switch ($_GET["op"]) {
 	case 'guardaryeditar':
@@ -88,7 +98,7 @@ switch ($_GET["op"]) {
 			<td></td>
 			<td>'.$reg->nombre.'</td>
 			<td>'.$reg->unidad.'</td>
-			<td>'.number_format((float)$reg->cantidad,3).'</td>
+			<td>'.number_format((float)$reg->cantidad,0).'</td>
 			<td>'.number_format((float)$reg->precio_compra,2).'</td>
 			<td>'.number_format((float)$reg->precio_venta,2).'</td>
 			<td>'.number_format($subtotal,2).'</td>
@@ -109,7 +119,9 @@ switch ($_GET["op"]) {
 		break;
 
     case 'listar':
-		$rspta=$ingreso->listar();
+		$fecha_inicio = fechaFiltroSeguroIngreso(isset($_GET["fecha_inicio"]) ? $_GET["fecha_inicio"] : '');
+		$fecha_fin = fechaFiltroSeguroIngreso(isset($_GET["fecha_fin"]) ? $_GET["fecha_fin"] : '');
+		$rspta=$ingreso->listarPorFecha($fecha_inicio, $fecha_fin);
 		$data=Array();
 
 		while ($reg=$rspta->fetch_object()) {
@@ -144,6 +156,41 @@ switch ($_GET["op"]) {
 			}
 			break;
 
+		case 'crearProveedorRapido':
+			require_once "../modelos/Persona.php";
+			$persona = new Persona();
+
+			$nombreProveedor = isset($_POST['nombre']) ? trim(limpiarCadena($_POST['nombre'])) : '';
+			$tipoDocumento = isset($_POST['tipo_documento']) ? trim(limpiarCadena($_POST['tipo_documento'])) : 'DNI';
+			$numDocumento = isset($_POST['num_documento']) ? trim(limpiarCadena($_POST['num_documento'])) : '';
+			$direccionProveedor = isset($_POST['direccion']) ? trim(limpiarCadena($_POST['direccion'])) : '';
+			$telefonoProveedor = isset($_POST['telefono']) ? trim(limpiarCadena($_POST['telefono'])) : '';
+			$emailProveedor = isset($_POST['email']) ? trim(limpiarCadena($_POST['email'])) : '';
+
+			if ($nombreProveedor === '') {
+				echo json_encode(array("ok"=>false, "message"=>"El nombre del proveedor es obligatorio"));
+				break;
+			}
+
+			$tiposDocumentoPermitidos = array("DNI", "RUC", "CEDULA");
+			if (!in_array($tipoDocumento, $tiposDocumentoPermitidos, true)) {
+				$tipoDocumento = "DNI";
+			}
+
+			$idProveedorNuevo = $persona->insertarRetornarId("Proveedor", $nombreProveedor, $tipoDocumento, $numDocumento, $direccionProveedor, $telefonoProveedor, $emailProveedor);
+			if (!$idProveedorNuevo) {
+				echo json_encode(array("ok"=>false, "message"=>"No se pudo registrar el proveedor"));
+				break;
+			}
+
+			echo json_encode(array(
+				"ok"=>true,
+				"message"=>"Proveedor registrado correctamente",
+				"idproveedor"=>(int)$idProveedorNuevo,
+				"nombre"=>$nombreProveedor
+			));
+			break;
+
 			case 'listarArticulos':
 			require_once "../modelos/Articulo.php";
 			$articulo=new Articulo();
@@ -155,7 +202,7 @@ switch ($_GET["op"]) {
 			$nombrejs = addslashes($reg->nombre);
 			$unidadjs = addslashes($reg->abreviatura);
 			$stock = (float)$reg->stock;
-			$stockFmt = number_format($stock,3);
+			$stockFmt = number_format($stock,0);
 			$precioCompraRef = is_null($reg->precio_compra_ref) ? 0 : (float)$reg->precio_compra_ref;
 			$btnAgregar = '<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\',\''.$unidadjs.'\','.$precioCompraRef.')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 

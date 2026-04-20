@@ -62,7 +62,7 @@ if (!isset($_SESSION['nombre'])) {
   <meta charset="utf-8">
   <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
   <title>Comprobante de Venta</title>
-  <link rel="stylesheet" href="../public/css/ticket.css">
+  <link rel="stylesheet" href="../public/css/ticket.css?v=20260420a">
 </head>
 <body onload="window.print();">
   <div class="ticket-shell">
@@ -106,7 +106,7 @@ if (!isset($_SESSION['nombre'])) {
             $cantidadTotal += (float)$regd->cantidad;
           ?>
           <tr>
-            <td class="qty"><?php echo number_format((float)$regd->cantidad, 3) . " " . e($regd->unidad); ?></td>
+            <td class="qty"><?php echo number_format((float)$regd->cantidad, 0) . " " . e($regd->unidad); ?></td>
             <td class="desc"><?php echo e($regd->articulo); ?></td>
             <td class="amount"><?php echo e($simboloMoneda); ?> <?php echo number_format((float)$regd->subtotal, 2); ?></td>
           </tr>
@@ -120,7 +120,7 @@ if (!isset($_SESSION['nombre'])) {
         <div class="totals-row totals-main"><span>Total</span><strong><?php echo e($simboloMoneda); ?> <?php echo number_format($total, 2); ?></strong></div>
       </div>
 
-      <p class="info-line" style="margin-top:8px;"><strong>Items:</strong> <?php echo number_format($cantidadTotal, 3); ?></p>
+      <p class="info-line" style="margin-top:8px;"><strong>Items:</strong> <?php echo number_format($cantidadTotal, 0); ?></p>
 
       <div class="ticket-foot">
         <p>Gracias por su compra.</p>

@@ -65,15 +65,23 @@ body {
 .brand-logo-lg-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.brand-logo-img,
-.brand-logo-mini-img {
-  width: 34px;
+.brand-logo-img {
+  width: 84px;
   height: 34px;
-  border-radius: 10px;
-  object-fit: cover;
+  border-radius: 7px;
+  object-fit: fill;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.brand-logo-mini-img {
+  width: 44px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: fill;
   border: 1px solid rgba(255, 255, 255, 0.45);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
@@ -792,9 +800,10 @@ body.login-page::after {
 }
 
 .login-brand-logo {
-  width: 116px;
-  height: 116px;
-  border-radius: 22px;
+  width: 176px;
+  height: 86px;
+  border-radius: 14px;
+  object-fit: fill;
   display: inline-block;
   margin-bottom: 20px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);

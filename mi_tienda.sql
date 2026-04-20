@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3307
--- Tiempo de generación: 21-03-2026 a las 23:10:00
+-- Tiempo de generación: 30-03-2026 a las 00:36:21
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -45,11 +45,11 @@ CREATE TABLE `articulo` (
 --
 
 INSERT INTO `articulo` (`idarticulo`, `idcategoria`, `idunidad`, `codigo`, `nombre`, `stock`, `stock_minimo`, `descripcion`, `imagen`, `condicion`) VALUES
-(6, 7, 1, '00236', 'POLO', 21.000, 5.000, 'POLO TALLA XL', '1638138848.jpg', 1),
+(6, 7, 1, '00236', 'POLO', 100.000, 5.000, 'POLO TALLA XL', '1638138848.jpg', 1),
 (7, 9, 1, '0040kl', 'disco solido', 58.000, 5.000, 'disco marca KINGSTON', '1535417431.jfif', 1),
 (8, 9, 1, 'HJL-OP', 'DATATRABEL', 109.000, 5.000, 'usb de 15gb', '1535417452.jpg', 1),
 (9, 13, 1, '1235', 'Pantalon JEAN PARADA 111', 12.000, 5.000, 'COMPRA D EPANTALOS JEAN', '1638066940.jpg', 1),
-(10, 7, 6, '2112', 'Tubo', 20.000, 5.000, 'tubos de pavco', '', 1),
+(10, 7, 6, '2112', 'Tubo', 439.000, 5.000, 'tubos de pavco', '', 1),
 (11, 13, 1, 'ART-648686', 'Clavos', 213.000, 5.000, 'clavios de pares', '', 1),
 (12, 7, 1, 'CLA-620389', 'clavo', 411.000, 5.000, 'sdfsdf', '', 1);
 
@@ -237,7 +237,10 @@ INSERT INTO `detalle_ingreso` (`iddetalle_ingreso`, `idingreso`, `idarticulo`, `
 (22, 11, 7, 15.000, 250.00, 300.00),
 (23, 12, 9, 7.000, 1.00, 1.00),
 (24, 13, 12, 222.000, 1.00, 1.00),
-(25, 13, 8, 3.000, 20.00, 1.00);
+(25, 13, 8, 3.000, 20.00, 1.00),
+(26, 14, 10, 15.000, 35.00, 1.00),
+(27, 15, 6, 100.000, 25.00, 1.00),
+(28, 16, 10, 444.000, 35.00, 1.00);
 
 --
 -- Disparadores `detalle_ingreso`
@@ -292,7 +295,11 @@ INSERT INTO `detalle_venta` (`iddetalle_venta`, `idventa`, `idarticulo`, `cantid
 (31, 25, 6, 2.000, 30.00, 0.00),
 (32, 26, 6, 2.000, 30.00, 0.00),
 (33, 27, 12, 44.000, 2.00, 0.00),
-(34, 27, 8, 1.000, 30.00, 0.00);
+(34, 27, 8, 1.000, 30.00, 0.00),
+(35, 28, 10, 30.000, 33.00, 0.00),
+(36, 29, 10, 10.000, 4.00, 0.00),
+(37, 30, 6, 18.000, 30.00, 0.00),
+(38, 31, 6, 3.000, 30.00, 0.00);
 
 --
 -- Disparadores `detalle_venta`
@@ -338,7 +345,10 @@ INSERT INTO `ingreso` (`idingreso`, `idproveedor`, `idusuario`, `tipo_comprobant
 (10, 10, 1, 'Factura', '001', '0006', '2018-08-25 00:00:00', NULL, 18.00, 'CONTADO', 250.00, 'Aceptado'),
 (11, 10, 1, 'Factura', '001', '0007', '2018-08-27 00:00:00', NULL, 18.00, 'CONTADO', 3750.00, 'Aceptado'),
 (12, 9, 1, 'Boleta', '00', '292', '2021-11-27 00:00:00', NULL, 0.18, 'CONTADO', 1.00, 'Aceptado'),
-(13, 9, 4, 'Boleta', 'S233', '2222', '2026-03-21 00:00:00', NULL, 0.00, 'CONTADO', 282.00, 'Aceptado');
+(13, 9, 4, 'Boleta', 'S233', '2222', '2026-03-21 00:00:00', NULL, 0.00, 'CONTADO', 282.00, 'Aceptado'),
+(14, 9, 3, 'Boleta', 'B001', '1212', '2026-03-29 00:00:00', NULL, 0.00, 'CONTADO', 525.00, 'Aceptado'),
+(15, 9, 3, 'Boleta', 'B001', '00001213', '2026-03-29 00:00:00', NULL, 0.00, 'CONTADO', 2500.00, 'Aceptado'),
+(16, 13, 3, 'Boleta', 'B001', '00001214', '2026-03-29 00:00:00', NULL, 0.00, 'CONTADO', 15540.00, 'Anulado');
 
 -- --------------------------------------------------------
 
@@ -394,7 +404,13 @@ INSERT INTO `permiso` (`idpermiso`, `nombre`) VALUES
 (4, 'Ventas'),
 (5, 'Acceso'),
 (6, 'Consulta Compras'),
-(7, 'Consulta Ventas');
+(7, 'Consulta Ventas'),
+(8, 'Gestion Pro'),
+(9, 'Empresa'),
+(10, 'Centro Inteligente'),
+(11, 'Cuentas CxC CxP'),
+(12, 'Backup'),
+(13, 'Centro Reportes');
 
 -- --------------------------------------------------------
 
@@ -453,7 +469,8 @@ INSERT INTO `unidad_medida` (`idunidad`, `nombre`, `abreviatura`, `descripcion`,
 (6, 'Metro', 'm', 'Longitud en metro', 1),
 (7, 'Centimetro', 'cm', 'Longitud en centimetro', 1),
 (8, 'Caja', 'caja', 'Presentacion en caja', 1),
-(9, 'Paquete', 'paq', 'Presentacion en paquete', 1);
+(9, 'Paquete', 'paq', 'Presentacion en paquete', 1),
+(20, 'Galon', 'gal', '23', 1);
 
 -- --------------------------------------------------------
 
@@ -481,10 +498,10 @@ CREATE TABLE `usuario` (
 --
 
 INSERT INTO `usuario` (`idusuario`, `nombre`, `tipo_documento`, `num_documento`, `direccion`, `telefono`, `email`, `cargo`, `login`, `clave`, `imagen`, `condicion`) VALUES
-(1, 'JOSE ANTONIO CHAHUA TAIPE', 'DNI', '72154871', 'JR. JULIO C TELLO 230', '944952429', 'antonio2021@gmail.com', 'Vendedor', 'antonio2021', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '1535417472.jpg', 1),
-(2, 'PATRICIA LIMA BENDEZU', 'DNI', '30115425', 'AV. CIRCUNVALACION S/N', '956135290', 'patricia2021@hotmail.com', 'Empleado de Compras', 'patricia2021', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '1535417486.jpg', 1),
-(3, 'Jersson Corilla Miranda', 'DNI', '72646121', 'Jr. Nicolas de Pierola', '952956235', 'jerry12@gmail.com', 'ADMINISTRADOR', 'jersson123', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '1774123566.png', 1),
-(4, 'WILFREDO CARRIÓN UMERES', 'DNI', '31044054', 'Jr 28 de Abril', '932381391', 'wcuu@hotmail.com', 'ADMINISTRADOR', 'clavito2021', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '1638142070.jpeg', 1),
+(1, 'JOSE ANTONIO CHAHUA TAIPE', 'DNI', '72154871', 'JR. JULIO C TELLO 230', '944952429', 'antonio2021@gmail.com', 'Vendedor', 'antonio2021', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '1535417472.jpg', 0),
+(2, 'PATRICIA LIMA BENDEZU', 'DNI', '30115425', 'AV. CIRCUNVALACION S/N', '956135290', 'patricia2021@hotmail.com', 'Empleado de Compras', 'patricia2021', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '1535417486.jpg', 0),
+(3, 'Jersson Corilla Miranda', 'DNI', '72646121', 'Jr. Nicolas de Pierola', '952956235', 'jerry12@gmail.com', 'ADMINISTRADOR', 'jersson2026', '5dd6da038e891a44e9ee7893a1a108d2353244f46684976877c0ba59915f313f', '1774123566.png', 1),
+(4, 'WILFREDO CARRIÓN UMERES', 'DNI', '31044054', 'Jr 28 de Abril', '932381391', 'wcuu@hotmail.com', 'ADMINISTRADOR', 'clavito2026', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '1638142070.jpeg', 1),
 (5, 'YAMIL SOLIS DIAZ', 'DNI', '65425825', 'JR. CHALHUANCA 515', '944413908', 'yamil2021@gmail.com', 'Almacenero', 'yamil2021', '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5', '', 1);
 
 -- --------------------------------------------------------
@@ -512,20 +529,32 @@ INSERT INTO `usuario_permiso` (`idusuario_permiso`, `idusuario`, `idpermiso`) VA
 (121, 1, 7),
 (122, 5, 1),
 (123, 5, 2),
-(152, 4, 1),
-(153, 4, 2),
-(154, 4, 3),
-(155, 4, 4),
-(156, 4, 5),
-(157, 4, 6),
-(158, 4, 7),
-(173, 3, 1),
-(174, 3, 2),
-(175, 3, 3),
-(176, 3, 4),
-(177, 3, 5),
-(178, 3, 6),
-(179, 3, 7);
+(193, 3, 1),
+(194, 3, 2),
+(195, 3, 3),
+(196, 3, 4),
+(197, 3, 5),
+(198, 3, 6),
+(199, 3, 7),
+(200, 3, 8),
+(201, 3, 9),
+(202, 3, 10),
+(203, 3, 11),
+(204, 3, 12),
+(205, 3, 13),
+(206, 4, 1),
+(207, 4, 2),
+(208, 4, 3),
+(209, 4, 4),
+(210, 4, 5),
+(211, 4, 6),
+(212, 4, 7),
+(213, 4, 8),
+(214, 4, 9),
+(215, 4, 10),
+(216, 4, 11),
+(217, 4, 12),
+(218, 4, 13);
 
 -- --------------------------------------------------------
 
@@ -570,7 +599,11 @@ INSERT INTO `venta` (`idventa`, `idcliente`, `idusuario`, `tipo_comprobante`, `s
 (24, 12, 3, 'Factura', '0219', '226', '2021-11-28 00:00:00', NULL, 18.00, 'CONTADO', 1.00, 'Aceptado'),
 (25, 11, 3, 'Boleta', '0001', '28', '2021-11-28 00:00:00', NULL, 0.18, 'CONTADO', 60.00, 'Aceptado'),
 (26, 11, 3, 'Ticket', '0002', '112', '2021-11-28 00:00:00', NULL, 0.18, 'CONTADO', 60.00, 'Aceptado'),
-(27, 11, 4, 'Boleta', 'fpp2', '155115', '2026-03-21 00:00:00', NULL, 0.00, 'CONTADO', 118.00, 'Aceptado');
+(27, 11, 4, 'Boleta', 'fpp2', '155115', '2026-03-21 00:00:00', NULL, 0.00, 'CONTADO', 118.00, 'Aceptado'),
+(28, 11, 3, 'Boleta', 'B001', '23434', '2026-03-29 00:00:00', NULL, 0.00, 'CONTADO', 990.00, 'Aceptado'),
+(29, 12, 3, 'Boleta', 'B001', '4334', '2026-03-29 00:00:00', NULL, 0.00, 'CONTADO', 40.00, 'Aceptado'),
+(30, 12, 3, 'Boleta', 'B001', '433434', '2026-03-29 00:00:00', NULL, 0.00, 'CONTADO', 540.00, 'Aceptado'),
+(31, 11, 3, 'Boleta', 'B001', '00433435', '2026-03-29 00:00:00', NULL, 0.00, 'CONTADO', 90.00, 'Aceptado');
 
 --
 -- Índices para tablas volcadas
@@ -775,19 +808,19 @@ ALTER TABLE `cuenta_pagar`
 -- AUTO_INCREMENT de la tabla `detalle_ingreso`
 --
 ALTER TABLE `detalle_ingreso`
-  MODIFY `iddetalle_ingreso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
+  MODIFY `iddetalle_ingreso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
 --
 -- AUTO_INCREMENT de la tabla `detalle_venta`
 --
 ALTER TABLE `detalle_venta`
-  MODIFY `iddetalle_venta` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=35;
+  MODIFY `iddetalle_venta` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=39;
 
 --
 -- AUTO_INCREMENT de la tabla `ingreso`
 --
 ALTER TABLE `ingreso`
-  MODIFY `idingreso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `idingreso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT de la tabla `pago_cuenta_cobrar`
@@ -805,7 +838,7 @@ ALTER TABLE `pago_cuenta_pagar`
 -- AUTO_INCREMENT de la tabla `permiso`
 --
 ALTER TABLE `permiso`
-  MODIFY `idpermiso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `idpermiso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT de la tabla `persona`
@@ -817,7 +850,7 @@ ALTER TABLE `persona`
 -- AUTO_INCREMENT de la tabla `unidad_medida`
 --
 ALTER TABLE `unidad_medida`
-  MODIFY `idunidad` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
+  MODIFY `idunidad` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
 
 --
 -- AUTO_INCREMENT de la tabla `usuario`
@@ -829,13 +862,13 @@ ALTER TABLE `usuario`
 -- AUTO_INCREMENT de la tabla `usuario_permiso`
 --
 ALTER TABLE `usuario_permiso`
-  MODIFY `idusuario_permiso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=180;
+  MODIFY `idusuario_permiso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=219;
 
 --
 -- AUTO_INCREMENT de la tabla `venta`
 --
 ALTER TABLE `venta`
-  MODIFY `idventa` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
+  MODIFY `idventa` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
 
 --
 -- Restricciones para tablas volcadas

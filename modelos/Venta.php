@@ -34,6 +34,28 @@ private function normalizarSerieComprobante($serie, $tipoComprobante){
 	return "B001";
 }
 
+private function normalizarFechaHora($valor){
+	$raw = trim((string)$valor);
+	if ($raw === '') {
+		return date("Y-m-d H:i:s");
+	}
+	if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+		return $raw . " 00:00:00";
+	}
+	if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/', $raw)) {
+		$normalizado = str_replace("T", " ", $raw);
+		if (strlen($normalizado) === 16) {
+			$normalizado .= ":00";
+		}
+		return $normalizado;
+	}
+	$ts = strtotime($raw);
+	if ($ts === false) {
+		return date("Y-m-d H:i:s");
+	}
+	return date("Y-m-d H:i:s", $ts);
+}
+
 private function obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, $forUpdate = false){
 	$tipoComprobante = $this->normalizarTipoComprobante($tipoComprobante);
 	$serieComprobante = $this->normalizarSerieComprobante($serieComprobante, $tipoComprobante);
@@ -57,6 +79,14 @@ private function obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, 
 	);
 }
 
+private function normalizarCantidadEntera($valor){
+	$cantidad = (int)round((float)$valor);
+	if ($cantidad < 0) {
+		$cantidad = 0;
+	}
+	return $cantidad;
+}
+
 public function obtenerSiguienteCorrelativo($tipoComprobante, $serieComprobante){
 	$data = $this->obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, false);
 	return array(
@@ -71,6 +101,22 @@ public function obtenerSiguienteCorrelativo($tipoComprobante, $serieComprobante)
 //metodo insertar registro
 public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$total_venta,$idarticulo,$cantidad,$precio_venta,$descuento){
 	global $conexion;
+	$idcliente = (int)$idcliente;
+	$fecha_hora = $this->normalizarFechaHora($fecha_hora);
+	if ($idcliente <= 0) {
+		return array(
+			"ok"=>false,
+			"message"=>"Debes seleccionar un cliente valido"
+		);
+	}
+
+	$validarCliente = ejecutarConsultaSimpleFila("SELECT idpersona FROM persona WHERE idpersona='$idcliente' AND tipo_persona='Cliente' LIMIT 1");
+	if (!$validarCliente || !isset($validarCliente["idpersona"])) {
+		return array(
+			"ok"=>false,
+			"message"=>"El cliente seleccionado no existe o no es valido"
+		);
+	}
 
 	if (!is_array($idarticulo) || count($idarticulo) === 0) {
 		return array(
@@ -91,7 +137,7 @@ public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comproba
 
 	for ($i = 0; $i < count($idarticulo); $i++) {
 		$idArticuloActual = (int)$idarticulo[$i];
-		$cantidadActual = (float)$cantidad[$i];
+		$cantidadActual = $this->normalizarCantidadEntera($cantidad[$i]);
 		$precioActual = isset($precio_venta[$i]) ? (float)$precio_venta[$i] : 0;
 		$descuentoActual = isset($descuento[$i]) ? (float)$descuento[$i] : 0;
 
@@ -126,10 +172,31 @@ public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comproba
 	$conexion->autocommit(false);
 
 	try {
-		$correlativo = $this->obtenerCorrelativoInterno($tipo_comprobante, $serie_comprobante, true);
-		$tipo_comprobante = $correlativo["tipo_comprobante"];
-		$serie_comprobante = $correlativo["serie_comprobante"];
-		$num_comprobante = $correlativo["numero"];
+		$tipo_comprobante = $this->normalizarTipoComprobante($tipo_comprobante);
+		$serie_comprobante = $this->normalizarSerieComprobante($serie_comprobante, $tipo_comprobante);
+		$num_comprobante = substr(preg_replace('/[^0-9]/', '', (string)$num_comprobante), 0, 10);
+
+		if ($num_comprobante === '') {
+			$correlativo = $this->obtenerCorrelativoInterno($tipo_comprobante, $serie_comprobante, true);
+			$tipo_comprobante = $correlativo["tipo_comprobante"];
+			$serie_comprobante = $correlativo["serie_comprobante"];
+			$num_comprobante = $correlativo["numero"];
+		} else {
+			$sqlExisteComprobante = "SELECT idventa FROM venta
+				WHERE tipo_comprobante='$tipo_comprobante'
+				AND serie_comprobante='$serie_comprobante'
+				AND num_comprobante='$num_comprobante'
+				LIMIT 1 FOR UPDATE";
+			$existeComprobante = ejecutarConsultaSimpleFila($sqlExisteComprobante);
+			if ($existeComprobante && isset($existeComprobante["idventa"])) {
+				$conexion->rollback();
+				$conexion->autocommit(true);
+				return array(
+					"ok"=>false,
+					"message"=>"Ya existe una venta con el mismo tipo, serie y numero de comprobante"
+				);
+			}
+		}
 
 		$ids = implode(",", array_keys($cantidadesSolicitadas));
 		$sqlStock = "SELECT idarticulo,nombre,stock FROM articulo WHERE idarticulo IN ($ids) FOR UPDATE";
@@ -147,7 +214,7 @@ public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comproba
 		while ($row = $rsStock->fetch_assoc()) {
 			$stockActual[(int)$row["idarticulo"]] = array(
 				"nombre"=>$row["nombre"],
-				"stock"=>(float)$row["stock"]
+				"stock"=>$this->normalizarCantidadEntera($row["stock"])
 			);
 		}
 
@@ -157,9 +224,9 @@ public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comproba
 				$erroresStock[] = "Articulo ID ".$idArt." no encontrado";
 				continue;
 			}
-			$stockDisp = (float)$stockActual[$idArt]["stock"];
+			$stockDisp = $this->normalizarCantidadEntera($stockActual[$idArt]["stock"]);
 			if ($stockDisp < $cantSolicitada) {
-				$erroresStock[] = $stockActual[$idArt]["nombre"]." (stock: ".number_format($stockDisp,3).", solicitado: ".number_format($cantSolicitada,3).")";
+				$erroresStock[] = $stockActual[$idArt]["nombre"]." (stock: ".number_format($stockDisp,0).", solicitado: ".number_format($cantSolicitada,0).")";
 			}
 		}
 
@@ -226,8 +293,8 @@ public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comproba
 				"idarticulo"=>$reg["idarticulo"],
 				"codigo"=>$reg["codigo"],
 				"nombre"=>$reg["nombre"],
-				"stock"=>(float)$reg["stock"],
-				"stock_minimo"=>(float)$reg["stock_minimo"]
+				"stock"=>$this->normalizarCantidadEntera($reg["stock"]),
+				"stock_minimo"=>$this->normalizarCantidadEntera($reg["stock_minimo"])
 			);
 		}
 	}
@@ -250,7 +317,7 @@ public function anular($idventa){
 
 //implementar un metodopara mostrar los datos de unregistro a modificar
 public function mostrar($idventa){
-	$sql="SELECT v.idventa,DATE(v.fecha_hora) as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario WHERE idventa='$idventa'";
+	$sql="SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%Y-%m-%d %H:%i:%s') as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario WHERE idventa='$idventa'";
 	return ejecutarConsultaSimpleFila($sql);
 }
 
@@ -265,13 +332,34 @@ public function listarDetalle($idventa){
 
 //listar registros
 public function listar(){
-	$sql="SELECT v.idventa,DATE(v.fecha_hora) as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario ORDER BY v.idventa DESC";
+	$sql="SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario ORDER BY v.idventa DESC";
+	return ejecutarConsulta($sql);
+}
+
+public function listarPorFecha($fechaInicio, $fechaFin){
+	$where = array();
+	if ($fechaInicio !== '') {
+		$where[] = "DATE(v.fecha_hora)>='$fechaInicio'";
+	}
+	if ($fechaFin !== '') {
+		$where[] = "DATE(v.fecha_hora)<='$fechaFin'";
+	}
+	$filtro = '';
+	if (count($where) > 0) {
+		$filtro = " WHERE " . implode(" AND ", $where);
+	}
+
+	$sql="SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado
+	FROM venta v
+	INNER JOIN persona p ON v.idcliente=p.idpersona
+	INNER JOIN usuario u ON v.idusuario=u.idusuario".$filtro."
+	ORDER BY v.idventa DESC";
 	return ejecutarConsulta($sql);
 }
 
 
 public function ventacabecera($idventa){
-	$sql= "SELECT v.idventa, v.idcliente, p.nombre AS cliente, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono, v.idusuario, u.nombre AS usuario, v.tipo_comprobante, v.serie_comprobante, v.num_comprobante, DATE_FORMAT(v.fecha_hora,'%d/%m/%Y') AS fecha, v.impuesto, v.total_venta FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario WHERE v.idventa='$idventa'";
+	$sql= "SELECT v.idventa, v.idcliente, p.nombre AS cliente, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono, v.idusuario, u.nombre AS usuario, v.tipo_comprobante, v.serie_comprobante, v.num_comprobante, DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') AS fecha, v.impuesto, v.total_venta FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario WHERE v.idventa='$idventa'";
 	return ejecutarConsulta($sql);
 }
 

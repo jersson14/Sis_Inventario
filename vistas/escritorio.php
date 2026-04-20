@@ -192,7 +192,7 @@ if ($_SESSION['escritorio'] == 1) {
           <div class="kpi-icon"><i class="fa fa-cubes"></i></div>
           <div class="kpi-meta">
             <span>Stock Total</span>
-            <strong><?php echo number_format($stockTotal, 3); ?></strong>
+            <strong><?php echo number_format($stockTotal, 0); ?></strong>
           </div>
         </div>
       </div>

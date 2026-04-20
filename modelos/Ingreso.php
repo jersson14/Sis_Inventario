@@ -34,6 +34,28 @@ private function normalizarSerieComprobante($serie, $tipoComprobante){
 	return "B001";
 }
 
+private function normalizarFechaHora($valor){
+	$raw = trim((string)$valor);
+	if ($raw === '') {
+		return date("Y-m-d H:i:s");
+	}
+	if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+		return $raw . " 00:00:00";
+	}
+	if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/', $raw)) {
+		$normalizado = str_replace("T", " ", $raw);
+		if (strlen($normalizado) === 16) {
+			$normalizado .= ":00";
+		}
+		return $normalizado;
+	}
+	$ts = strtotime($raw);
+	if ($ts === false) {
+		return date("Y-m-d H:i:s");
+	}
+	return date("Y-m-d H:i:s", $ts);
+}
+
 private function obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, $forUpdate = false){
 	$tipoComprobante = $this->normalizarTipoComprobante($tipoComprobante);
 	$serieComprobante = $this->normalizarSerieComprobante($serieComprobante, $tipoComprobante);
@@ -57,6 +79,14 @@ private function obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, 
 	);
 }
 
+private function normalizarCantidadEntera($valor){
+	$cantidad = (int)round((float)$valor);
+	if ($cantidad < 0) {
+		$cantidad = 0;
+	}
+	return $cantidad;
+}
+
 public function obtenerSiguienteCorrelativo($tipoComprobante, $serieComprobante){
 	$data = $this->obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, false);
 	return array(
@@ -71,6 +101,22 @@ public function obtenerSiguienteCorrelativo($tipoComprobante, $serieComprobante)
 //metodo insertar registro
 public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$total_compra,$idarticulo,$cantidad,$precio_compra,$precio_venta){
 	global $conexion;
+	$idproveedor = (int)$idproveedor;
+	$fecha_hora = $this->normalizarFechaHora($fecha_hora);
+	if ($idproveedor <= 0) {
+		return array(
+			"ok"=>false,
+			"message"=>"Debes seleccionar un proveedor valido"
+		);
+	}
+
+	$validarProveedor = ejecutarConsultaSimpleFila("SELECT idpersona FROM persona WHERE idpersona='$idproveedor' AND tipo_persona='Proveedor' LIMIT 1");
+	if (!$validarProveedor || !isset($validarProveedor["idpersona"])) {
+		return array(
+			"ok"=>false,
+			"message"=>"El proveedor seleccionado no existe o no es valido"
+		);
+	}
 
 	if (!is_array($idarticulo) || count($idarticulo) === 0) {
 		return array(
@@ -88,7 +134,7 @@ public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_compro
 	$detalles = array();
 	for ($i = 0; $i < count($idarticulo); $i++) {
 		$idArticuloActual = (int)$idarticulo[$i];
-		$cantidadActual = (float)$cantidad[$i];
+		$cantidadActual = $this->normalizarCantidadEntera($cantidad[$i]);
 		$precioCompraActual = isset($precio_compra[$i]) ? (float)$precio_compra[$i] : 0;
 		$precioVentaActual = isset($precio_venta[$i]) ? (float)$precio_venta[$i] : 0;
 
@@ -122,10 +168,31 @@ public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_compro
 	$conexion->autocommit(false);
 
 	try {
-		$correlativo = $this->obtenerCorrelativoInterno($tipo_comprobante, $serie_comprobante, true);
-		$tipo_comprobante = $correlativo["tipo_comprobante"];
-		$serie_comprobante = $correlativo["serie_comprobante"];
-		$num_comprobante = $correlativo["numero"];
+		$tipo_comprobante = $this->normalizarTipoComprobante($tipo_comprobante);
+		$serie_comprobante = $this->normalizarSerieComprobante($serie_comprobante, $tipo_comprobante);
+		$num_comprobante = substr(preg_replace('/[^0-9]/', '', (string)$num_comprobante), 0, 10);
+
+		if ($num_comprobante === '') {
+			$correlativo = $this->obtenerCorrelativoInterno($tipo_comprobante, $serie_comprobante, true);
+			$tipo_comprobante = $correlativo["tipo_comprobante"];
+			$serie_comprobante = $correlativo["serie_comprobante"];
+			$num_comprobante = $correlativo["numero"];
+		} else {
+			$sqlExisteComprobante = "SELECT idingreso FROM ingreso
+				WHERE tipo_comprobante='$tipo_comprobante'
+				AND serie_comprobante='$serie_comprobante'
+				AND num_comprobante='$num_comprobante'
+				LIMIT 1 FOR UPDATE";
+			$existeComprobante = ejecutarConsultaSimpleFila($sqlExisteComprobante);
+			if ($existeComprobante && isset($existeComprobante["idingreso"])) {
+				$conexion->rollback();
+				$conexion->autocommit(true);
+				return array(
+					"ok"=>false,
+					"message"=>"Ya existe un ingreso con el mismo tipo, serie y numero de comprobante"
+				);
+			}
+		}
 
 		$sql="INSERT INTO ingreso (idproveedor,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,impuesto,total_compra,estado) VALUES ('$idproveedor','$idusuario','$tipo_comprobante','$serie_comprobante','$num_comprobante','$fecha_hora','$impuesto','$total_compra','Aceptado')";
 		$idingresonew=ejecutarConsulta_retornarID($sql);
@@ -185,7 +252,7 @@ public function anular($idingreso){
 
 //metodo para mostrar registros
 public function mostrar($idingreso){
-	$sql="SELECT i.idingreso,DATE(i.fecha_hora) as fecha,i.idproveedor,p.nombre as proveedor,u.idusuario,u.nombre as usuario, i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado FROM ingreso i INNER JOIN persona p ON i.idproveedor=p.idpersona INNER JOIN usuario u ON i.idusuario=u.idusuario WHERE idingreso='$idingreso'";
+	$sql="SELECT i.idingreso,DATE_FORMAT(i.fecha_hora,'%Y-%m-%d %H:%i:%s') as fecha,i.idproveedor,p.nombre as proveedor,u.idusuario,u.nombre as usuario, i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado FROM ingreso i INNER JOIN persona p ON i.idproveedor=p.idpersona INNER JOIN usuario u ON i.idusuario=u.idusuario WHERE idingreso='$idingreso'";
 	return ejecutarConsultaSimpleFila($sql);
 }
 
@@ -200,12 +267,33 @@ public function listarDetalle($idingreso){
 
 //listar registros
 public function listar(){
-	$sql="SELECT i.idingreso,DATE(i.fecha_hora) as fecha,i.idproveedor,p.nombre as proveedor,u.idusuario,u.nombre as usuario, i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado FROM ingreso i INNER JOIN persona p ON i.idproveedor=p.idpersona INNER JOIN usuario u ON i.idusuario=u.idusuario ORDER BY i.idingreso DESC";
+	$sql="SELECT i.idingreso,DATE_FORMAT(i.fecha_hora,'%d/%m/%Y %H:%i') as fecha,i.idproveedor,p.nombre as proveedor,u.idusuario,u.nombre as usuario, i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado FROM ingreso i INNER JOIN persona p ON i.idproveedor=p.idpersona INNER JOIN usuario u ON i.idusuario=u.idusuario ORDER BY i.idingreso DESC";
+	return ejecutarConsulta($sql);
+}
+
+public function listarPorFecha($fechaInicio, $fechaFin){
+	$where = array();
+	if ($fechaInicio !== '') {
+		$where[] = "DATE(i.fecha_hora)>='$fechaInicio'";
+	}
+	if ($fechaFin !== '') {
+		$where[] = "DATE(i.fecha_hora)<='$fechaFin'";
+	}
+	$filtro = '';
+	if (count($where) > 0) {
+		$filtro = " WHERE " . implode(" AND ", $where);
+	}
+
+	$sql="SELECT i.idingreso,DATE_FORMAT(i.fecha_hora,'%d/%m/%Y %H:%i') as fecha,i.idproveedor,p.nombre as proveedor,u.idusuario,u.nombre as usuario, i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado
+	FROM ingreso i
+	INNER JOIN persona p ON i.idproveedor=p.idpersona
+	INNER JOIN usuario u ON i.idusuario=u.idusuario".$filtro."
+	ORDER BY i.idingreso DESC";
 	return ejecutarConsulta($sql);
 }
 
 public function ingresocabecera($idingreso){
-	$sql="SELECT i.idingreso, i.idproveedor, p.nombre AS proveedor, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono, i.idusuario, u.nombre AS usuario, i.tipo_comprobante, i.serie_comprobante, i.num_comprobante, DATE_FORMAT(i.fecha_hora,'%d/%m/%Y') AS fecha, i.impuesto, i.total_compra
+	$sql="SELECT i.idingreso, i.idproveedor, p.nombre AS proveedor, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono, i.idusuario, u.nombre AS usuario, i.tipo_comprobante, i.serie_comprobante, i.num_comprobante, DATE_FORMAT(i.fecha_hora,'%d/%m/%Y %H:%i') AS fecha, i.impuesto, i.total_compra
 	FROM ingreso i
 	INNER JOIN persona p ON i.idproveedor=p.idpersona
 	INNER JOIN usuario u ON i.idusuario=u.idusuario

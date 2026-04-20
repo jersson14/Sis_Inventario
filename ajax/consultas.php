@@ -85,7 +85,7 @@ switch ($_GET["op"]) {
                 "0" => $reg->codigo,
                 "1" => $reg->articulo,
                 "2" => $reg->categoria,
-                "3" => number_format((float)$reg->cantidad_vendida, 3),
+                "3" => number_format((float)$reg->cantidad_vendida, 0),
                 "4" => number_format((float)$reg->venta_total, 2),
                 "5" => number_format((float)$reg->costo_estimado, 2),
                 "6" => number_format($utilidad, 2),
@@ -122,7 +122,7 @@ switch ($_GET["op"]) {
                 "1" => $reg->codigo,
                 "2" => $reg->articulo,
                 "3" => $reg->categoria,
-                "4" => number_format((float)$reg->cantidad, 3) . " " . $reg->unidad,
+                "4" => number_format((float)$reg->cantidad, 0) . " " . $reg->unidad,
                 "5" => number_format((float)$reg->total, 2)
             );
         }
@@ -156,8 +156,8 @@ switch ($_GET["op"]) {
                 "0" => $reg->codigo,
                 "1" => $reg->articulo,
                 "2" => $reg->categoria,
-                "3" => number_format((float)$reg->stock, 3) . " " . $reg->unidad,
-                "4" => number_format((float)$reg->stock_minimo, 3) . " " . $reg->unidad,
+                "3" => number_format((float)$reg->stock, 0) . " " . $reg->unidad,
+                "4" => number_format((float)$reg->stock_minimo, 0) . " " . $reg->unidad,
                 "5" => $badge,
                 "6" => $reg->ultimo_mov,
                 "7" => (int)$reg->dias_sin_mov
@@ -184,9 +184,9 @@ switch ($_GET["op"]) {
             $data[] = array(
                 "0" => $reg->codigo,
                 "1" => $reg->articulo,
-                "2" => number_format((float)$reg->entrada, 3) . " " . $reg->unidad,
-                "3" => number_format((float)$reg->salida, 3) . " " . $reg->unidad,
-                "4" => number_format((float)$reg->saldo, 3) . " " . $reg->unidad,
+                "2" => number_format((float)$reg->entrada, 0) . " " . $reg->unidad,
+                "3" => number_format((float)$reg->salida, 0) . " " . $reg->unidad,
+                "4" => number_format((float)$reg->saldo, 0) . " " . $reg->unidad,
                 "5" => number_format((float)$reg->costo_promedio, 2),
                 "6" => number_format((float)$reg->valor_stock, 2)
             );

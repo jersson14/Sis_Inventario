@@ -1,0 +1,35 @@
+LIQUIDACIÓN DE BENEFICIOS SOCIALES
+Generado por DereJ IA — derej.com
+=======================================================
+
+Fecha del cálculo : 29 de marzo de 2026
+
+DATOS DEL TRABAJADOR
+-------------------------------------------------------
+Régimen laboral          : Régimen General (DL 728)
+Causa del cese           : Renuncia voluntaria
+Fecha de ingreso         : 2020-01-12
+Fecha de cese            : 2025-12-12
+Tiempo de servicios      : 5 año(s), 11 mes(es), 0 día(s)
+Remuneración básica      : S/ 2300.00
+Asignación familiar      : S/ 0.00
+Remuneración computable  : S/ 2300.00
+
+DETALLE DE BENEFICIOS SOCIALES
+-------------------------------------------------------
+  Vacaciones truncas                            S/ 1916.67
+  Fórmula: S/ 2300.00 / 12 × 10 mes(es)
+
+  Gratificación trunca                          S/ 2300.00
+  Fórmula: S/ 2300.00 / 6 × 6 mes(es)
+
+  CTS trunca                                    S/ 447.22
+  Fórmula: (S/ 2300.00 + 1/6 grat.) / 12 × 2 mes(es)
+
+───────────────────────────────────────────────────────
+TOTAL LIQUIDACIÓN        : S/ 4663.89
+=======================================================
+
+Base legal: DL 728, Ley 30056 (MYPE), CAPECO según corresponda.
+Cálculo referencial — verificar con el área contable.
+Generado por DereJ IA (derej.com)

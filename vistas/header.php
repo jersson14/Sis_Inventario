@@ -90,7 +90,7 @@ if (!function_exists('darkenHexColor')) {
 
   <link rel="stylesheet" href="../public/css/AdminLTE.min.css">
   <link rel="stylesheet" href="../public/css/_all-skins.min.css">
-  <link rel="stylesheet" href="../public/css/custom-theme.css?v=20260325a">
+  <link rel="stylesheet" href="../public/css/custom-theme.css?v=20260420a">
   <!-- Morris chart --><!-- Daterange picker -->
  <link rel="stylesheet" href="img/apple-touch-ico.png">
  <link rel="stylesheet" href="img/favicon.ico">

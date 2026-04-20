@@ -50,9 +50,9 @@ switch ($_GET['op']) {
                 'tipo' => $reg->tipo,
                 'documento' => $reg->documento,
                 'tercero' => $reg->tercero,
-                'entrada' => number_format($entrada, 3),
-                'salida' => number_format($salida, 3),
-                'saldo' => number_format($saldo, 3),
+                'entrada' => number_format($entrada, 0),
+                'salida' => number_format($salida, 0),
+                'saldo' => number_format($saldo, 0),
                 'costo' => (float)$reg->costo,
                 'precio_ref' => (float)$reg->precio_ref
             );
@@ -63,9 +63,9 @@ switch ($_GET['op']) {
             'articulo' => $info['nombre'],
             'codigo' => $info['codigo'],
             'unidad' => $info['unidad'],
-            'stock_actual' => number_format($stockActual, 3),
-            'stock_minimo' => number_format((float)$info['stock_minimo'], 3),
-            'saldo_inicial' => number_format($saldoInicialRango, 3),
+            'stock_actual' => number_format($stockActual, 0),
+            'stock_minimo' => number_format((float)$info['stock_minimo'], 0),
+            'saldo_inicial' => number_format($saldoInicialRango, 0),
             'movimientos' => $data
         ));
         break;
@@ -77,9 +77,9 @@ switch ($_GET['op']) {
             $data[] = array(
                 '0' => $reg->codigo,
                 '1' => $reg->nombre,
-                '2' => number_format((float)$reg->stock, 3) . ' ' . $reg->unidad,
-                '3' => number_format((float)$reg->stock_minimo, 3) . ' ' . $reg->unidad,
-                '4' => number_format((float)$reg->faltante, 3) . ' ' . $reg->unidad
+                '2' => number_format((float)$reg->stock, 0) . ' ' . $reg->unidad,
+                '3' => number_format((float)$reg->stock_minimo, 0) . ' ' . $reg->unidad,
+                '4' => number_format((float)$reg->faltante, 0) . ' ' . $reg->unidad
             );
         }
 
@@ -101,7 +101,7 @@ switch ($_GET['op']) {
             $data[] = array(
                 '0' => $reg->codigo,
                 '1' => $reg->nombre,
-                '2' => number_format((float)$reg->stock, 3) . ' ' . $reg->unidad,
+                '2' => number_format((float)$reg->stock, 0) . ' ' . $reg->unidad,
                 '3' => $ultimo
             );
         }
@@ -124,7 +124,7 @@ switch ($_GET['op']) {
             $data[] = array(
                 '0' => $reg->codigo,
                 '1' => $reg->nombre,
-                '2' => number_format((float)$reg->cantidad, 3) . ' ' . $reg->unidad,
+                '2' => number_format((float)$reg->cantidad, 0) . ' ' . $reg->unidad,
                 '3' => formatearMoneda((float)$reg->total)
             );
         }
@@ -160,7 +160,7 @@ switch ($_GET['op']) {
             $data[] = array(
                 '0' => $grupo,
                 '1' => $detalle,
-                '2' => number_format((float)$reg->cantidad, 3),
+                '2' => number_format((float)$reg->cantidad, 0),
                 '3' => formatearMoneda((float)$reg->venta),
                 '4' => formatearMoneda((float)$reg->costo),
                 '5' => formatearMoneda((float)$reg->utilidad)
@@ -185,12 +185,12 @@ switch ($_GET['op']) {
             $data[] = array(
                 '0' => $reg->codigo,
                 '1' => $reg->nombre,
-                '2' => number_format((float)$reg->stock, 3) . ' ' . $reg->unidad,
-                '3' => number_format((float)$reg->stock_minimo, 3) . ' ' . $reg->unidad,
-                '4' => number_format((float)$reg->vendido_periodo, 3),
-                '5' => number_format((float)$reg->promedio_diario, 3),
-                '6' => number_format((float)$reg->stock_objetivo, 3),
-                '7' => number_format((float)$reg->sugerido, 3)
+                '2' => number_format((float)$reg->stock, 0) . ' ' . $reg->unidad,
+                '3' => number_format((float)$reg->stock_minimo, 0) . ' ' . $reg->unidad,
+                '4' => number_format((float)$reg->vendido_periodo, 0),
+                '5' => number_format((float)$reg->promedio_diario, 0),
+                '6' => number_format((float)$reg->stock_objetivo, 0),
+                '7' => number_format((float)$reg->sugerido, 0)
             );
         }
 

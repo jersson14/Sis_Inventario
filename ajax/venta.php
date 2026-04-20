@@ -15,6 +15,16 @@ $fecha_hora=isset($_POST["fecha_hora"])? limpiarCadena($_POST["fecha_hora"]):"";
 $impuesto=isset($_POST["impuesto"])? limpiarCadena($_POST["impuesto"]):"";
 $total_venta=isset($_POST["total_venta"])? limpiarCadena($_POST["total_venta"]):"";
 
+if (!function_exists('fechaFiltroSeguro')) {
+	function fechaFiltroSeguro($valor) {
+		$valor = trim((string)$valor);
+		if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
+			return $valor;
+		}
+		return '';
+	}
+}
+
 
 
 
@@ -89,10 +99,10 @@ switch ($_GET["op"]) {
 			<td></td>
 			<td>'.$reg->nombre.'</td>
 			<td>'.$reg->unidad.'</td>
-			<td>'.$reg->cantidad.'</td>
-			<td>'.$reg->precio_venta.'</td>
-			<td>'.$reg->descuento.'</td>
-			<td>'.$reg->subtotal.'</td>
+			<td>'.number_format((float)$reg->cantidad,0).'</td>
+			<td>'.number_format((float)$reg->precio_venta,2).'</td>
+			<td>'.number_format((float)$reg->descuento,2).'</td>
+			<td>'.number_format((float)$reg->subtotal,2).'</td>
 			<td></td></tr>';
 			$total=$total+($reg->precio_venta*$reg->cantidad-$reg->descuento);
 		}
@@ -109,7 +119,9 @@ switch ($_GET["op"]) {
 		break;
 
     case 'listar':
-		$rspta=$venta->listar();
+		$fecha_inicio = fechaFiltroSeguro(isset($_GET["fecha_inicio"]) ? $_GET["fecha_inicio"] : '');
+		$fecha_fin = fechaFiltroSeguro(isset($_GET["fecha_fin"]) ? $_GET["fecha_fin"] : '');
+		$rspta=$venta->listarPorFecha($fecha_inicio, $fecha_fin);
 		$data=Array();
 
 		while ($reg=$rspta->fetch_object()) {
@@ -150,6 +162,41 @@ switch ($_GET["op"]) {
 			}
 			break;
 
+		case 'crearClienteRapido':
+			require_once "../modelos/Persona.php";
+			$persona = new Persona();
+
+			$nombreCliente = isset($_POST['nombre']) ? trim(limpiarCadena($_POST['nombre'])) : '';
+			$tipoDocumento = isset($_POST['tipo_documento']) ? trim(limpiarCadena($_POST['tipo_documento'])) : 'DNI';
+			$numDocumento = isset($_POST['num_documento']) ? trim(limpiarCadena($_POST['num_documento'])) : '';
+			$direccionCliente = isset($_POST['direccion']) ? trim(limpiarCadena($_POST['direccion'])) : '';
+			$telefonoCliente = isset($_POST['telefono']) ? trim(limpiarCadena($_POST['telefono'])) : '';
+			$emailCliente = isset($_POST['email']) ? trim(limpiarCadena($_POST['email'])) : '';
+
+			if ($nombreCliente === '') {
+				echo json_encode(array("ok"=>false, "message"=>"El nombre del cliente es obligatorio"));
+				break;
+			}
+
+			$tiposDocumentoPermitidos = array("DNI", "RUC", "CEDULA");
+			if (!in_array($tipoDocumento, $tiposDocumentoPermitidos, true)) {
+				$tipoDocumento = "DNI";
+			}
+
+			$idClienteNuevo = $persona->insertarRetornarId("Cliente", $nombreCliente, $tipoDocumento, $numDocumento, $direccionCliente, $telefonoCliente, $emailCliente);
+			if (!$idClienteNuevo) {
+				echo json_encode(array("ok"=>false, "message"=>"No se pudo registrar el cliente"));
+				break;
+			}
+
+			echo json_encode(array(
+				"ok"=>true,
+				"message"=>"Cliente registrado correctamente",
+				"idcliente"=>(int)$idClienteNuevo,
+				"nombre"=>$nombreCliente
+			));
+			break;
+
 			case 'listarArticulos':
 			require_once "../modelos/Articulo.php";
 			$articulo=new Articulo();
@@ -162,9 +209,9 @@ switch ($_GET["op"]) {
 			$unidadjs = addslashes($reg->abreviatura);
 			$precio = is_null($reg->precio_venta) ? 0 : (float)$reg->precio_venta;
 			$stock = (float)$reg->stock;
-			$stockVisible = $stock > 0 ? $stock : 0;
-			$stockFmt = number_format($stockVisible,3);
-			$stockMinimo = isset($reg->stock_minimo) ? (float)$reg->stock_minimo : 0;
+			$stockVisible = $stock > 0 ? (int)round($stock) : 0;
+			$stockFmt = number_format($stockVisible,0);
+			$stockMinimo = isset($reg->stock_minimo) ? (int)round((float)$reg->stock_minimo) : 0;
 			$umbralBajo = max($stockMinimo, 5);
 
 			if ($stockVisible<=0) {
@@ -220,7 +267,7 @@ switch ($_GET["op"]) {
 				"nombre"=>$reg['nombre'],
 				"precio_venta"=>(float)$reg['precio_venta'],
 				"unidad"=>$reg['abreviatura'],
-				"stock"=>(float)$reg['stock']
+				"stock"=>(int)round((float)$reg['stock'])
 			));
 			break;
 }

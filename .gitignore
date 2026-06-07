@@ -1,0 +1,18 @@
+# Base de datos — no subir al repositorio
+*.sql
+files/backups/
+
+# Archivos subidos por usuarios
+files/usuarios/*
+files/articulos/*
+files/empresa/*
+
+# Conservar la estructura de carpetas vacías
+!files/usuarios/.gitkeep
+!files/articulos/.gitkeep
+!files/empresa/.gitkeep
+
+# Entorno y sistema
+.env
+Thumbs.db
+.DS_Store

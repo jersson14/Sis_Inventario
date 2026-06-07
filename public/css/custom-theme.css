@@ -40,6 +40,15 @@ body {
 .main-header .logo {
   background: linear-gradient(120deg, var(--brand-primary), var(--brand-primary-dark));
   font-weight: 700;
+  height: 80px !important;
+}
+
+.main-header .navbar {
+  min-height: 80px !important;
+}
+
+.main-header {
+  max-height: 80px;
 }
 
 .main-header .logo.app-brand-logo {
@@ -65,15 +74,24 @@ body {
 .brand-logo-lg-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.brand-logo-img,
+.brand-logo-img {
+  width: 200px;
+  height: 62px;
+  border-radius: 7px;
+  object-fit: fill;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  margin-top: 6px;
+}
+
 .brand-logo-mini-img {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  object-fit: cover;
+  width: 44px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: fill;
   border: 1px solid rgba(255, 255, 255, 0.45);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
@@ -130,6 +148,10 @@ body {
 
 .skin-blue .main-sidebar {
   background: #0f172a;
+}
+
+.skin-blue .main-sidebar .sidebar {
+  padding-top: 14px;
 }
 
 .skin-blue .sidebar-menu > li > a {
@@ -246,6 +268,25 @@ body {
 }
 
 .cuentas-panel .dataTables_filter {
+  text-align: right;
+}
+
+.reportes-panel .table-responsive {
+  width: 100%;
+}
+
+.reportes-panel table.dataTable,
+.reportes-panel table.table,
+.reportes-panel .dataTables_wrapper {
+  width: 100% !important;
+}
+
+.reportes-panel .dataTables_wrapper .row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.reportes-panel .dataTables_filter {
   text-align: right;
 }
 
@@ -651,6 +692,41 @@ body {
   height: 250px !important;
 }
 
+.dashboard-filter-box {
+  margin-bottom: 8px;
+}
+
+.dashboard-filter-box .box-body {
+  min-height: auto;
+  padding: 12px 14px 10px;
+}
+
+.dashboard-filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.dashboard-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 68px;
+}
+
+.dashboard-filter-actions .text-muted {
+  margin-left: 4px !important;
+}
+
+@media (max-width: 991px) {
+  .dashboard-filter-actions {
+    justify-content: flex-start;
+    min-height: auto;
+    padding-top: 8px;
+  }
+}
+
 body.login-page {
   min-height: 100vh;
   margin: 0;
@@ -738,12 +814,17 @@ body.login-page::after {
 }
 
 .login-brand-logo {
-  width: 116px;
-  height: 116px;
-  border-radius: 22px;
-  display: inline-block;
-  margin-bottom: 20px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  height: 150px;
+  border-radius: 12px;
+  object-fit: contain;
+  display: block;
+  margin: 0 0 24px 0;
+  background: rgba(255, 255, 255, 0.95);
+  border: 5px solid #1a3a5c;
+  outline: 3px solid rgba(255, 255, 255, 0.85);
+  padding: 10px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 0 0 2px #1a3a5c;
 }
 
 .login-brand h1 {

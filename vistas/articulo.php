@@ -72,11 +72,11 @@ if ($_SESSION['almacen']==1) {
     </div>
        <div class="form-group col-lg-4 col-md-4 col-xs-12">
       <label for="">Stock</label>
-      <input class="form-control" type="number" step="0.001" min="0" name="stock" id="stock" required>
+      <input class="form-control" type="number" step="1" min="0" name="stock" id="stock" required>
     </div>
        <div class="form-group col-lg-4 col-md-4 col-xs-12">
       <label for="">Stock minimo</label>
-      <input class="form-control" type="number" step="0.001" min="0" name="stock_minimo" id="stock_minimo" value="1.000" required>
+      <input class="form-control" type="number" step="1" min="0" name="stock_minimo" id="stock_minimo" value="1" required>
     </div>
        <div class="form-group col-lg-6 col-md-6 col-xs-12">
       <label for="">Descripcion</label>

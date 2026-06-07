@@ -15,6 +15,16 @@ $fecha_hora=isset($_POST["fecha_hora"])? limpiarCadena($_POST["fecha_hora"]):"";
 $impuesto=isset($_POST["impuesto"])? limpiarCadena($_POST["impuesto"]):"";
 $total_venta=isset($_POST["total_venta"])? limpiarCadena($_POST["total_venta"]):"";
 
+if (!function_exists('fechaFiltroSeguro')) {
+	function fechaFiltroSeguro($valor) {
+		$valor = trim((string)$valor);
+		if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
+			return $valor;
+		}
+		return '';
+	}
+}
+
 
 
 
@@ -28,6 +38,8 @@ switch ($_GET["op"]) {
 				echo json_encode(array(
 					"ok"=>true,
 					"message"=>"Datos registrados correctamente",
+					"serie_comprobante"=>isset($rspta["serie_comprobante"])?$rspta["serie_comprobante"]:"",
+					"num_comprobante"=>isset($rspta["num_comprobante"])?$rspta["num_comprobante"]:"",
 					"alertas"=>isset($rspta["alertas"])?$rspta["alertas"]:array()
 				));
 			}else{
@@ -46,6 +58,13 @@ switch ($_GET["op"]) {
 	}else{
         
 	}
+		break;
+
+	case 'siguienteCorrelativo':
+		$tipo = isset($_GET["tipo_comprobante"]) ? limpiarCadena($_GET["tipo_comprobante"]) : "Boleta";
+		$serie = isset($_GET["serie_comprobante"]) ? limpiarCadena($_GET["serie_comprobante"]) : "";
+		$rspta = $venta->obtenerSiguienteCorrelativo($tipo, $serie);
+		echo json_encode($rspta);
 		break;
 	
 
@@ -80,10 +99,10 @@ switch ($_GET["op"]) {
 			<td></td>
 			<td>'.$reg->nombre.'</td>
 			<td>'.$reg->unidad.'</td>
-			<td>'.$reg->cantidad.'</td>
-			<td>'.$reg->precio_venta.'</td>
-			<td>'.$reg->descuento.'</td>
-			<td>'.$reg->subtotal.'</td>
+			<td>'.number_format((float)$reg->cantidad,0).'</td>
+			<td>'.number_format((float)$reg->precio_venta,2).'</td>
+			<td>'.number_format((float)$reg->descuento,2).'</td>
+			<td>'.number_format((float)$reg->subtotal,2).'</td>
 			<td></td></tr>';
 			$total=$total+($reg->precio_venta*$reg->cantidad-$reg->descuento);
 		}
@@ -95,12 +114,14 @@ switch ($_GET["op"]) {
          <th></th>
          <th></th>
          <th></th>
-         <th><h4 id="total">S/. '.$total.'</h4><input type="hidden" name="total_venta" id="total_venta"></th>
+         <th><h4 id="total">'.formatearMoneda($total).'</h4><input type="hidden" name="total_venta" id="total_venta"></th>
        </tfoot>';
 		break;
 
     case 'listar':
-		$rspta=$venta->listar();
+		$fecha_inicio = fechaFiltroSeguro(isset($_GET["fecha_inicio"]) ? $_GET["fecha_inicio"] : '');
+		$fecha_fin = fechaFiltroSeguro(isset($_GET["fecha_fin"]) ? $_GET["fecha_fin"] : '');
+		$rspta=$venta->listarPorFecha($fecha_inicio, $fecha_fin);
 		$data=Array();
 
 		while ($reg=$rspta->fetch_object()) {
@@ -118,7 +139,7 @@ switch ($_GET["op"]) {
             "3"=>$reg->usuario,
             "4"=>$reg->tipo_comprobante,
             "5"=>$reg->serie_comprobante. '-' .$reg->num_comprobante,
-            "6"=>$reg->total_venta,
+            "6"=>formatearMoneda((float)$reg->total_venta),
             "7"=>($reg->estado=='Aceptado')?'<span class="label bg-green">Aceptado</span>':'<span class="label bg-red">Anulado</span>'
               );
 		}
@@ -141,6 +162,41 @@ switch ($_GET["op"]) {
 			}
 			break;
 
+		case 'crearClienteRapido':
+			require_once "../modelos/Persona.php";
+			$persona = new Persona();
+
+			$nombreCliente = isset($_POST['nombre']) ? trim(limpiarCadena($_POST['nombre'])) : '';
+			$tipoDocumento = isset($_POST['tipo_documento']) ? trim(limpiarCadena($_POST['tipo_documento'])) : 'DNI';
+			$numDocumento = isset($_POST['num_documento']) ? trim(limpiarCadena($_POST['num_documento'])) : '';
+			$direccionCliente = isset($_POST['direccion']) ? trim(limpiarCadena($_POST['direccion'])) : '';
+			$telefonoCliente = isset($_POST['telefono']) ? trim(limpiarCadena($_POST['telefono'])) : '';
+			$emailCliente = isset($_POST['email']) ? trim(limpiarCadena($_POST['email'])) : '';
+
+			if ($nombreCliente === '') {
+				echo json_encode(array("ok"=>false, "message"=>"El nombre del cliente es obligatorio"));
+				break;
+			}
+
+			$tiposDocumentoPermitidos = array("DNI", "RUC", "CEDULA");
+			if (!in_array($tipoDocumento, $tiposDocumentoPermitidos, true)) {
+				$tipoDocumento = "DNI";
+			}
+
+			$idClienteNuevo = $persona->insertarRetornarId("Cliente", $nombreCliente, $tipoDocumento, $numDocumento, $direccionCliente, $telefonoCliente, $emailCliente);
+			if (!$idClienteNuevo) {
+				echo json_encode(array("ok"=>false, "message"=>"No se pudo registrar el cliente"));
+				break;
+			}
+
+			echo json_encode(array(
+				"ok"=>true,
+				"message"=>"Cliente registrado correctamente",
+				"idcliente"=>(int)$idClienteNuevo,
+				"nombre"=>$nombreCliente
+			));
+			break;
+
 			case 'listarArticulos':
 			require_once "../modelos/Articulo.php";
 			$articulo=new Articulo();
@@ -153,18 +209,19 @@ switch ($_GET["op"]) {
 			$unidadjs = addslashes($reg->abreviatura);
 			$precio = is_null($reg->precio_venta) ? 0 : (float)$reg->precio_venta;
 			$stock = (float)$reg->stock;
-			$stockFmt = number_format($stock,3);
-			$stockMinimo = isset($reg->stock_minimo) ? (float)$reg->stock_minimo : 0;
+			$stockVisible = $stock > 0 ? (int)round($stock) : 0;
+			$stockFmt = number_format($stockVisible,0);
+			$stockMinimo = isset($reg->stock_minimo) ? (int)round((float)$reg->stock_minimo) : 0;
 			$umbralBajo = max($stockMinimo, 5);
 
-			if ($stock<=0) {
+			if ($stockVisible<=0) {
 				$btnAgregar='<button class="btn btn-add-item btn-add-disabled" type="button" disabled title="Sin stock"><i class="fa fa-ban"></i> Sin stock</button>';
 				$stockHtml='<span class="stock-pill stock-empty">'.$stockFmt.'</span>';
-			} elseif ($stock<=$umbralBajo) {
-				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\')"><i class="fa fa-plus-circle"></i> Agregar</button>';
+			} elseif ($stockVisible<=$umbralBajo) {
+				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\','.$stockVisible.')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 				$stockHtml='<span class="stock-pill stock-low">'.$stockFmt.'</span>';
 			} else {
-				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\')"><i class="fa fa-plus-circle"></i> Agregar</button>';
+				$btnAgregar='<button class="btn btn-add-item" type="button" onclick="agregarDetalle('.$reg->idarticulo.',\''.$nombrejs.'\','.$precio.',\''.$unidadjs.'\','.$stockVisible.')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 				$stockHtml='<span class="stock-pill stock-ok">'.$stockFmt.'</span>';
 			}
 
@@ -177,7 +234,7 @@ switch ($_GET["op"]) {
             "3"=>$reg->abreviatura,
             "4"=>$reg->codigo,
             "5"=>$stockHtml,
-            "6"=>"S/. ".number_format($precio,2),
+            "6"=>formatearMoneda($precio),
             "7"=>$imgHtml
           
               );
@@ -209,7 +266,8 @@ switch ($_GET["op"]) {
 				"idarticulo"=>$reg['idarticulo'],
 				"nombre"=>$reg['nombre'],
 				"precio_venta"=>(float)$reg['precio_venta'],
-				"unidad"=>$reg['abreviatura']
+				"unidad"=>$reg['abreviatura'],
+				"stock"=>(int)round((float)$reg['stock'])
 			));
 			break;
 }

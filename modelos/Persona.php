@@ -15,6 +15,11 @@ public function insertar($tipo_persona,$nombre,$tipo_documento,$num_documento,$d
 	return ejecutarConsulta($sql);
 }
 
+public function insertarRetornarId($tipo_persona,$nombre,$tipo_documento,$num_documento,$direccion,$telefono,$email){
+	$sql="INSERT INTO persona (tipo_persona,nombre,tipo_documento,num_documento,direccion,telefono,email) VALUES ('$tipo_persona','$nombre','$tipo_documento','$num_documento','$direccion','$telefono','$email')";
+	return ejecutarConsulta_retornarID($sql);
+}
+
 
 
 public function editar($idpersona,$tipo_persona,$nombre,$tipo_documento,$num_documento,$direccion,$telefono,$email){

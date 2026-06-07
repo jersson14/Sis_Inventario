@@ -29,6 +29,20 @@ if ($_SESSION['ventas']==1) {
 <!--box-header-->
 <!--centro-->
 <div class="panel-body table-responsive" id="listadoregistros">
+  <div class="row" style="margin-bottom:10px;">
+    <div class="col-md-3 col-sm-6 col-xs-12">
+      <label>Desde</label>
+      <input type="date" id="filtro_venta_inicio" class="form-control">
+    </div>
+    <div class="col-md-3 col-sm-6 col-xs-12">
+      <label>Hasta</label>
+      <input type="date" id="filtro_venta_fin" class="form-control">
+    </div>
+    <div class="col-md-6 col-sm-12 col-xs-12" style="padding-top:25px;">
+      <button type="button" class="btn btn-primary" id="btnFiltrarVenta"><i class="fa fa-filter"></i> Filtrar</button>
+      <button type="button" class="btn btn-default" id="btnLimpiarFiltroVenta"><i class="fa fa-eraser"></i> Limpiar</button>
+    </div>
+  </div>
   <table id="tbllistado" class="table table-striped table-bordered table-condensed table-hover">
     <thead>
       <th>Opciones</th>
@@ -62,10 +76,13 @@ if ($_SESSION['ventas']==1) {
       <select name="idcliente" id="idcliente" class="form-control selectpicker" data-live-search="true" required>
         
       </select>
+      <button type="button" class="btn btn-default btn-sm" id="btnNuevoCliente" data-toggle="modal" data-target="#modalClienteVenta" style="margin-top:8px;">
+        <i class="fa fa-user-plus"></i> Nuevo cliente
+      </button>
     </div>
       <div class="form-group col-lg-4 col-md-4 col-xs-12">
       <label for="">Fecha(*): </label>
-      <input class="form-control" type="date" name="fecha_hora" id="fecha_hora" required>
+      <input class="form-control" type="datetime-local" name="fecha_hora" id="fecha_hora" required>
     </div>
      <div class="form-group col-lg-6 col-md-6 col-xs-12">
       <label for="">Tipo Comprobante(*): </label>
@@ -79,9 +96,9 @@ if ($_SESSION['ventas']==1) {
       <label for="">Serie: </label>
       <input class="form-control" type="text" name="serie_comprobante" id="serie_comprobante" maxlength="7" placeholder="Serie">
     </div>
-     <div class="form-group col-lg-2 col-md-2 col-xs-6">
+    <div class="form-group col-lg-2 col-md-2 col-xs-6">
       <label for="">Número: </label>
-      <input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Número" required>
+      <input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Editable" required>
     </div>
     <div class="form-group col-lg-2 col-md-2 col-xs-6">
       <label for="">Impuesto: </label>
@@ -95,12 +112,12 @@ if ($_SESSION['ventas']==1) {
     <div class="form-group col-lg-5 col-md-5 col-sm-6 col-xs-12">
       <label>POS rapido (codigo de barras / codigo)</label>
       <div class="input-group">
-        <input type="text" class="form-control" id="codigo_rapido" placeholder="Escanea o escribe codigo y presiona Enter">
+        <input type="text" class="form-control" id="codigo_rapido" placeholder="Escanea o escribe codigo (se agrega automatico)">
         <span class="input-group-btn">
           <button class="btn btn-success" type="button" id="btnBuscarCodigo"><i class="fa fa-barcode"></i> Agregar</button>
         </span>
       </div>
-      <small class="text-muted">Atajos: <b>F2</b> catalogo, <b>Ctrl+B</b> foco codigo, <b>F4</b> guardar</small>
+      <small class="text-muted">Atajos: <b>F2</b> catalogo, <b>Ctrl+B</b> foco codigo, <b>F4</b> guardar. El escaner agrega automaticamente.</small>
     </div>
 <div class="form-group col-lg-12 col-md-12 col-xs-12">
      <table id="detalles" class="table table-striped table-bordered table-condensed table-hover">
@@ -122,7 +139,7 @@ if ($_SESSION['ventas']==1) {
          <th></th>
          <th></th>
          <th></th>
-         <th><h4 id="total">S/. 0.00</h4><input type="hidden" name="total_venta" id="total_venta"></th>
+         <th><h4 id="total"><?php echo formatearMoneda(0); ?></h4><input type="hidden" name="total_venta" id="total_venta"></th>
        </tfoot>
        <tbody>
          
@@ -192,6 +209,52 @@ if ($_SESSION['ventas']==1) {
     </div>
   </div>
   <!-- fin Modal-->
+  <div class="modal fade" id="modalClienteVenta" tabindex="-1" role="dialog" aria-labelledby="modalClienteVentaLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <form id="formClienteRapido" autocomplete="off">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="modalClienteVentaLabel"><i class="fa fa-user-plus"></i> Nuevo cliente</h4>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Nombre (*)</label>
+              <input type="text" class="form-control" name="nombre" id="cli_nombre" maxlength="100" required>
+            </div>
+            <div class="form-group">
+              <label>Tipo documento</label>
+              <select class="form-control" name="tipo_documento" id="cli_tipo_documento">
+                <option value="DNI">DNI</option>
+                <option value="RUC">RUC</option>
+                <option value="CEDULA">CEDULA</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Numero documento</label>
+              <input type="text" class="form-control" name="num_documento" id="cli_num_documento" maxlength="20">
+            </div>
+            <div class="form-group">
+              <label>Direccion</label>
+              <input type="text" class="form-control" name="direccion" id="cli_direccion" maxlength="70">
+            </div>
+            <div class="form-group">
+              <label>Telefono</label>
+              <input type="text" class="form-control" name="telefono" id="cli_telefono" maxlength="20">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" class="form-control" name="email" id="cli_email" maxlength="50">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>
+            <button type="submit" class="btn btn-primary" id="btnGuardarClienteRapido"><i class="fa fa-save"></i> Guardar cliente</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 <?php 
 }else{
  require 'noacceso.php'; 
@@ -199,7 +262,7 @@ if ($_SESSION['ventas']==1) {
 
 require 'footer.php';
  ?>
- <script src="scripts/venta.js?v=20260321b"></script>
+ <script src="scripts/venta.js?v=20260420c"></script>
  <?php 
 }
 

@@ -58,9 +58,9 @@ switch ($_GET['op']) {
                 '2' => $reg->fecha_vencimiento,
                 '3' => $reg->cliente,
                 '4' => $reg->documento_ref,
-                '5' => 'S/ ' . number_format((float)$reg->monto_total, 2),
-                '6' => 'S/ ' . number_format((float)$reg->pagado, 2),
-                '7' => 'S/ ' . number_format((float)$reg->saldo, 2),
+                '5' => formatearMoneda((float)$reg->monto_total),
+                '6' => formatearMoneda((float)$reg->pagado),
+                '7' => formatearMoneda((float)$reg->saldo),
                 '8' => $badge
             );
         }
@@ -86,9 +86,9 @@ switch ($_GET['op']) {
                 '2' => $reg->fecha_vencimiento,
                 '3' => $reg->proveedor,
                 '4' => $reg->documento_ref,
-                '5' => 'S/ ' . number_format((float)$reg->monto_total, 2),
-                '6' => 'S/ ' . number_format((float)$reg->pagado, 2),
-                '7' => 'S/ ' . number_format((float)$reg->saldo, 2),
+                '5' => formatearMoneda((float)$reg->monto_total),
+                '6' => formatearMoneda((float)$reg->pagado),
+                '7' => formatearMoneda((float)$reg->saldo),
                 '8' => $badge
             );
         }

@@ -16,7 +16,9 @@ switch ($_GET['op']) {
                 'razon_social' => 'SEÑOR DE HUANCA',
                 'color_primario' => '#0f766e',
                 'color_secundario' => '#f59e0b',
-                'logo_url' => 'logo1.jpeg'
+                'logo_url' => 'logo1.jpeg',
+                'moneda' => 'PEN',
+                'simbolo_moneda' => 'S/'
             ));
             break;
         }
@@ -36,7 +38,9 @@ switch ($_GET['op']) {
             'razon_social' => !empty($rspta['razon_social']) ? $rspta['razon_social'] : 'SEÑOR DE HUANCA',
             'color_primario' => !empty($rspta['color_primario']) ? $rspta['color_primario'] : '#0f766e',
             'color_secundario' => !empty($rspta['color_secundario']) ? $rspta['color_secundario'] : '#f59e0b',
-            'logo_url' => $logoUrl
+            'logo_url' => $logoUrl,
+            'moneda' => !empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN',
+            'simbolo_moneda' => obtenerSimboloMoneda(!empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN')
         ));
         break;
 
@@ -47,7 +51,9 @@ switch ($_GET['op']) {
                 'serie_boleta' => 'B001',
                 'serie_factura' => 'F001',
                 'serie_ticket' => 'T001',
-                'impuesto_default' => '18.00'
+                'impuesto_default' => '18.00',
+                'moneda' => 'PEN',
+                'simbolo_moneda' => 'S/'
             ));
             break;
         }
@@ -55,7 +61,9 @@ switch ($_GET['op']) {
             'serie_boleta' => $rspta['serie_boleta'],
             'serie_factura' => $rspta['serie_factura'],
             'serie_ticket' => $rspta['serie_ticket'],
-            'impuesto_default' => $rspta['impuesto_default']
+            'impuesto_default' => $rspta['impuesto_default'],
+            'moneda' => !empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN',
+            'simbolo_moneda' => obtenerSimboloMoneda(!empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN')
         ));
         break;
 

@@ -43,6 +43,23 @@ class PDFVenta extends FPDF
     return utf8_decode((string)$text);
   }
 
+  public function fitText($text, $maxWidth, $suffix = '...')
+  {
+    $txt = (string)$text;
+    if ($txt === '') {
+      return '';
+    }
+    if ($this->GetStringWidth($txt) <= $maxWidth) {
+      return $txt;
+    }
+
+    $suffixWidth = $this->GetStringWidth($suffix);
+    while (strlen($txt) > 0 && $this->GetStringWidth($txt) + $suffixWidth > $maxWidth) {
+      $txt = substr($txt, 0, -1);
+    }
+    return rtrim($txt) . $suffix;
+  }
+
   public function Header()
   {
     $this->SetDrawColor(214, 223, 233);
@@ -50,13 +67,13 @@ class PDFVenta extends FPDF
     $this->Rect(10, 10, 190, 36, 'F');
 
     $this->SetFillColor(255, 255, 255);
-    $this->Rect(12, 12, 22, 22, 'F');
+    $this->Rect(12, 12, 34, 20, 'F');
     if (!empty($this->logo) && file_exists($this->logo)) {
-      $this->Image($this->logo, 13, 13, 20, 20);
+      $this->Image($this->logo, 13, 13, 32, 18);
     }
 
-    $leftX = 36;
-    $leftW = 92;
+    $leftX = 48;
+    $leftW = 80;
     $this->SetTextColor(255, 255, 255);
 
     $nombreEmpresa = $this->u($this->empresa["nombre"]);
@@ -67,23 +84,23 @@ class PDFVenta extends FPDF
       $this->SetFont('Arial', 'B', $fontEmpresa);
     }
     $this->SetXY($leftX, 13);
-    $this->Cell($leftW, 5.6, $nombreEmpresa, 0, 1, 'L');
+    $this->Cell($leftW, 5.6, $this->fitText($nombreEmpresa, $leftW), 0, 1, 'L');
 
     $this->SetFont('Arial', '', 10);
     $this->SetXY($leftX, 18.5);
-    $this->Cell($leftW, 4.2, $this->u("RUC: ".$this->empresa["ruc"]), 0, 1, 'L');
+    $this->Cell($leftW, 4.2, $this->fitText($this->u("RUC: ".$this->empresa["ruc"]), $leftW), 0, 1, 'L');
 
     $this->SetFont('Arial', '', 9.4);
     $this->SetXY($leftX, 22.7);
-    $this->Cell($leftW, 3.8, $this->u($this->empresa["direccion_linea1"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u($this->empresa["direccion_linea1"]), $leftW), 0, 1, 'L');
     $this->SetXY($leftX, 26.5);
-    $this->Cell($leftW, 3.8, $this->u($this->empresa["direccion_linea2"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u($this->empresa["direccion_linea2"]), $leftW), 0, 1, 'L');
 
     $this->SetFont('Arial', '', 9.3);
     $this->SetXY($leftX, 30.4);
-    $this->Cell($leftW, 3.8, $this->u("Tel: ".$this->empresa["telefono"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u("Tel: ".$this->empresa["telefono"]), $leftW), 0, 1, 'L');
     $this->SetXY($leftX, 34.2);
-    $this->Cell($leftW, 3.8, $this->u("Email: ".$this->empresa["email"]), 0, 1, 'L');
+    $this->Cell($leftW, 3.8, $this->fitText($this->u("Email: ".$this->empresa["email"]), $leftW), 0, 1, 'L');
 
     $this->SetFillColor(245, 158, 11);
     $this->SetDrawColor(161, 98, 7);
@@ -262,6 +279,9 @@ if (!$regv) {
 
 $empresaModel = new Empresa();
 $empresa = $empresaModel->datosReporte();
+$codigoMoneda = !empty($empresa["moneda"]) ? strtoupper((string)$empresa["moneda"]) : 'PEN';
+$simboloMoneda = obtenerSimboloMoneda($codigoMoneda);
+$nombreMonedaLetras = obtenerNombreMonedaLetras($codigoMoneda);
 
 function formatearFechaComprobante($fechaRaw) {
   $fechaRaw = trim((string)$fechaRaw);
@@ -269,21 +289,37 @@ function formatearFechaComprobante($fechaRaw) {
     return '-';
   }
 
-  if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $fechaRaw)) {
-    return $fechaRaw;
+  if (preg_match('/^\d{2}\/\d{2}\/\d{4}( \d{2}:\d{2}(:\d{2})?)?$/', $fechaRaw)) {
+    if (strpos($fechaRaw, ' ') !== false) {
+      $partes = explode(' ', $fechaRaw, 2);
+      return $partes[0].' '.substr($partes[1], 0, 5);
+    }
+    return $fechaRaw.' 00:00';
   }
 
-  $formatos = array('Y-m-d H:i:s', 'Y-m-d', 'd-m-Y', 'd/m/Y H:i:s');
+  $formatos = array(
+    'Y-m-d H:i:s',
+    'Y-m-d H:i',
+    'Y-m-d\TH:i:s',
+    'Y-m-d\TH:i',
+    'Y-m-d',
+    'd-m-Y H:i:s',
+    'd-m-Y H:i',
+    'd-m-Y',
+    'd/m/Y H:i:s',
+    'd/m/Y H:i',
+    'd/m/Y'
+  );
   foreach ($formatos as $formato) {
     $dt = DateTime::createFromFormat($formato, $fechaRaw);
     if ($dt instanceof DateTime) {
-      return $dt->format('d/m/Y');
+      return $dt->format('d/m/Y H:i');
     }
   }
 
   $timestamp = strtotime($fechaRaw);
   if ($timestamp !== false) {
-    return date('d/m/Y', $timestamp);
+    return date('d/m/Y H:i', $timestamp);
   }
 
   return $fechaRaw;
@@ -334,7 +370,7 @@ $pdf->DrawTableHeader();
 $rsptad = $venta->ventadetalles($_GET["id"]);
 $index = 0;
 while ($regd = $rsptad->fetch_object()) {
-  $cantidad = number_format((float)$regd->cantidad, 3)." ".(empty($regd->unidad) ? "und" : $regd->unidad);
+  $cantidad = number_format((float)$regd->cantidad, 0)." ".(empty($regd->unidad) ? "und" : $regd->unidad);
   $linea = array(
     $pdf->u($regd->codigo),
     $pdf->u($regd->articulo),
@@ -358,7 +394,7 @@ $igv = $total - $subtotal;
 
 $V = new EnLetras();
 $V->substituir_un_mil_por_mil = true;
-$con_letra = strtoupper(trim($V->ValorEnLetras(round($total, 2), " SOLES")));
+$con_letra = strtoupper(trim($V->ValorEnLetras(round($total, 2), " ".$nombreMonedaLetras)));
 $con_letra = preg_replace('/\s+/', ' ', str_replace('--', '', $con_letra));
 
 if ($pdf->GetY() > 228) {
@@ -393,14 +429,14 @@ $pdf->SetFont('Arial', 'B', 9.2);
 $pdf->SetTextColor(30, 41, 59);
 $pdf->SetXY($boxX + 2, $startY + 8);
 $pdf->Cell(30, 4.4, 'SUBTOTAL', 0, 0, 'L');
-$pdf->Cell(29, 4.4, 'S/ '.number_format($subtotal, 2), 0, 1, 'R');
+$pdf->Cell(29, 4.4, $simboloMoneda.' '.number_format($subtotal, 2), 0, 1, 'R');
 $pdf->SetX($boxX + 2);
 $pdf->Cell(30, 4.4, 'IGV ('.number_format($impuesto, 2).'%)', 0, 0, 'L');
-$pdf->Cell(29, 4.4, 'S/ '.number_format($igv, 2), 0, 1, 'R');
+$pdf->Cell(29, 4.4, $simboloMoneda.' '.number_format($igv, 2), 0, 1, 'R');
 $pdf->SetX($boxX + 2);
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(30, 4.8, 'TOTAL', 0, 0, 'L');
-$pdf->Cell(29, 4.8, 'S/ '.number_format($total, 2), 0, 1, 'R');
+$pdf->Cell(29, 4.8, $simboloMoneda.' '.number_format($total, 2), 0, 1, 'R');
 
 $nombreSalida = 'Comprobante_'.$regv->serie_comprobante.'-'.$regv->num_comprobante.'.pdf';
 $pdf->Output($nombreSalida, 'I');

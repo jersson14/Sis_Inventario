@@ -45,7 +45,7 @@ function limpiar(){
 	$("#nombre").val("");
 	$("#descripcion").val("");
 	$("#stock").val("");
-	$("#stock_minimo").val("1.000");
+	$("#stock_minimo").val("1");
 	$("#idunidad").val("");
 	$("#idunidad").selectpicker('refresh');
 	$("#imagenmuestra").attr("src","");
@@ -100,6 +100,8 @@ function listar(){
 function guardaryeditar(e){
      e.preventDefault();//no se activara la accion predeterminada 
      $("#btnGuardar").prop("disabled",true);
+	 $("#stock").val(normalizarEnteroNoNegativo($("#stock").val(), 0));
+	 $("#stock_minimo").val(normalizarEnteroNoNegativo($("#stock_minimo").val(), 1));
      var formData=new FormData($("#formulario")[0]);
 
      $.ajax({
@@ -136,8 +138,8 @@ function mostrar(idarticulo){
 			$("#idunidad").selectpicker('refresh');
 			$("#codigo").val(data.codigo);
 			$("#nombre").val(data.nombre);
-			$("#stock").val(data.stock);
-			$("#stock_minimo").val(data.stock_minimo);
+			$("#stock").val(normalizarEnteroNoNegativo(data.stock, 0));
+			$("#stock_minimo").val(normalizarEnteroNoNegativo(data.stock_minimo, 1));
 			$("#descripcion").val(data.descripcion);
 			$("#imagenmuestra").show();
 			$("#imagenmuestra").attr("src","../files/articulos/"+data.imagen);
@@ -145,6 +147,18 @@ function mostrar(idarticulo){
 			$("#idarticulo").val(data.idarticulo);
 			generarbarcode(true);
 		})
+}
+
+function normalizarEnteroNoNegativo(valor, fallback){
+	var num = parseFloat(valor);
+	if (!isFinite(num)) {
+		return fallback;
+	}
+	num = Math.round(num);
+	if (num < 0) {
+		num = 0;
+	}
+	return num;
 }
 
 

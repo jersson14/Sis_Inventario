@@ -120,4 +120,4 @@ El script SQL **no se incluye en el repositorio** por seguridad. Solicitarlo al 
 
 ## Autor
 
-**Jersson Corilla** — Desarrollador web · soporte@2cloud.pe
+**Jersson Corilla** — Desarrollador web

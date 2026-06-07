@@ -42,13 +42,19 @@ function limpiar(){
 }
 
 //funcion mostrar formulario
-function mostrarform(flag){
+// uid: si se pasa, es edición (mostrar() carga sus permisos); si no, es nuevo usuario
+function mostrarform(flag, uid){
 	limpiar();
 	if(flag){
 		$("#listadoregistros").hide();
 		$("#formularioregistros").show();
 		$("#btnGuardar").prop("disabled",false);
 		$("#btnagregar").hide();
+		if (!uid) {
+			$.post("../ajax/usuario.php?op=permisos&id=", function(r){
+				$("#permisos").html(r);
+			});
+		}
 	}else{
 		$("#listadoregistros").show();
 		$("#formularioregistros").hide();
@@ -120,7 +126,7 @@ function mostrar(idusuario){
 		function(data,status)
 		{
 			data=JSON.parse(data);
-			mostrarform(true);
+			mostrarform(true, data.idusuario);
 
 			$("#nombre").val(data.nombre);
             $("#tipo_documento").val(data.tipo_documento);
@@ -131,7 +137,7 @@ function mostrar(idusuario){
             $("#email").val(data.email);
             $("#cargo").val(data.cargo);
             $("#login").val(data.login);
-            $("#clave").val(data.clave);
+            $("#clave").val("");
             $("#imagenmuestra").show();
             $("#imagenmuestra").attr("src","../files/usuarios/"+data.imagen);
             $("#imagenactual").val(data.imagen);

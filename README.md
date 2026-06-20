@@ -79,18 +79,68 @@ Sistema web de gestión empresarial (inventario, compras, ventas y reportes) des
 
 El sistema sigue un patrón **MVC desacoplado en capas**, sin framework, donde cada módulo de negocio (artículos, ventas, compras, etc.) replica la misma estructura de tres capas:
 
-```text
-Navegador (AdminLTE + jQuery + DataTables)
-        │  fetch/AJAX (JSON)
-        ▼
-┌─────────────────────────────────────────────┐
-│  vistas/*.php        → Capa de presentación  │
-│  ajax/*.php          → Capa de controlador   │
-│  modelos/*.php        → Capa de dominio/datos │
-└─────────────────────────────────────────────┘
-        │  mysqli (consultas preparadas)
-        ▼
-   MySQL / MariaDB (mi_tienda)
+```mermaid
+flowchart TB
+    subgraph CLIENTE["🖥️ CLIENTE — Navegador"]
+        direction LR
+        UI["AdminLTE / Bootstrap 3<br/>jQuery · DataTables · Chart.js"]
+    end
+
+    subgraph PRESENTACION["Capa de Presentación — vistas/"]
+        direction LR
+        V1["Escritorio"]
+        V2["Artículos / Ventas / Compras"]
+        V3["Clientes · Proveedores · Cuentas"]
+        V4["Usuarios · Empresa · Backup"]
+    end
+
+    subgraph CONTROLADOR["Capa de Controlador — ajax/"]
+        direction LR
+        A1["Endpoints JSON<br/>por módulo (14)"]
+        A2["Validación de entrada"]
+        A3["Control de permisos<br/>(Permiso.php)"]
+    end
+
+    subgraph DOMINIO["Capa de Dominio/Datos — modelos/"]
+        direction LR
+        M1["Reglas de negocio<br/>(stock, cálculos, saldos)"]
+        M2["Consultas preparadas<br/>(mysqli)"]
+    end
+
+    subgraph SOPORTE["Capas de soporte"]
+        direction LR
+        R["reportes/<br/>FPDF · Ticket HTML"]
+        C["config/<br/>Conexion.php · global.php"]
+    end
+
+    subgraph DATOS["💾 Persistencia"]
+        DB[("MySQL / MariaDB<br/>mi_tienda")]
+        FS["files/<br/>imágenes subidas"]
+    end
+
+    UI -- "HTTP (vistas)" --> PRESENTACION
+    PRESENTACION -- "fetch / AJAX (JSON)" --> CONTROLADOR
+    CONTROLADOR -- "invoca" --> DOMINIO
+    DOMINIO -- "consultas preparadas" --> DB
+    CONTROLADOR -. "genera" .-> R
+    R -- "lee datos" --> DOMINIO
+    CONTROLADOR -- "usa" --> C
+    DOMINIO -- "usa" --> C
+    DOMINIO -. "lee/escribe" .-> FS
+
+    classDef cliente fill:#1f2d3d,color:#fff,stroke:#0c151f,stroke-width:1px
+    classDef capa fill:#3c8dbc,color:#fff,stroke:#1f5c80,stroke-width:1px
+    classDef ctrl fill:#00a65a,color:#fff,stroke:#00723e,stroke-width:1px
+    classDef dom fill:#f39c12,color:#1f2d3d,stroke:#b9770e,stroke-width:1px
+    classDef sup fill:#605ca8,color:#fff,stroke:#3f3d6d,stroke-width:1px
+    classDef datos fill:#d81b60,color:#fff,stroke:#8e0e3d,stroke-width:1px
+
+    class UI cliente
+    class V1,V2,V3,V4 capa
+    class A1,A2,A3 ctrl
+    class M1,M2 dom
+    class R,C sup
+    class DB,FS datos
 ```
 
 - **Vistas** (`vistas/`): renderizan el HTML/AdminLTE y delegan toda interacción a llamadas AJAX, sin lógica de negocio embebida.

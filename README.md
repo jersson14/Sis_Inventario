@@ -42,6 +42,12 @@ Sistema web de gestión empresarial (inventario, compras, ventas y reportes) des
 
 ---
 
+## Capturas de pantalla
+
+> *Agregar imágenes del dashboard, módulo de ventas y reportes.*
+
+---
+
 ## Características principales
 
 - **Dashboard** con gráficos de ventas y compras por periodo (Chart.js)

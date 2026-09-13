@@ -1,13 +1,10 @@
-<?php 
-//activamos almacenamiento en el buffer
-ob_start();
-session_start();
-if (!isset($_SESSION['nombre'])) {
-  header("Location: login.html");
-}else{
-  
+<?php
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$tituloPagina = "Permisos";
+$iconoPagina = "fa-key";
 require 'header.php';
-if ($_SESSION['acceso']==1) {
+if (usuarioTienePermiso('acceso')) {
  ?>
     <div class="content-wrapper">
     <!-- Main content -->
@@ -53,9 +50,5 @@ if ($_SESSION['acceso']==1) {
 }
 require 'footer.php'
  ?>
- <script src="scripts/permiso.js"></script>
- <?php 
-}
-
-ob_end_flush();
-  ?>
+ <script src="scripts/permiso.js?v=<?php echo e(APP_VERSION); ?>"></script>
+ 

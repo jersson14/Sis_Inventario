@@ -1,122 +1,93 @@
 var tabla;
 
-//funcion que se ejecuta al inicio
 function init(){
-   mostrarform(false);
-   listar();
-
-   $("#formulario").on("submit",function(e){
-   	guardaryeditar(e);
-   })
+	mostrarform(false);
+	listar();
+	$("#formulario").on("submit", function(e){ guardaryeditar(e); });
+	if (window.appQueryParam && window.appQueryParam("nuevo") === "1") { mostrarform(true); }
 }
 
-//funcion limpiar
 function limpiar(){
-	$("#idcategoria").val("");
-	$("#nombre").val("");
-	$("#descripcion").val("");
+	$("#idcategoria, #nombre, #descripcion").val("");
+	$("#formTitulo").text("Nueva categoría");
 }
 
-//funcion mostrar formulario
 function mostrarform(flag){
 	limpiar();
-	if(flag){
+	if (flag) {
 		$("#listadoregistros").hide();
 		$("#formularioregistros").show();
-		$("#btnGuardar").prop("disabled",false);
+		$("#btnGuardar").prop("disabled", false);
 		$("#btnagregar").hide();
-	}else{
+		setTimeout(function(){ $("#nombre").focus(); }, 60);
+	} else {
 		$("#listadoregistros").show();
 		$("#formularioregistros").hide();
 		$("#btnagregar").show();
 	}
 }
 
-//cancelar form
-function cancelarform(){
-	limpiar();
-	mostrarform(false);
-}
+function cancelarform(){ limpiar(); mostrarform(false); }
 
-//funcion listar
 function listar(){
-	tabla=$('#tbllistado').dataTable({
-		"aProcessing": true,//activamos el procedimiento del datatable
-		"aServerSide": true,//paginacion y filrado realizados por el server
-		dom: 'Bfrtip',//definimos los elementos del control de la tabla
-		buttons: window.appDataTableButtons('Reporte de Categorias', true),
-		"ajax":
-		{
-			url:'../ajax/categoria.php?op=listar',
-			type: "get",
-			dataType : "json",
-			error:function(e){
-				console.log(e.responseText);
-			}
-		},
-		"bDestroy":true,
-		"iDisplayLength":10,//paginacion
-		"order":[[0,"desc"]]//ordenar (columna, orden)
+	tabla = $('#tbllistado').dataTable({
+		"aProcessing": true,
+		"aServerSide": true,
+		dom: 'Bfrtip',
+		buttons: window.appDataTableButtons('Reporte de Categorías', true),
+		"ajax": { url: '../ajax/categoria.php?op=listar', type: "get", dataType: "json", error: function(e){ console.log(e.responseText); } },
+		"bDestroy": true,
+		"iDisplayLength": 10,
+		"order": [[1, "asc"]],
+		"columnDefs": [{ "orderable": false, "targets": [0] }]
 	}).DataTable();
 }
-//funcion para guardaryeditar
+
 function guardaryeditar(e){
-     e.preventDefault();//no se activara la accion predeterminada 
-     $("#btnGuardar").prop("disabled",true);
-     var formData=new FormData($("#formulario")[0]);
-
-     $.ajax({
-     	url: "../ajax/categoria.php?op=guardaryeditar",
-     	type: "POST",
-     	data: formData,
-     	contentType: false,
-     	processData: false,
-
-     	success: function(datos){
-     		bootbox.alert(datos);
-     		mostrarform(false);
-     		tabla.ajax.reload();
-     	}
-     });
-
-     limpiar();
+	e.preventDefault();
+	if (!$.trim($("#nombre").val())) { appNotify("warning", "El nombre es obligatorio."); return; }
+	appSetLoading("#btnGuardar", true);
+	$.ajax({
+		url: "../ajax/categoria.php?op=guardaryeditar",
+		type: "POST",
+		data: new FormData($("#formulario")[0]),
+		contentType: false,
+		processData: false,
+		success: function(datos){
+			appSetLoading("#btnGuardar", false);
+			var txt = $.trim(datos || "");
+			appNotifyFromResponse(txt);
+			if (txt.toLowerCase().indexOf("correctamente") !== -1) {
+				mostrarform(false);
+				tabla.ajax.reload(null, false);
+			}
+		},
+		error: function(){ appSetLoading("#btnGuardar", false); }
+	});
 }
 
 function mostrar(idcategoria){
-	$.post("../ajax/categoria.php?op=mostrar",{idcategoria : idcategoria},
-		function(data,status)
-		{
-			data=JSON.parse(data);
-			mostrarform(true);
-
-			$("#nombre").val(data.nombre);
-			$("#descripcion").val(data.descripcion);
-			$("#idcategoria").val(data.idcategoria);
-		})
+	$.post("../ajax/categoria.php?op=mostrar", { idcategoria: idcategoria }, function(data){
+		data = appParseJson(data, null);
+		if (!data) { appNotify("error", "No se pudo cargar la categoría."); return; }
+		mostrarform(true);
+		$("#formTitulo").text("Editar categoría");
+		$("#nombre").val(data.nombre);
+		$("#descripcion").val(data.descripcion);
+		$("#idcategoria").val(data.idcategoria);
+	});
 }
 
-
-//funcion para desactivar
 function desactivar(idcategoria){
-	bootbox.confirm("¿Esta seguro de desactivar este dato?", function(result){
-		if (result) {
-			$.post("../ajax/categoria.php?op=desactivar", {idcategoria : idcategoria}, function(e){
-				bootbox.alert(e);
-				tabla.ajax.reload();
-			});
-		}
-	})
+	appConfirm("¿Desactivar esta categoría? Sus artículos se mantienen, pero no podrás asignarla a nuevos.", function(){
+		$.post("../ajax/categoria.php?op=desactivar", { idcategoria: idcategoria }, function(e){ appNotifyFromResponse(e); tabla.ajax.reload(null, false); });
+	}, { titulo: "Desactivar categoría", ok: "Sí, desactivar", tipo: "warning" });
 }
 
 function activar(idcategoria){
-	bootbox.confirm("¿Esta seguro de activar este dato?" , function(result){
-		if (result) {
-			$.post("../ajax/categoria.php?op=activar" , {idcategoria : idcategoria}, function(e){
-				bootbox.alert(e);
-				tabla.ajax.reload();
-			});
-		}
-	})
+	appConfirm("¿Activar esta categoría?", function(){
+		$.post("../ajax/categoria.php?op=activar", { idcategoria: idcategoria }, function(e){ appNotifyFromResponse(e); tabla.ajax.reload(null, false); });
+	}, { titulo: "Activar categoría", ok: "Sí, activar", tipo: "success" });
 }
 
 init();

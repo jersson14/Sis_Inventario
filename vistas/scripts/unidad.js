@@ -3,110 +3,91 @@ var tabla;
 function init(){
 	mostrarform(false);
 	listar();
-
-	$("#formulario").on("submit",function(e){
-		guardaryeditar(e);
-	});
+	$("#formulario").on("submit", function(e){ guardaryeditar(e); });
 }
 
 function limpiar(){
-	$("#idunidad").val("");
-	$("#nombre").val("");
-	$("#abreviatura").val("");
-	$("#descripcion").val("");
+	$("#idunidad, #nombre, #abreviatura, #descripcion").val("");
+	$("#formTitulo").text("Nueva unidad");
 }
 
 function mostrarform(flag){
 	limpiar();
-	if(flag){
+	if (flag) {
 		$("#listadoregistros").hide();
 		$("#formularioregistros").show();
-		$("#btnGuardar").prop("disabled",false);
-	}else{
+		$("#btnGuardar").prop("disabled", false);
+		$("#btnagregar").hide();
+		setTimeout(function(){ $("#nombre").focus(); }, 60);
+	} else {
 		$("#listadoregistros").show();
 		$("#formularioregistros").hide();
+		$("#btnagregar").show();
 	}
 }
 
-function cancelarform(){
-	limpiar();
-	mostrarform(false);
-}
+function cancelarform(){ limpiar(); mostrarform(false); }
 
 function listar(){
-	tabla=$('#tbllistado').dataTable({
+	tabla = $('#tbllistado').dataTable({
 		"aProcessing": true,
 		"aServerSide": true,
 		dom: 'Bfrtip',
-		buttons: window.appDataTableButtons('Reporte de Unidades de Medida', true),
-		"ajax":
-		{
-			url:'../ajax/unidad.php?op=listar',
-			type: "get",
-			dataType : "json",
-			error:function(e){
-				console.log(e.responseText);
-			}
-		},
-		"bDestroy":true,
-		"iDisplayLength":10,
-		"order":[[1,"asc"]]
+		buttons: window.appDataTableButtons('Unidades de medida', true),
+		"ajax": { url: '../ajax/unidad.php?op=listar', type: "get", dataType: "json", error: function(e){ console.log(e.responseText); } },
+		"bDestroy": true,
+		"iDisplayLength": 10,
+		"order": [[1, "asc"]],
+		"columnDefs": [{ "orderable": false, "targets": [0] }]
 	}).DataTable();
 }
 
 function guardaryeditar(e){
 	e.preventDefault();
-	$("#btnGuardar").prop("disabled",true);
-	var formData=new FormData($("#formulario")[0]);
-
+	if (!$.trim($("#nombre").val()) || !$.trim($("#abreviatura").val())) { appNotify("warning", "Nombre y abreviatura son obligatorios."); return; }
+	appSetLoading("#btnGuardar", true);
 	$.ajax({
 		url: "../ajax/unidad.php?op=guardaryeditar",
 		type: "POST",
-		data: formData,
+		data: new FormData($("#formulario")[0]),
 		contentType: false,
 		processData: false,
 		success: function(datos){
-			bootbox.alert(datos);
-			mostrarform(false);
-			tabla.ajax.reload();
-		}
+			appSetLoading("#btnGuardar", false);
+			var txt = $.trim(datos || "");
+			appNotifyFromResponse(txt);
+			if (txt.toLowerCase().indexOf("correctamente") !== -1) {
+				mostrarform(false);
+				tabla.ajax.reload(null, false);
+			}
+		},
+		error: function(){ appSetLoading("#btnGuardar", false); }
 	});
-
-	limpiar();
 }
 
 function mostrar(idunidad){
-	$.post("../ajax/unidad.php?op=mostrar",{idunidad : idunidad}, function(data){
-		data=JSON.parse(data);
+	$.post("../ajax/unidad.php?op=mostrar", { idunidad: idunidad }, function(data){
+		data = appParseJson(data, null);
+		if (!data) { appNotify("error", "No se pudo cargar la unidad."); return; }
 		mostrarform(true);
-		$("#idunidad").val(data.idunidad);
+		$("#formTitulo").text("Editar unidad");
 		$("#nombre").val(data.nombre);
 		$("#abreviatura").val(data.abreviatura);
 		$("#descripcion").val(data.descripcion);
+		$("#idunidad").val(data.idunidad);
 	});
 }
 
 function desactivar(idunidad){
-	bootbox.confirm("¿Esta seguro de desactivar esta unidad?", function(result){
-		if (result) {
-			$.post("../ajax/unidad.php?op=desactivar", {idunidad : idunidad}, function(e){
-				bootbox.alert(e);
-				tabla.ajax.reload();
-			});
-		}
-	});
+	appConfirm("¿Desactivar esta unidad de medida?", function(){
+		$.post("../ajax/unidad.php?op=desactivar", { idunidad: idunidad }, function(e){ appNotifyFromResponse(e); tabla.ajax.reload(null, false); });
+	}, { titulo: "Desactivar unidad", ok: "Sí, desactivar", tipo: "warning" });
 }
 
 function activar(idunidad){
-	bootbox.confirm("¿Esta seguro de activar esta unidad?", function(result){
-		if (result) {
-			$.post("../ajax/unidad.php?op=activar", {idunidad : idunidad}, function(e){
-				bootbox.alert(e);
-				tabla.ajax.reload();
-			});
-		}
-	});
+	appConfirm("¿Activar esta unidad de medida?", function(){
+		$.post("../ajax/unidad.php?op=activar", { idunidad: idunidad }, function(e){ appNotifyFromResponse(e); tabla.ajax.reload(null, false); });
+	}, { titulo: "Activar unidad", ok: "Sí, activar", tipo: "success" });
 }
 
 init();
-

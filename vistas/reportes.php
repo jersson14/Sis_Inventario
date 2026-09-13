@@ -1,13 +1,11 @@
 <?php
-ob_start();
-session_start();
-if (!isset($_SESSION['nombre'])) {
-  header("Location: login.html");
-} else {
-
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$tituloPagina = "Centro de reportes";
+$iconoPagina = "fa-bar-chart";
 require 'header.php';
 
-if ($_SESSION['consultac']==1 || $_SESSION['consultav']==1) {
+if (usuarioTienePermiso('consultac') || usuarioTienePermiso('consultav')) {
 ?>
 <div class="content-wrapper">
   <section class="content">
@@ -219,8 +217,4 @@ if ($_SESSION['consultac']==1 || $_SESSION['consultav']==1) {
 
 require 'footer.php';
 ?>
-<script src="scripts/reportes.js?v=20260325c"></script>
-<?php
-}
-ob_end_flush();
-?>
+<script src="scripts/reportes.js?v=<?php echo e(APP_VERSION); ?>"></script>

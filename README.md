@@ -1,177 +1,81 @@
-# Sistema de Gestión Comercial — Mi Tienda
+# Mi Tienda — Sistema de inventario, ventas y caja para PyMEs
 
-Sistema web de gestión empresarial (inventario, compras, ventas y reportes) desarrollado en **PHP puro sin frameworks**, siguiendo una arquitectura MVC propia. Orientado a pequeñas y medianas empresas que necesitan controlar su stock, facturación y cuentas desde un solo panel.
+Sistema web de gestión comercial en **PHP 8 puro + MySQL/MariaDB** (sin framework), pensado para tiendas, ferreterías, farmacias, minimarkets y distribuidoras. Controla inventario, compras, ventas al contado y al crédito, caja diaria, cuentas por cobrar/pagar, utilidad real y reportes desde un solo panel, con seguridad de nivel producción.
 
-> 💼 Proyecto de portafolio desarrollado y mantenido por **Jersson Corilla**. Código mostrado con fines de demostración profesional — ver [Derechos de autor](#derechos-de-autor--licencia).
+> 💼 Desarrollado y mantenido por **Jersson Corilla**. Ver [Derechos de autor](#derechos-de-autor--licencia).
 
 ---
 
-## Métricas del proyecto
+## ¿Qué incluye? (v2.0)
 
-| Métrica | Valor |
+| Módulo | Qué hace |
 | --- | --- |
-| Líneas de código PHP (sin libs) | ~9,430 LOC |
-| Archivos PHP propios | 59 |
-| Módulos funcionales | 13 |
-| Endpoints AJAX (capa controlador) | 14 |
-| Modelos de negocio | 14 |
-| Vistas | 21 |
-| Scripts JS en frontend | 66 |
-| Migraciones SQL versionadas | 2 |
-| Tiempo de desarrollo activo | ~3 meses (mar–jun 2026) |
-| Commits en control de versiones | 12+ |
+| **Landing page** | Página pública del producto con funciones, planes, FAQ y contacto (WhatsApp / correo) |
+| **Escritorio** | KPIs de ventas, compras, utilidad y margen; alertas (agotados, bajo mínimo, cuentas vencidas, caja); gráficos por día, mes, hora, medio de pago, vendedor, categoría y top productos |
+| **Punto de venta** | Lector de código de barras, catálogo con búsqueda, contado o crédito, medios de pago (efectivo, tarjeta, transferencia, Yape, Plin), correlativo automático, impresión de ticket térmico y PDF A4, atajos de teclado |
+| **Compras / Ingresos** | Registro por proveedor, actualiza stock y precios de referencia, contado o crédito |
+| **Artículos** | Categorías, unidades de medida, stock mínimo, precios de compra/venta con margen, imagen, código de barras imprimible |
+| **Ajustes de inventario** | Entradas y salidas manuales con motivo (conteo, merma, vencimiento, devoluciones, uso interno…) integradas al kardex |
+| **Kardex y alertas** | Kardex por artículo (ingresos + ventas + ajustes), stock crítico, sin movimiento, utilidad por producto/categoría/vendedor, compras sugeridas |
+| **Caja diaria** | Apertura, movimientos automáticos por ventas/cobros/compras/pagos, resumen por medio de pago, cierre con arqueo y diferencia, historial e impresión |
+| **Cuentas por cobrar / pagar** | Generadas automáticamente en ventas/compras al crédito, abonos con historial, vencimientos, anulación |
+| **Clientes y proveedores** | Directorio con baja lógica (se conserva el historial) y alta rápida desde ventas/compras |
+| **Reportes** | Centro de reportes (utilidad, top productos, stock crítico, kardex valorizado, clientes/proveedores), compras por fecha, ventas por cliente; exportación Excel/CSV/PDF |
+| **Usuarios y permisos** | 15 permisos por módulo, perfil propio con cambio de contraseña |
+| **Empresa y marca** | Logo, colores, series de comprobantes, impuesto, moneda (16 monedas), mensaje del ticket |
+| **Backup** | Copias completas desde el panel, descarga, restauración con copia previa automática |
+| **Auditoría** | Registro de acciones por usuario, módulo y fecha; intentos de inicio de sesión |
+| **Etiquetas** | Impresión masiva de etiquetas con código de barras (3 tamaños, con precio y marca) |
+| **Instalador y demo** | `instalar.php` crea la BD y el administrador en un minuto; datos de demostración opcionales; prueba de humo automatizada |
 
-*Conteos obtenidos directamente del repositorio (`find`, `wc -l`, `git log`) — no son estimaciones.*
-
-### Cobertura funcional por módulo (estimado)
-
-> Los porcentajes siguientes son una **estimación cualitativa** de madurez funcional (CRUD completo, validaciones, permisos y reportes asociados), no una métrica de cobertura de pruebas automatizadas — el proyecto aún no cuenta con suite de tests.
-
-| Módulo | Madurez estimada | Detalle |
-| --- | --- | --- |
-| Ventas / Facturación | 95% | Boleta, factura, ticket, series de comprobante |
-| Compras / Ingresos | 90% | Registro por proveedor, actualización de stock |
-| Artículos / Inventario | 90% | CRUD, categorías, unidades, imagen, stock |
-| Usuarios y permisos | 85% | Permisos granulares por módulo |
-| Reportes (PDF/Excel) | 85% | FPDF + exportación DataTables Buttons |
-| Cuentas por cobrar/pagar | 80% | Seguimiento de saldos y vencimientos |
-| Dashboard / Escritorio | 80% | Gráficos Chart.js por periodo |
-| Configuración de empresa | 75% | Logo, moneda, impuesto, series |
-| Backup de base de datos | 70% | Exportación manual desde el panel |
-| Pruebas automatizadas | 0% | Pendiente — sin tests unitarios/integración aún |
+Fuera de alcance: facturación electrónica (SUNAT).
 
 ---
 
-## Capturas de pantalla
+## Seguridad
 
-> *Agregar imágenes del dashboard, módulo de ventas y reportes.*
-
----
-
-## Características principales
-
-- **Dashboard** con gráficos de ventas y compras por periodo (Chart.js)
-- **Gestión de artículos** con categorías, unidades de medida e imagen de producto
-- **Compras e ingresos** con detalle por proveedor y fecha
-- **Ventas** con emisión de boleta, factura y ticket de caja imprimible
-- **Clientes y proveedores** con historial de transacciones
-- **Reportes en PDF** (FPDF) y exportación a Excel/CSV (DataTables Buttons)
-- **Cuentas por cobrar y por pagar**
-- **Gestión de usuarios y permisos** por módulo (escritorio, almacén, compras, ventas, acceso)
-- **Configuración de empresa**: logo, colores, series de comprobantes, moneda e impuesto
-- **Backup de base de datos** desde el panel
-- **Moneda configurable**: S/, $, € y otras
+- Consultas preparadas (mysqli) en el 100 % de los modelos.
+- Autenticación y permisos verificados en **todos** los endpoints AJAX y vistas.
+- Contraseñas con **bcrypt** (`password_hash`); los hashes SHA256 heredados se migran solos en el primer login.
+- Bloqueo por intentos fallidos (5 intentos / 15 min, por usuario e IP).
+- Protección **CSRF** (header `X-CSRF-Token`) en toda escritura.
+- Sesión endurecida: cookies HttpOnly + SameSite, modo estricto, expiración por inactividad y regeneración de id.
+- Cabeceras HTTP de seguridad, `.htaccess` que bloquea `config/`, `modelos/`, `migrations/`, `logs/` y la ejecución de PHP en `files/`.
+- Validación real de imágenes subidas (MIME + `getimagesize` + tamaño) y nombres aleatorios.
+- Totales de venta/compra recalculados en servidor; transacciones con bloqueo de filas para stock y correlativos.
+- Auditoría de acciones y registro de errores en `logs/app.log`.
 
 ---
 
 ## Tecnologías
 
-| Capa           | Herramientas                                        |
-| -------------- | --------------------------------------------------- |
-| Backend        | PHP 8.x, MySQL / MariaDB, mysqli nativo             |
-| Frontend       | AdminLTE, Bootstrap 3, jQuery, DataTables, Chart.js |
-| Reportes       | FPDF, ticket HTML imprimible                        |
-| Arquitectura   | MVC simple: `modelos/` · `ajax/` · `vistas/`        |
+| Capa | Herramientas |
+| --- | --- |
+| Backend | PHP 8.1+ (probado en 8.2), MySQL 5.7+ / MariaDB 10.4+, mysqli con sentencias preparadas |
+| Frontend | AdminLTE 2, Bootstrap 3, jQuery, DataTables (+Buttons), Chart.js, Bootstrap-select, JsBarcode |
+| Reportes | FPDF (PDF A4), ticket HTML para impresora térmica |
+| Arquitectura | MVC propio: `vistas/` · `ajax/` (controladores) · `modelos/` · `config/` |
 
 ---
 
-## Arquitectura
-
-El sistema sigue un patrón **MVC desacoplado en capas**, sin framework, donde cada módulo de negocio (artículos, ventas, compras, etc.) replica la misma estructura de tres capas:
-
-```mermaid
-flowchart TB
-    subgraph CLIENTE["🖥️ CLIENTE — Navegador"]
-        direction LR
-        UI["AdminLTE / Bootstrap 3<br/>jQuery · DataTables · Chart.js"]
-    end
-
-    subgraph PRESENTACION["Capa de Presentación — vistas/"]
-        direction LR
-        V1["Escritorio"]
-        V2["Artículos / Ventas / Compras"]
-        V3["Clientes · Proveedores · Cuentas"]
-        V4["Usuarios · Empresa · Backup"]
-    end
-
-    subgraph CONTROLADOR["Capa de Controlador — ajax/"]
-        direction LR
-        A1["Endpoints JSON<br/>por módulo (14)"]
-        A2["Validación de entrada"]
-        A3["Control de permisos<br/>(Permiso.php)"]
-    end
-
-    subgraph DOMINIO["Capa de Dominio/Datos — modelos/"]
-        direction LR
-        M1["Reglas de negocio<br/>(stock, cálculos, saldos)"]
-        M2["Consultas preparadas<br/>(mysqli)"]
-    end
-
-    subgraph SOPORTE["Capas de soporte"]
-        direction LR
-        R["reportes/<br/>FPDF · Ticket HTML"]
-        C["config/<br/>Conexion.php · global.php"]
-    end
-
-    subgraph DATOS["💾 Persistencia"]
-        DB[("MySQL / MariaDB<br/>mi_tienda")]
-        FS["files/<br/>imágenes subidas"]
-    end
-
-    UI -- "HTTP (vistas)" --> PRESENTACION
-    PRESENTACION -- "fetch / AJAX (JSON)" --> CONTROLADOR
-    CONTROLADOR -- "invoca" --> DOMINIO
-    DOMINIO -- "consultas preparadas" --> DB
-    CONTROLADOR -. "genera" .-> R
-    R -- "lee datos" --> DOMINIO
-    CONTROLADOR -- "usa" --> C
-    DOMINIO -- "usa" --> C
-    DOMINIO -. "lee/escribe" .-> FS
-
-    classDef cliente fill:#1f2d3d,color:#fff,stroke:#0c151f,stroke-width:1px
-    classDef capa fill:#3c8dbc,color:#fff,stroke:#1f5c80,stroke-width:1px
-    classDef ctrl fill:#00a65a,color:#fff,stroke:#00723e,stroke-width:1px
-    classDef dom fill:#f39c12,color:#1f2d3d,stroke:#b9770e,stroke-width:1px
-    classDef sup fill:#605ca8,color:#fff,stroke:#3f3d6d,stroke-width:1px
-    classDef datos fill:#d81b60,color:#fff,stroke:#8e0e3d,stroke-width:1px
-
-    class UI cliente
-    class V1,V2,V3,V4 capa
-    class A1,A2,A3 ctrl
-    class M1,M2 dom
-    class R,C sup
-    class DB,FS datos
-```
-
-- **Vistas** (`vistas/`): renderizan el HTML/AdminLTE y delegan toda interacción a llamadas AJAX, sin lógica de negocio embebida.
-- **Controladores AJAX** (`ajax/`): un endpoint por módulo, reciben la petición, validan entrada y delegan al modelo correspondiente.
-- **Modelos** (`modelos/`): encapsulan las consultas SQL y reglas de negocio (stock, permisos, cálculos de cuentas).
-- **Reportes** (`reportes/`): generación de PDF (FPDF) y tickets imprimibles a partir de los datos del modelo.
-- **Config** (`config/`): conexión única a base de datos (`Conexion.php`) y constantes globales (`global.php`).
-- **Migrations** (`migrations/`): cambios de esquema versionados de forma incremental, en lugar de un dump único.
-
-### Estructura del proyecto
+## Estructura del proyecto
 
 ```text
 mi_tienda/
-├── ajax/           # Controladores — endpoints JSON/HTML por módulo
-├── config/         # Conexión (mysqli) y configuración global
-├── files/          # Archivos subidos (imágenes, empresa) — fuera de git
-├── fpdf181/        # Librería de terceros para generación de PDF
-├── migrations/     # Scripts SQL incrementales versionados
-├── modelos/        # Capa de dominio: lógica de negocio y consultas
-├── public/         # Assets de UI (AdminLTE, CSS, JS, imágenes)
-├── reportes/       # Generación de reportes PDF y ticket de impresión
-├── vistas/         # Capa de presentación
-└── index.php       # Punto de entrada / enrutador de vistas
+├── index.php            # Landing page pública
+├── ajax/                # Controladores (un archivo por módulo, op=...)
+├── config/              # global.php, Conexion.php (BD), seguridad.php (sesión, CSRF, permisos, auditoría)
+├── modelos/             # Clases de dominio con SQL preparado
+├── vistas/              # Páginas del panel + scripts/ (JS por módulo)
+├── reportes/            # PDF (FPDF) y ticket
+├── migrations/          # Cambios de esquema versionados e idempotentes
+├── scripts/migrar.php   # Aplica migraciones pendientes (CLI)
+├── public/              # CSS/JS/imagenes (custom-theme.css = tema propio)
+├── files/               # Subidas (articulos, usuarios, empresa) y backups — no versionado
+└── logs/                # app.log — no versionado
 ```
 
-### Decisiones de diseño relevantes
-
-- **Sin ORM ni framework**: control total sobre las consultas SQL, pensado para entornos de hosting compartido típicos de PyMEs.
-- **mysqli con consultas preparadas**: para mitigar inyección SQL en los modelos.
-- **Permisos por módulo**: cada usuario tiene acceso granular (`Permiso.php`) a escritorio, almacén, compras, ventas y administración.
-- **Migraciones incrementales** en lugar de exportar el `.sql` completo: el dump de base de datos no se versiona en git (ver `.gitignore`), solo los cambios de esquema.
+Guía técnica para desarrolladores y asistentes de IA: [`CLAUDE.md`](CLAUDE.md). Roadmap: [`PLAN_DE_TRABAJO.md`](PLAN_DE_TRABAJO.md).
 
 ---
 
@@ -179,62 +83,70 @@ mi_tienda/
 
 ### Requisitos
 
-- PHP >= 8.1 con extensiones `mysqli`, `mbstring`, `gd`
-- MySQL >= 5.7 o MariaDB equivalente
-- Apache (recomendado: XAMPP)
+- PHP >= 8.1 con extensiones `mysqli`, `mbstring`, `gd`, `fileinfo`
+- MySQL >= 5.7 o MariaDB >= 10.4
+- Apache con `mod_rewrite`/`AllowOverride All` (XAMPP recomendado) o el servidor embebido de PHP para pruebas
 
-### Pasos
+### Instalación rápida (instalador web)
 
-1. Clonar el repositorio en `C:\xampp\htdocs\mi_tienda`
-1. Crear la base de datos `mi_tienda` en MySQL
-1. Importar el script SQL (ver sección siguiente)
-1. Editar la configuración de conexión:
+1. Copia el proyecto a la carpeta pública del servidor.
+2. Abre `http://tu-servidor/mi_tienda/instalar.php`, completa datos de MySQL y del administrador (opcional: cargar datos de demostración).
+3. Elimina `instalar.php`. Listo: entra por `vistas/login.php`.
+
+Guía completa (manual, actualización desde v1, cPanel, VPS): [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md).
+
+### Instalación manual
+
+1. Clonar el repositorio en `C:\xampp\htdocs\mi_tienda` (o la carpeta pública de tu servidor).
+2. Crear la base de datos `mi_tienda` e importar `scripts/sql/esquema_base.sql` (y opcionalmente `scripts/sql/demo.sql`).
+3. Copiar `config/local.example.php` a `config/local.php` y ajustar credenciales de BD, nombre del producto y `APP_ENV`:
 
    ```php
-   // config/global.php
-   define("DB_HOST",     "localhost");
-   define("DB_NAME",     "mi_tienda");
-   define("DB_USERNAME", "root");
-   define("DB_PASSWORD", "");
-   define("DB_ENCODE",   "utf8");
+   return array(
+     'DB_HOST' => 'localhost', 'DB_NAME' => 'mi_tienda', 'DB_USERNAME' => 'root', 'DB_PASSWORD' => '',
+     'PRO_NOMBRE' => 'Mi Tienda',
+     'APP_ENV' => 'production',   // oculta errores y activa logs
+   );
    ```
 
-1. Levantar Apache y MySQL, luego abrir [http://localhost/mi_tienda](http://localhost/mi_tienda)
+4. Aplicar migraciones:
 
-### Base de datos
+   ```bash
+   php scripts/migrar.php --estado
+   php scripts/migrar.php
+   ```
 
-El script SQL **no se incluye en el repositorio** por seguridad. Solicitarlo al autor o generarlo desde el módulo de **Backup** del propio sistema.
+5. Dar permisos de escritura a `files/` y `logs/`.
+6. Abrir `http://localhost/mi_tienda/` (landing) → **Ingresar** → `vistas/login.php`.
+
+Para pruebas sin Apache: `php -S localhost:8080` desde la raíz del proyecto.
+
+### Primer usuario
+
+Si la base está vacía, crea el administrador por SQL (la clave se migrará a bcrypt en el primer login):
+
+```sql
+INSERT INTO usuario(nombre,tipo_documento,num_documento,login,clave,imagen,condicion)
+VALUES('Administrador','DNI','00000000','admin',SHA2('Admin1234',256),'',1);
+INSERT INTO usuario_permiso(idusuario,idpermiso) SELECT LAST_INSERT_ID(), idpermiso FROM permiso;
+```
+
+Cambia la contraseña desde **Mi perfil** tras ingresar.
 
 ---
 
-## Credenciales de demo
+## Despliegue en producción (resumen)
 
-| Campo   | Valor        |
-| ------- | ------------ |
-| Usuario | `jersson123` |
-| Clave   | `12345`      |
-
-> Cambiar las credenciales antes de cualquier despliegue en producción.
+- `APP_ENV = 'production'` en `config/local.php`.
+- HTTPS obligatorio (las cookies de sesión se marcan `Secure` automáticamente).
+- Verificar que `config/`, `modelos/`, `migrations/` y `logs/` devuelvan 403 desde el navegador.
+- Programar backups (módulo Backup o `mysqldump`) y guardarlos fuera del servidor.
 
 ---
 
-## Módulos del sistema
+## Capturas de pantalla
 
-| Módulo      | Descripción                                        |
-| ----------- | -------------------------------------------------- |
-| Escritorio  | Dashboard con métricas y gráficos                  |
-| Artículos   | CRUD de productos con stock e imagen               |
-| Categorías  | Clasificación de artículos                         |
-| Unidades    | Unidades de medida configurables                   |
-| Proveedores | Gestión de proveedores                             |
-| Clientes    | Gestión de clientes                                |
-| Compras     | Registro de ingresos de mercadería                 |
-| Ventas      | Emisión de comprobantes y ticket                   |
-| Consultas   | Reportes por fecha, cliente y proveedor            |
-| Cuentas     | Cuentas por cobrar y por pagar                     |
-| Usuarios    | Gestión de usuarios y permisos por módulo          |
-| Empresa     | Configuración de marca, moneda e impuesto          |
-| Backup      | Exportación de base de datos                       |
+> *Pendiente: agregar capturas de landing, escritorio, punto de venta y caja.*
 
 ---
 
@@ -242,22 +154,12 @@ El script SQL **no se incluye en el repositorio** por seguridad. Solicitarlo al 
 
 Copyright © 2026 **Jersson Jorge Corilla Miranda**. Todos los derechos reservados.
 
-Este repositorio se publica con **fines exclusivamente de portafolio y demostración profesional**. Queda permitido:
+Este repositorio se publica con **fines de portafolio y demostración profesional**. Queda permitido visualizar y revisar el código como referencia técnica. No está permitido, sin autorización expresa y por escrito del autor, usar el software en producción o con fines comerciales, redistribuirlo, sublicenciarlo o revenderlo, ni eliminar este aviso.
 
-- Visualizar y revisar el código como referencia técnica o muestra de trabajo.
+Las librerías de terceros incluidas (FPDF, AdminLTE, Bootstrap, jQuery, DataTables, Chart.js, JsBarcode) conservan sus licencias originales.
 
-No está permitido, sin autorización expresa y por escrito del autor:
-
-- Usar este software, en todo o en parte, en un entorno de producción o comercial.
-- Redistribuir, sublicenciar o revender el código fuente.
-- Eliminar o modificar este aviso de derechos de autor en copias del proyecto.
-
-Las librerías de terceros incluidas (FPDF, AdminLTE, Bootstrap, jQuery, DataTables, Chart.js) conservan sus propias licencias originales.
-
-Para solicitar autorización de uso, licenciamiento comercial o consultas sobre el proyecto, contactar al autor.
+Para licenciamiento comercial, demos o consultas: contactar al autor.
 
 ## Autor
 
 **Jersson Jorge Corilla Miranda** — Desarrollador web full-stack
-
-

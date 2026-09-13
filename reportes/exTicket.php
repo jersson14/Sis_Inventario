@@ -1,18 +1,18 @@
 <?php
 ob_start();
-if (strlen(session_id()) < 1) {
-  session_start();
-}
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$idReporte = enteroSeguro(isset($_GET['id']) ? $_GET['id'] : 0);
 
 if (!isset($_SESSION['nombre'])) {
   echo "Debe ingresar al sistema correctamente para visualizar el reporte";
 } else {
-  if ($_SESSION['ventas'] == 1) {
+  if (usuarioTienePermiso('ventas')) {
     require_once "../modelos/Venta.php";
     require_once "../modelos/Empresa.php";
 
     $venta = new Venta();
-    $rspta = $venta->ventacabecera($_GET["id"]);
+    $rspta = $venta->ventacabecera($idReporte);
     $reg = $rspta->fetch_object();
 
     if (!$reg) {
@@ -52,9 +52,6 @@ if (!isset($_SESSION['nombre'])) {
     $base = $impuesto > 0 ? $total / (1 + ($impuesto / 100)) : $total;
     $igv = $total - $base;
 
-    function e($value) {
-      return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
-    }
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -100,7 +97,7 @@ if (!isset($_SESSION['nombre'])) {
         </thead>
         <tbody>
           <?php
-          $rsptad = $venta->ventadetalles($_GET["id"]);
+          $rsptad = $venta->ventadetalles($idReporte);
           $cantidadTotal = 0.0;
           while ($regd = $rsptad->fetch_object()) {
             $cantidadTotal += (float)$regd->cantidad;
@@ -123,7 +120,7 @@ if (!isset($_SESSION['nombre'])) {
       <p class="info-line" style="margin-top:8px;"><strong>Items:</strong> <?php echo number_format($cantidadTotal, 0); ?></p>
 
       <div class="ticket-foot">
-        <p>Gracias por su compra.</p>
+        <p><?php echo e(!empty($cfgEmpresa["mensaje_ticket"]) ? $cfgEmpresa["mensaje_ticket"] : "Gracias por su compra."); ?></p>
         <p>Este comprobante fue generado por el sistema.</p>
       </div>
     </div>

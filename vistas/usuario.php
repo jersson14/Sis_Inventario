@@ -1,147 +1,133 @@
-<?php 
-//activamos almacenamiento en el buffer
-ob_start();
-session_start();
-if (!isset($_SESSION['nombre'])) {
-  header("Location: login.html");
-}else{
-
-require 'header.php';
-
+<?php
+require_once "../config/seguridad.php";
+requiereLogin(false);
 $modoPerfil = (isset($_GET['perfil']) && $_GET['perfil'] == '1');
 $idPerfilSolicitado = isset($_GET['idusuario']) ? (int)$_GET['idusuario'] : 0;
-$idSesion = isset($_SESSION['idusuario']) ? (int)$_SESSION['idusuario'] : 0;
+$idSesion = (int)$_SESSION['idusuario'];
 $perfilPropio = $modoPerfil && ($idPerfilSolicitado === $idSesion);
-
-if ($_SESSION['acceso']==1 || $perfilPropio) {
- ?>
-    <div class="content-wrapper">
-    <!-- Main content -->
-    <section class="content">
-
-      <!-- Default box -->
-      <div class="row">
-        <div class="col-md-12">
-      <div class="box">
-<div class="box-header with-border">
-  <h1 class="box-title"><?php echo $perfilPropio ? 'Mi Perfil' : 'Usuarios'; ?> <button class="btn btn-success" onclick="mostrarform(true)" id="btnagregar"><i class="fa fa-plus-circle"></i>Agregar</button></h1>
-  <div class="box-tools pull-right">
-    
-  </div>
-</div>
-<!--box-header-->
-<!--centro-->
-<div class="panel-body table-responsive" id="listadoregistros">
-  <table id="tbllistado" class="table table-striped table-bordered table-condensed table-hover">
-    <thead>
-      <th>Opciones</th>
-      <th>Nombre</th>
-      <th>Documento</th>
-      <th>Numero Documento</th>
-      <th>Telefono</th>
-      <th>Email</th>
-      <th>Login</th>
-      <th>Foto</th>
-      <th>Estado</th>
-    </thead>
-    <tbody>
-    </tbody>
-    <tfoot>
-      <th>Opciones</th>
-      <th>Nombre</th>
-      <th>Documento</th>
-      <th>Numero Documento</th>
-      <th>Telefono</th>
-      <th>Email</th>
-      <th>Login</th>
-      <th>Foto</th>
-      <th>Estado</th>
-    </tfoot>   
-  </table>
-</div>
-<div class="panel-body" id="formularioregistros">
-  <form action="" name="formulario" id="formulario" method="POST">
-    <div class="form-group col-lg-12 col-md-12 col-xs-12">
-      <label for="">Nombre(*):</label>
-      <input class="form-control" type="hidden" name="idusuario" id="idusuario">
-      <input class="form-control" type="text" name="nombre" id="nombre" maxlength="100" placeholder="Nombre" required>
-    </div>
-    <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Tipo Documento(*):</label>
-     <select name="tipo_documento" id="tipo_documento" class="form-control select-picker" required>
-       <option value="DNI">DNI</option>
-       <option value="RUC">RUC</option>
-       <option value="CEDULA">CEDULA</option>
-     </select>
-    </div>
-    <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Numero de Documento(*):</label>
-      <input type="text" class="form-control" name="num_documento" id="num_documento" placeholder="Documento" maxlength="20">
-    </div>
-       <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Direccion</label>
-      <input class="form-control" type="text" name="direccion" id="direccion"  maxlength="70">
-    </div>
-       <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Telefono</label>
-      <input class="form-control" type="text" name="telefono" id="telefono" maxlength="20" placeholder="Número de telefono">
-    </div>
-    <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Email: </label>
-      <input class="form-control" type="email" name="email" id="email" maxlength="70" placeholder="email">
-    </div>
-    <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Cargo</label>
-      <input class="form-control" type="text" name="cargo" id="cargo" maxlength="20" placeholder="Cargo">
-    </div>
-    <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Login(*):</label>
-      <input class="form-control" type="text" name="login" id="login" maxlength="20" placeholder="nombre de usuario" required>
-    </div>
-    <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Clave(*):</label>
-      <input class="form-control" type="password" name="clave" id="clave" maxlength="64" placeholder="Clave">
-    </div>
-    <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label>Permisos</label>
-      <ul id="permisos" style="list-style: none;">
-        
-      </ul>
-    </div>
-        <div class="form-group col-lg-6 col-md-6 col-xs-12">
-      <label for="">Imagen:</label>
-      <input class="form-control" type="file" name="imagen" id="imagen">
-      <input type="hidden" name="imagenactual" id="imagenactual">
-      <img src="" alt="" width="150px" height="120" id="imagenmuestra">
-    </div>
-    <div class="form-group col-lg-12 col-md-12 col-sm-12 col-xs-12">
-      <button class="btn btn-primary" type="submit" id="btnGuardar"><i class="fa fa-save"></i>  Guardar</button>
-      <button class="btn btn-danger" onclick="cancelarform()" type="button"><i class="fa fa-arrow-circle-left"></i> Cancelar</button>
-    </div>
-  </form>
-</div>
-<!--fin centro-->
+$esAdmin = usuarioTienePermiso('acceso');
+$tituloPagina = $perfilPropio ? "Mi perfil" : "Usuarios";
+$iconoPagina = $perfilPropio ? "fa-user" : "fa-users";
+require 'header.php';
+if ($esAdmin || $perfilPropio) {
+?>
+<div class="content-wrapper">
+  <section class="content">
+    <div class="page-head">
+      <div>
+        <div class="breadcrumb-app"><a href="escritorio.php">Inicio</a> <i class="fa fa-chevron-right"></i> <?php echo $perfilPropio ? 'Mi perfil' : 'Administración <i class="fa fa-chevron-right"></i> Usuarios'; ?></div>
+        <h1><span class="page-icon"><i class="fa <?php echo $iconoPagina; ?>"></i></span> <?php echo $perfilPropio ? 'Mi perfil' : 'Usuarios y permisos'; ?></h1>
+        <p><?php echo $perfilPropio ? 'Actualiza tus datos personales, tu foto y tu contraseña.' : 'Crea cuentas para tu equipo y define qué módulos puede usar cada uno.'; ?></p>
       </div>
+      <?php if (!$perfilPropio) { ?>
+      <div class="page-actions">
+        <button class="btn btn-primary" onclick="mostrarform(true)" id="btnagregar"><i class="fa fa-user-plus"></i> Nuevo usuario</button>
       </div>
-      </div>
-      <!-- /.box -->
+      <?php } ?>
+    </div>
 
-    </section>
-    <!-- /.content -->
-  </div>
-<?php 
-}else{
- require 'noacceso.php'; 
+    <?php if (!$perfilPropio) { ?>
+    <div class="box" id="listadoregistros">
+      <div class="box-body table-responsive">
+        <table id="tbllistado" class="table table-striped table-bordered table-hover" style="width:100%">
+          <thead><tr><th>Opciones</th><th>Nombre</th><th>Tipo doc.</th><th>N° doc.</th><th>Teléfono</th><th>Email</th><th>Usuario</th><th>Cargo</th><th>Foto</th><th>Último acceso</th><th>Estado</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <?php } ?>
+
+    <div class="row" id="formularioregistros">
+      <div class="<?php echo $perfilPropio ? 'col-lg-8 col-md-7' : 'col-xs-12'; ?>">
+        <div class="box">
+          <div class="box-header with-border">
+            <h3 class="box-title"><i class="fa fa-pencil"></i> <span id="formTitulo"><?php echo $perfilPropio ? 'Mis datos' : 'Nuevo usuario'; ?></span></h3>
+            <?php if (!$perfilPropio) { ?><div class="box-tools"><button class="btn btn-default btn-sm" onclick="cancelarform()" type="button"><i class="fa fa-arrow-left"></i> Volver al listado</button></div><?php } ?>
+          </div>
+          <div class="box-body">
+            <form action="" name="formulario" id="formulario" method="POST" autocomplete="off">
+              <input type="hidden" name="idusuario" id="idusuario">
+              <div class="form-section-title">Datos personales</div>
+              <div class="form-group col-lg-6 col-md-6 col-xs-12">
+                <label for="nombre">Nombre completo <span class="req">*</span></label>
+                <input class="form-control" type="text" name="nombre" id="nombre" maxlength="100" required>
+              </div>
+              <div class="form-group col-lg-3 col-md-3 col-xs-12">
+                <label for="tipo_documento">Tipo de documento</label>
+                <select name="tipo_documento" id="tipo_documento" class="form-control"><option value="DNI">DNI</option><option value="RUC">RUC</option><option value="CEDULA">Cédula</option><option value="PASAPORTE">Pasaporte</option><option value="OTRO">Otro</option></select>
+              </div>
+              <div class="form-group col-lg-3 col-md-3 col-xs-12">
+                <label for="num_documento">N° de documento</label>
+                <input type="text" class="form-control" name="num_documento" id="num_documento" maxlength="20">
+              </div>
+              <div class="form-group col-lg-6 col-md-6 col-xs-12"><label for="direccion">Dirección</label><input class="form-control" type="text" name="direccion" id="direccion" maxlength="70"></div>
+              <div class="form-group col-lg-3 col-md-3 col-xs-12"><label for="telefono">Teléfono</label><input class="form-control" type="text" name="telefono" id="telefono" maxlength="20"></div>
+              <div class="form-group col-lg-3 col-md-3 col-xs-12"><label for="email">Email</label><input class="form-control" type="email" name="email" id="email" maxlength="70"></div>
+
+              <div class="form-section-title">Acceso al sistema</div>
+              <div class="form-group col-lg-4 col-md-4 col-xs-12">
+                <label for="cargo">Cargo</label>
+                <input class="form-control" type="text" name="cargo" id="cargo" maxlength="20" placeholder="Ej. Vendedor">
+              </div>
+              <div class="form-group col-lg-4 col-md-4 col-xs-12">
+                <label for="login">Usuario (login) <span class="req">*</span></label>
+                <input class="form-control" type="text" name="login" id="login" maxlength="20" placeholder="nombre de usuario" required <?php echo $perfilPropio && !$esAdmin ? 'readonly' : ''; ?>>
+              </div>
+              <div class="form-group col-lg-4 col-md-4 col-xs-12">
+                <label for="clave">Contraseña <span id="claveReq" class="req">*</span></label>
+                <input class="form-control" type="password" name="clave" id="clave" maxlength="64" placeholder="Mín. 8 caracteres, letras y números" autocomplete="new-password">
+                <span class="help-block" id="claveAyuda">Déjala vacía para no cambiarla.</span>
+              </div>
+              <div class="form-group col-lg-6 col-md-6 col-xs-12">
+                <label>Foto</label>
+                <input class="form-control" type="file" name="imagen" id="imagen" accept="image/*">
+                <input type="hidden" name="imagenactual" id="imagenactual">
+                <img src="" alt="" class="img-preview" id="imagenmuestra">
+              </div>
+              <div class="form-group col-lg-6 col-md-6 col-xs-12">
+                <label>Permisos por módulo <?php echo $esAdmin ? '' : '<small class="text-soft">(solo un administrador puede cambiarlos)</small>'; ?></label>
+                <ul id="permisos" class="permisos-list"></ul>
+              </div>
+              <div class="form-group col-xs-12 form-actions-row">
+                <button class="btn btn-primary" type="submit" id="btnGuardar"><i class="fa fa-save"></i> Guardar</button>
+                <?php if (!$perfilPropio) { ?><button class="btn btn-default" onclick="cancelarform()" type="button"><i class="fa fa-times"></i> Cancelar</button><?php } ?>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <?php if ($perfilPropio) { ?>
+      <div class="col-lg-4 col-md-5">
+        <div class="box" id="cambiarClave">
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-key"></i> Cambiar contraseña</h3></div>
+          <div class="box-body">
+            <form id="formClave" autocomplete="off">
+              <div class="form-group"><label>Contraseña actual</label><input type="password" class="form-control" id="clave_actual" name="clave_actual" required autocomplete="current-password"></div>
+              <div class="form-group"><label>Nueva contraseña</label><input type="password" class="form-control" id="clave_nueva" name="clave_nueva" required autocomplete="new-password" placeholder="Mín. 8 caracteres, letras y números"></div>
+              <div class="form-group"><label>Confirmar nueva contraseña</label><input type="password" class="form-control" id="clave_confirma" name="clave_confirma" required autocomplete="new-password"></div>
+              <button class="btn btn-warning w-100" type="submit" id="btnCambiarClave"><i class="fa fa-key"></i> Actualizar contraseña</button>
+            </form>
+          </div>
+        </div>
+        <div class="box">
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-info-circle"></i> Mi cuenta</h3></div>
+          <div class="box-body" id="resumenPerfil"><div class="skeleton" style="height:60px"></div></div>
+        </div>
+      </div>
+      <?php } ?>
+    </div>
+  </section>
+</div>
+<?php
+} else {
+  require 'noacceso.php';
 }
 require 'footer.php';
- ?>
- <script>
- window.appPerfilMode = <?php echo $perfilPropio ? 'true' : 'false'; ?>;
- window.appPerfilId = <?php echo $perfilPropio ? $idSesion : 'null'; ?>;
- </script>
- <script src="scripts/usuario.js"></script>
- <?php 
-}
-
-ob_end_flush();
-  ?>
+?>
+<script>
+window.appPerfilMode = <?php echo $perfilPropio ? 'true' : 'false'; ?>;
+window.appPerfilId = <?php echo $perfilPropio ? $idSesion : 'null'; ?>;
+window.appEsAdmin = <?php echo $esAdmin ? 'true' : 'false'; ?>;
+</script>
+<script src="scripts/usuario.js?v=<?php echo e(APP_VERSION); ?>"></script>

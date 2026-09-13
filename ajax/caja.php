@@ -1,36 +1,57 @@
 <?php
-if (strlen(session_id()) < 1) {
-    session_start();
-}
+require_once "../config/seguridad.php";
+requiereLogin();
+requierePermiso(array('caja', 'ventas'));
 require_once "../modelos/Caja.php";
 
 $caja = new Caja();
-$idusuario = $_SESSION['idusuario'];
+$idusuario = (int)$_SESSION['idusuario'];
+$esAdmin = usuarioTienePermiso('acceso');
 
-switch ($_GET['op']) {
+/** Contrato DataTables. */
+function respuestaDataTable(array $data)
+{
+    echo json_encode(array(
+        'sEcho' => 1,
+        'iTotalRecords' => count($data),
+        'iTotalDisplayRecords' => count($data),
+        'aaData' => $data
+    ), JSON_UNESCAPED_UNICODE);
+}
+
+$op = isset($_GET['op']) ? (string)$_GET['op'] : '';
+
+switch ($op) {
     case 'estado':
         $abierta = $caja->cajaAbiertaUsuario($idusuario);
         if (!$abierta) {
-            echo json_encode(array('abierta' => false));
-            break;
+            responderJson(array('abierta' => false, 'usuario' => isset($_SESSION['nombre']) ? $_SESSION['nombre'] : ''));
         }
         $res = $caja->resumenCaja($abierta['idcaja']);
-        echo json_encode(array(
+        $ingresos = $res ? (float)$res['total_ingresos'] : 0.0;
+        $egresos = $res ? (float)$res['total_egresos'] : 0.0;
+        responderJson(array(
             'abierta' => true,
-            'idcaja' => $abierta['idcaja'],
+            'idcaja' => (int)$abierta['idcaja'],
+            'usuario' => $res ? $res['usuario'] : (isset($_SESSION['nombre']) ? $_SESSION['nombre'] : ''),
             'fecha_apertura' => $abierta['fecha_apertura'],
-            'monto_apertura' => number_format((float)$abierta['monto_apertura'], 2),
-            'ingresos' => number_format((float)$res['total_ingresos'], 2),
-            'egresos' => number_format((float)$res['total_egresos'], 2),
-            'sistema' => number_format(((float)$abierta['monto_apertura'] + (float)$res['total_ingresos'] - (float)$res['total_egresos']), 2)
+            'monto_apertura' => number_format((float)$abierta['monto_apertura'], 2, '.', ''),
+            'ingresos' => number_format($ingresos, 2, '.', ''),
+            'egresos' => number_format($egresos, 2, '.', ''),
+            'sistema' => number_format(((float)$abierta['monto_apertura'] + $ingresos - $egresos), 2, '.', ''),
+            'num_movimientos' => $res ? (int)$res['num_movimientos'] : 0,
+            'medios' => $caja->resumenPorMedioPago($abierta['idcaja'])
         ));
         break;
 
     case 'abrir':
-        $monto_apertura = limpiarCadena($_POST['monto_apertura']);
-        $observacion = limpiarCadena($_POST['observacion']);
-        $rspta = $caja->abrirCaja($idusuario, $monto_apertura, $observacion);
-        echo $rspta ? 'Caja abierta correctamente' : 'Ya tienes una caja abierta';
+        $monto_apertura = decimalSeguro(isset($_POST['monto_apertura']) ? $_POST['monto_apertura'] : 0);
+        $observacion = limpiarCadena(isset($_POST['observacion']) ? $_POST['observacion'] : '');
+        $res = $caja->abrirCaja($idusuario, $monto_apertura, $observacion);
+        if (!empty($res['ok'])) {
+            registrarAuditoria('caja', 'abrir', 'Caja #' . $res['idcaja'] . ' apertura ' . number_format($monto_apertura, 2));
+        }
+        echo $res['message'];
         break;
 
     case 'movimiento':
@@ -39,11 +60,17 @@ switch ($_GET['op']) {
             echo 'No hay caja abierta';
             break;
         }
-        $tipo = limpiarCadena($_POST['tipo']);
-        $concepto = limpiarCadena($_POST['concepto']);
-        $monto = limpiarCadena($_POST['monto']);
-        $rspta = $caja->agregarMovimiento($abierta['idcaja'], $idusuario, $tipo, $concepto, $monto);
-        echo $rspta ? 'Movimiento registrado' : 'No se pudo registrar el movimiento';
+        $tipo = strtoupper(trim((string)(isset($_POST['tipo']) ? $_POST['tipo'] : '')));
+        $concepto = limpiarCadena(isset($_POST['concepto']) ? $_POST['concepto'] : '');
+        $monto = decimalSeguro(isset($_POST['monto']) ? $_POST['monto'] : 0);
+        $medio_pago = Caja::medioPagoSeguro(isset($_POST['medio_pago']) ? $_POST['medio_pago'] : 'EFECTIVO');
+        $referencia = limpiarCadena(isset($_POST['referencia']) ? $_POST['referencia'] : '');
+
+        $res = $caja->agregarMovimiento((int)$abierta['idcaja'], $idusuario, $tipo, $concepto, $monto, $medio_pago, $referencia);
+        if (!empty($res['ok'])) {
+            registrarAuditoria('caja', 'movimiento', 'Caja #' . (int)$abierta['idcaja'] . ' ' . $tipo . ' ' . number_format($monto, 2) . ' ' . $medio_pago . ' - ' . $concepto);
+        }
+        echo $res['message'];
         break;
 
     case 'cerrar':
@@ -52,10 +79,13 @@ switch ($_GET['op']) {
             echo 'No hay caja abierta';
             break;
         }
-        $monto_cierre_real = limpiarCadena($_POST['monto_cierre_real']);
-        $observacion = limpiarCadena($_POST['observacion']);
-        $rspta = $caja->cerrarCaja($abierta['idcaja'], $monto_cierre_real, $observacion);
-        echo $rspta ? 'Caja cerrada correctamente' : 'No se pudo cerrar la caja';
+        $monto_cierre_real = decimalSeguro(isset($_POST['monto_cierre_real']) ? $_POST['monto_cierre_real'] : 0);
+        $observacion = limpiarCadena(isset($_POST['observacion']) ? $_POST['observacion'] : '');
+        $res = $caja->cerrarCaja((int)$abierta['idcaja'], $monto_cierre_real, $observacion);
+        if (!empty($res['ok'])) {
+            registrarAuditoria('caja', 'cerrar', 'Caja #' . (int)$abierta['idcaja'] . ' sistema ' . number_format((float)$res['sistema'], 2) . ' real ' . number_format((float)$res['real'], 2) . ' dif ' . number_format((float)$res['diferencia'], 2));
+        }
+        echo $res['message'];
         break;
 
     case 'listarMovimientos':
@@ -63,50 +93,64 @@ switch ($_GET['op']) {
         $data = array();
         if ($abierta) {
             $rspta = $caja->movimientosCaja($abierta['idcaja']);
-            while ($reg = $rspta->fetch_object()) {
-                $data[] = array(
-                    '0' => date('d/m/Y H:i', strtotime($reg->fecha_hora)),
-                    '1' => $reg->tipo,
-                    '2' => $reg->concepto,
-                    '3' => formatearMoneda((float)$reg->monto),
-                    '4' => $reg->usuario
-                );
+            if ($rspta) {
+                while ($reg = $rspta->fetch_object()) {
+                    $tipoBadge = ($reg->tipo === 'INGRESO')
+                        ? '<span class="label bg-green">INGRESO</span>'
+                        : '<span class="label bg-red">EGRESO</span>';
+                    $data[] = array(
+                        '0' => date('d/m/Y H:i', strtotime($reg->fecha_hora)),
+                        '1' => $tipoBadge,
+                        '2' => e($reg->concepto),
+                        '3' => formatearMoneda((float)$reg->monto),
+                        '4' => e($reg->usuario),
+                        '5' => e($reg->medio_pago),
+                        '6' => e($reg->referencia)
+                    );
+                }
             }
         }
-
-        echo json_encode(array(
-            'sEcho' => 1,
-            'iTotalRecords' => count($data),
-            'iTotalDisplayRecords' => count($data),
-            'aaData' => $data
-        ));
+        respuestaDataTable($data);
         break;
 
     case 'historial':
-        $rspta = $caja->historialCajas($idusuario);
+        $todos = $esAdmin && isset($_GET['todos']) && (string)$_GET['todos'] === '1';
+        $rspta = $caja->historialCajas($idusuario, $todos);
         $data = array();
-        while ($reg = $rspta->fetch_object()) {
-            $estado = $reg->estado === 'ABIERTA' ? '<span class="label bg-green">ABIERTA</span>' : '<span class="label bg-aqua">CERRADA</span>';
-            $data[] = array(
-                '0' => $reg->idcaja,
-                '1' => date('d/m/Y H:i', strtotime($reg->fecha_apertura)),
-                '2' => empty($reg->fecha_cierre) ? '-' : date('d/m/Y H:i', strtotime($reg->fecha_cierre)),
-                '3' => formatearMoneda((float)$reg->monto_apertura),
-                '4' => formatearMoneda((float)$reg->ingresos),
-                '5' => formatearMoneda((float)$reg->egresos),
-                '6' => formatearMoneda((float)$reg->monto_cierre_sistema),
-                '7' => formatearMoneda((float)$reg->monto_cierre_real),
-                '8' => formatearMoneda((float)$reg->diferencia),
-                '9' => $estado
-            );
+        if ($rspta) {
+            while ($reg = $rspta->fetch_object()) {
+                $id = (int)$reg->idcaja;
+                $estado = $reg->estado === 'ABIERTA' ? '<span class="label bg-green">ABIERTA</span>' : '<span class="label bg-aqua">CERRADA</span>';
+                $data[] = array(
+                    '0' => $id,
+                    '1' => date('d/m/Y H:i', strtotime($reg->fecha_apertura)),
+                    '2' => empty($reg->fecha_cierre) ? '-' : date('d/m/Y H:i', strtotime($reg->fecha_cierre)),
+                    '3' => formatearMoneda((float)$reg->monto_apertura),
+                    '4' => formatearMoneda((float)$reg->ingresos),
+                    '5' => formatearMoneda((float)$reg->egresos),
+                    '6' => $reg->monto_cierre_sistema === null ? '-' : formatearMoneda((float)$reg->monto_cierre_sistema),
+                    '7' => $reg->monto_cierre_real === null ? '-' : formatearMoneda((float)$reg->monto_cierre_real),
+                    '8' => $reg->diferencia === null ? '-' : formatearMoneda((float)$reg->diferencia),
+                    '9' => $estado,
+                    '10' => e($reg->usuario),
+                    '11' => '<button class="btn btn-default btn-xs" title="Ver detalle" onclick="verDetalleCaja(' . $id . ')"><i class="fa fa-print"></i></button>'
+                );
+            }
         }
+        respuestaDataTable($data);
+        break;
 
-        echo json_encode(array(
-            'sEcho' => 1,
-            'iTotalRecords' => count($data),
-            'iTotalDisplayRecords' => count($data),
-            'aaData' => $data
-        ));
+    case 'detalle':
+        $idcaja = enteroSeguro(isset($_GET['idcaja']) ? $_GET['idcaja'] : 0);
+        $det = $caja->detalleCaja($idcaja, $idusuario, $esAdmin);
+        if (!$det) {
+            responderJson(array('ok' => false, 'message' => 'Caja no encontrada o sin acceso.'), 404);
+        }
+        $det['ok'] = true;
+        responderJson($det);
+        break;
+
+    default:
+        responderJson(array('ok' => false, 'message' => 'Operacion no valida.'), 400);
         break;
 }
-?>

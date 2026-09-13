@@ -1,123 +1,185 @@
 <?php
-if (strlen(session_id()) < 1) {
-    session_start();
-}
+require_once "../config/seguridad.php";
 
+$op = isset($_GET['op']) ? (string)$_GET['op'] : '';
+
+// publicBrand es publico (lo usa la pantalla de login): solo sesion + cabeceras.
+if ($op === 'publicBrand') {
+    iniciarSesionSegura();
+    enviarCabecerasSeguridad();
+} else {
+    requiereLogin();
+}
 require_once "../modelos/Empresa.php";
 
 $empresa = new Empresa();
 
-switch ($_GET['op']) {
+/** Monedas aceptadas (coinciden con los helpers de Conexion.php). */
+$MONEDAS = array('PEN', 'USD', 'EUR', 'MXN', 'COP', 'CLP', 'ARS', 'BOB', 'UYU', 'PYG', 'BRL', 'GTQ', 'CRC', 'DOP', 'HNL', 'NIO');
+
+/** Color hex #RRGGBB o el default. */
+function colorHexSeguro($valor, $default)
+{
+    $valor = strtolower(trim((string)$valor));
+    return preg_match('/^#[0-9a-f]{6}$/', $valor) ? $valor : $default;
+}
+
+/** Serie alfanumerica (max 10) en mayusculas o el default. */
+function serieSegura($valor, $default)
+{
+    $valor = strtoupper(trim((string)$valor));
+    return preg_match('/^[A-Z0-9]{1,10}$/', $valor) ? $valor : $default;
+}
+
+/** Resuelve la URL publica del logo configurado (o el generico). */
+function urlLogoEmpresa($logo)
+{
+    $logo = nombreArchivoSeguro($logo);
+    if ($logo !== '') {
+        if (is_file(__DIR__ . '/../files/empresa/' . $logo)) {
+            return '../files/empresa/' . $logo;
+        }
+        if (is_file(__DIR__ . '/../vistas/' . $logo)) {
+            return $logo;
+        }
+    }
+    return '../public/img/brand-store.svg';
+}
+
+switch ($op) {
     case 'publicBrand':
-        $rspta = $empresa->obtener();
-        if (!$rspta) {
-            echo json_encode(array(
-                'nombre_comercial' => 'PERNO CENTRO',
-                'razon_social' => 'SEÑOR DE HUANCA',
+        $cfg = $empresa->obtener();
+        if (!$cfg) {
+            responderJson(array(
+                'nombre_comercial' => 'Mi Tienda',
+                'razon_social' => '',
                 'color_primario' => '#0f766e',
                 'color_secundario' => '#f59e0b',
-                'logo_url' => 'logo1.jpeg',
+                'logo_url' => '../public/img/brand-store.svg',
                 'moneda' => 'PEN',
-                'simbolo_moneda' => 'S/'
+                'simbolo_moneda' => obtenerSimboloMoneda('PEN')
             ));
-            break;
         }
-
-        $logoUrl = 'logo1.jpeg';
-        if (!empty($rspta['logo'])) {
-            $logoEmpresaFS = realpath(__DIR__ . '/../files/empresa/' . $rspta['logo']);
-            if ($logoEmpresaFS && file_exists($logoEmpresaFS)) {
-                $logoUrl = '../files/empresa/' . $rspta['logo'];
-            } elseif (file_exists(__DIR__ . '/../vistas/' . $rspta['logo'])) {
-                $logoUrl = $rspta['logo'];
-            }
-        }
-
-        echo json_encode(array(
-            'nombre_comercial' => !empty($rspta['nombre_comercial']) ? $rspta['nombre_comercial'] : 'PERNO CENTRO',
-            'razon_social' => !empty($rspta['razon_social']) ? $rspta['razon_social'] : 'SEÑOR DE HUANCA',
-            'color_primario' => !empty($rspta['color_primario']) ? $rspta['color_primario'] : '#0f766e',
-            'color_secundario' => !empty($rspta['color_secundario']) ? $rspta['color_secundario'] : '#f59e0b',
-            'logo_url' => $logoUrl,
-            'moneda' => !empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN',
-            'simbolo_moneda' => obtenerSimboloMoneda(!empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN')
+        $moneda = !empty($cfg['moneda']) ? strtoupper($cfg['moneda']) : 'PEN';
+        responderJson(array(
+            'nombre_comercial' => !empty($cfg['nombre_comercial']) ? $cfg['nombre_comercial'] : 'Mi Tienda',
+            'razon_social' => isset($cfg['razon_social']) ? (string)$cfg['razon_social'] : '',
+            'color_primario' => colorHexSeguro($cfg['color_primario'], '#0f766e'),
+            'color_secundario' => colorHexSeguro($cfg['color_secundario'], '#f59e0b'),
+            'logo_url' => urlLogoEmpresa($cfg['logo']),
+            'moneda' => $moneda,
+            'simbolo_moneda' => obtenerSimboloMoneda($moneda)
         ));
         break;
 
     case 'defaults':
-        $rspta = $empresa->obtener();
-        if (!$rspta) {
-            echo json_encode(array(
+        $cfg = $empresa->obtener();
+        if (!$cfg) {
+            responderJson(array(
                 'serie_boleta' => 'B001',
                 'serie_factura' => 'F001',
                 'serie_ticket' => 'T001',
                 'impuesto_default' => '18.00',
                 'moneda' => 'PEN',
-                'simbolo_moneda' => 'S/'
+                'simbolo_moneda' => obtenerSimboloMoneda('PEN'),
+                'mensaje_ticket' => 'Gracias por su compra'
             ));
-            break;
         }
-        echo json_encode(array(
-            'serie_boleta' => $rspta['serie_boleta'],
-            'serie_factura' => $rspta['serie_factura'],
-            'serie_ticket' => $rspta['serie_ticket'],
-            'impuesto_default' => $rspta['impuesto_default'],
-            'moneda' => !empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN',
-            'simbolo_moneda' => obtenerSimboloMoneda(!empty($rspta['moneda']) ? strtoupper($rspta['moneda']) : 'PEN')
+        $moneda = !empty($cfg['moneda']) ? strtoupper($cfg['moneda']) : 'PEN';
+        responderJson(array(
+            'serie_boleta' => $cfg['serie_boleta'],
+            'serie_factura' => $cfg['serie_factura'],
+            'serie_ticket' => $cfg['serie_ticket'],
+            'impuesto_default' => $cfg['impuesto_default'],
+            'moneda' => $moneda,
+            'simbolo_moneda' => obtenerSimboloMoneda($moneda),
+            'mensaje_ticket' => isset($cfg['mensaje_ticket']) ? $cfg['mensaje_ticket'] : 'Gracias por su compra'
         ));
         break;
 
     case 'mostrar':
-        $rspta = $empresa->obtener();
-        echo json_encode($rspta ? $rspta : array());
+        $cfg = $empresa->obtener();
+        if ($cfg) {
+            $cfg['logo_url'] = urlLogoEmpresa($cfg['logo']);
+        }
+        responderJson($cfg ? $cfg : array());
         break;
 
     case 'guardaryeditar':
-        if (!isset($_SESSION['acceso']) || (int)$_SESSION['acceso'] !== 1) {
-            echo "No tienes permiso para actualizar la configuracion.";
-            break;
+        requierePermiso(array('empresa', 'acceso'));
+
+        // Logo: se conserva el actual salvo que se suba uno nuevo valido
+        $actual = $empresa->obtener();
+        $logo = nombreArchivoSeguro(isset($_POST['logoactual']) ? $_POST['logoactual'] : '');
+        if ($logo === '' && $actual && !empty($actual['logo'])) {
+            $logo = nombreArchivoSeguro($actual['logo']);
         }
-
-        $logo = isset($_POST['logoactual']) ? limpiarCadena($_POST['logoactual']) : '';
-
-        if (isset($_FILES['logo']) && file_exists($_FILES['logo']['tmp_name']) && is_uploaded_file($_FILES['logo']['tmp_name'])) {
-            $ext = explode('.', $_FILES['logo']['name']);
-            $tipo = $_FILES['logo']['type'];
-            if ($tipo == 'image/jpg' || $tipo == 'image/jpeg' || $tipo == 'image/png' || $tipo == 'image/webp') {
-                $logo = round(microtime(true)) . '.' . strtolower(end($ext));
-                if (!is_dir('../files/empresa')) {
-                    mkdir('../files/empresa', 0777, true);
-                }
-                move_uploaded_file($_FILES['logo']['tmp_name'], '../files/empresa/' . $logo);
+        if (isset($_FILES['logo']) && isset($_FILES['logo']['error']) && (int)$_FILES['logo']['error'] !== UPLOAD_ERR_NO_FILE) {
+            list($okImg, $resImg) = guardarImagenSubida('logo', '../files/empresa');
+            if (!$okImg) {
+                echo $resImg;
+                break;
             }
+            // Borrar el logo anterior si estaba en files/empresa
+            if ($logo !== '' && $logo !== $resImg && is_file('../files/empresa/' . $logo)) {
+                @unlink('../files/empresa/' . $logo);
+            }
+            $logo = $resImg;
         }
 
-        $data = array(
-            'nombre_comercial' => limpiarCadena(isset($_POST['nombre_comercial']) ? $_POST['nombre_comercial'] : ''),
-            'razon_social' => limpiarCadena(isset($_POST['razon_social']) ? $_POST['razon_social'] : ''),
-            'ruc' => limpiarCadena(isset($_POST['ruc']) ? $_POST['ruc'] : ''),
-            'direccion' => limpiarCadena(isset($_POST['direccion']) ? $_POST['direccion'] : ''),
-            'telefono' => limpiarCadena(isset($_POST['telefono']) ? $_POST['telefono'] : ''),
-            'celular' => limpiarCadena(isset($_POST['celular']) ? $_POST['celular'] : ''),
-            'correo' => limpiarCadena(isset($_POST['correo']) ? $_POST['correo'] : ''),
-            'web' => limpiarCadena(isset($_POST['web']) ? $_POST['web'] : ''),
-            'logo' => $logo,
-            'color_primario' => limpiarCadena(isset($_POST['color_primario']) ? $_POST['color_primario'] : '#0f766e'),
-            'color_secundario' => limpiarCadena(isset($_POST['color_secundario']) ? $_POST['color_secundario'] : '#f59e0b'),
-            'serie_boleta' => limpiarCadena(isset($_POST['serie_boleta']) ? $_POST['serie_boleta'] : 'B001'),
-            'serie_factura' => limpiarCadena(isset($_POST['serie_factura']) ? $_POST['serie_factura'] : 'F001'),
-            'serie_ticket' => limpiarCadena(isset($_POST['serie_ticket']) ? $_POST['serie_ticket'] : 'T001'),
-            'impuesto_default' => limpiarCadena(isset($_POST['impuesto_default']) ? $_POST['impuesto_default'] : '18.00'),
-            'moneda' => limpiarCadena(isset($_POST['moneda']) ? $_POST['moneda'] : 'PEN')
-        );
-
-        if ($data['nombre_comercial'] === '') {
+        $nombre_comercial = substr(limpiarCadena(isset($_POST['nombre_comercial']) ? $_POST['nombre_comercial'] : ''), 0, 120);
+        if ($nombre_comercial === '') {
             echo 'El nombre comercial es obligatorio.';
             break;
         }
 
+        $correo = trim((string)(isset($_POST['correo']) ? $_POST['correo'] : ''));
+        if ($correo !== '' && !filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+            echo 'El correo electronico no es valido.';
+            break;
+        }
+
+        $impuesto = decimalSeguro(isset($_POST['impuesto_default']) ? $_POST['impuesto_default'] : 18, 2, 18.0);
+        if ($impuesto < 0 || $impuesto > 100) {
+            echo 'El impuesto debe estar entre 0 y 100.';
+            break;
+        }
+
+        $moneda = strtoupper(trim((string)(isset($_POST['moneda']) ? $_POST['moneda'] : 'PEN')));
+        if (!in_array($moneda, $MONEDAS, true)) {
+            $moneda = 'PEN';
+        }
+
+        $data = array(
+            'nombre_comercial' => $nombre_comercial,
+            'razon_social' => substr(limpiarCadena(isset($_POST['razon_social']) ? $_POST['razon_social'] : ''), 0, 150),
+            'ruc' => substr(limpiarCadena(isset($_POST['ruc']) ? $_POST['ruc'] : ''), 0, 20),
+            'direccion' => substr(limpiarCadena(isset($_POST['direccion']) ? $_POST['direccion'] : ''), 0, 180),
+            'telefono' => substr(limpiarCadena(isset($_POST['telefono']) ? $_POST['telefono'] : ''), 0, 30),
+            'celular' => substr(limpiarCadena(isset($_POST['celular']) ? $_POST['celular'] : ''), 0, 30),
+            'correo' => substr(limpiarCadena($correo), 0, 120),
+            'web' => substr(limpiarCadena(isset($_POST['web']) ? $_POST['web'] : ''), 0, 120),
+            'logo' => substr($logo, 0, 100),
+            'color_primario' => colorHexSeguro(isset($_POST['color_primario']) ? $_POST['color_primario'] : '', '#0f766e'),
+            'color_secundario' => colorHexSeguro(isset($_POST['color_secundario']) ? $_POST['color_secundario'] : '', '#f59e0b'),
+            'serie_boleta' => serieSegura(isset($_POST['serie_boleta']) ? $_POST['serie_boleta'] : '', 'B001'),
+            'serie_factura' => serieSegura(isset($_POST['serie_factura']) ? $_POST['serie_factura'] : '', 'F001'),
+            'serie_ticket' => serieSegura(isset($_POST['serie_ticket']) ? $_POST['serie_ticket'] : '', 'T001'),
+            'impuesto_default' => $impuesto,
+            'moneda' => $moneda,
+            'mensaje_ticket' => substr(limpiarCadena(isset($_POST['mensaje_ticket']) ? $_POST['mensaje_ticket'] : ''), 0, 160)
+        );
+
         $rspta = $empresa->guardar($data);
-        echo $rspta ? 'Configuracion de empresa actualizada correctamente' : 'No se pudo actualizar la configuracion';
+        if ($rspta) {
+            registrarAuditoria('empresa', 'guardar', 'Config empresa: ' . $nombre_comercial . ' moneda ' . $moneda . ' imp ' . $impuesto . ' logo ' . $logo);
+            echo 'Configuracion de empresa actualizada correctamente';
+        } else {
+            echo 'No se pudo actualizar la configuracion';
+        }
+        break;
+
+    default:
+        responderJson(array('ok' => false, 'message' => 'Operacion no valida.'), 400);
         break;
 }
-?>

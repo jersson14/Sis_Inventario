@@ -1,8 +1,8 @@
 <?php
 ob_start();
-if (strlen(session_id()) < 1) {
-  session_start();
-}
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$idReporte = enteroSeguro(isset($_GET['id']) ? $_GET['id'] : 0);
 
 if (!isset($_SESSION['nombre'])) {
   echo "Debe ingresar al sistema correctamente para visualizar el reporte";
@@ -10,7 +10,7 @@ if (!isset($_SESSION['nombre'])) {
   exit;
 }
 
-if ($_SESSION['compras'] != 1) {
+if (!usuarioTienePermiso('compras')) {
   echo "No tiene permiso para visualizar el reporte";
   ob_end_flush();
   exit;
@@ -40,7 +40,7 @@ class PDFCompra extends FPDF
 
   public function u($text)
   {
-    return utf8_decode((string)$text);
+    return mb_convert_encoding((string)$text, "ISO-8859-1", "UTF-8");
   }
 
   public function fitText($text, $maxWidth, $suffix = '...')
@@ -268,7 +268,7 @@ class PDFCompra extends FPDF
 }
 
 $ingreso = new Ingreso();
-$rspta = $ingreso->ingresocabecera($_GET["id"]);
+$rspta = $ingreso->ingresocabecera($idReporte);
 $reg = $rspta->fetch_object();
 
 if (!$reg) {
@@ -367,7 +367,7 @@ $pdf->SetWidths(array(24, 70, 24, 24, 24, 24));
 $pdf->SetAligns(array('L', 'L', 'C', 'R', 'R', 'R'));
 $pdf->DrawTableHeader();
 
-$rsptad = $ingreso->ingresodetalles($_GET["id"]);
+$rsptad = $ingreso->ingresodetalles($idReporte);
 $index = 0;
 while ($regd = $rsptad->fetch_object()) {
   $cantidad = number_format((float)$regd->cantidad, 0)." ".(empty($regd->unidad) ? "und" : $regd->unidad);

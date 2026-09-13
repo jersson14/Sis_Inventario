@@ -1,21 +1,14 @@
-<?php 
-//incluir la conexion de base de datos
-require "../config/Conexion.php";
-class Permiso{ 
+<?php
+// Modelo de permisos (solo lectura, sin datos externos).
+require_once "../config/Conexion.php";
 
+class Permiso{
 
-	//implementamos nuestro constructor
-public function __construct(){
+	public function __construct(){
+	}
 
+	// Listado de permisos (mysqli_result).
+	public function listar(){
+		return dbQuery("SELECT idpermiso,nombre FROM permiso ORDER BY idpermiso ASC");
+	}
 }
-
-
-
-//listar registros
-public function listar(){
-	$sql="SELECT * FROM permiso";
-	return ejecutarConsulta($sql);
-}
-}
-
- ?>

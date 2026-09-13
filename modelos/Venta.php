@@ -1,378 +1,689 @@
-<?php 
-//incluir la conexion de base de datos
-require "../config/Conexion.php";
+<?php
+/**
+ * Modelo Venta: registro, anulacion y consultas de ventas.
+ *
+ * Reglas:
+ *  - Todas las consultas con datos externos usan sentencias preparadas (dbQuery/dbRow/dbAll/...).
+ *  - El total de la venta se recalcula SIEMPRE en servidor.
+ *  - El trigger tr_udpStockVenta descuenta el stock al insertar detalle_venta.
+ *  - CONTADO: si el usuario tiene caja abierta se registra el ingreso en caja_movimiento.
+ *  - CREDITO: se genera automaticamente una cuenta_cobrar.
+ */
+require_once "../config/Conexion.php";
+
 class Venta{
 
+	private $tiposComprobante = array("Boleta", "Factura", "Ticket");
+	private $tiposPago = array("CONTADO", "CREDITO");
+	private $mediosPago = array("EFECTIVO", "TARJETA", "TRANSFERENCIA", "YAPE", "PLIN", "OTRO");
+	private $estados = array("Aceptado", "Anulado");
 
-	//implementamos nuestro constructor
-public function __construct(){
+	public function __construct(){
+	}
 
-}
+	// ---------- Normalizadores / validadores ----------
 
-private function normalizarTipoComprobante($tipo){
-	$tipo = trim((string)$tipo);
-	$permitidos = array("Boleta","Factura","Ticket");
-	if (!in_array($tipo, $permitidos, true)) {
-		return "Boleta";
+	private function error($mensaje){
+		return array("ok"=>false, "message"=>$mensaje);
 	}
-	return $tipo;
-}
 
-private function normalizarSerieComprobante($serie, $tipoComprobante){
-	$serie = strtoupper(trim((string)$serie));
-	$serie = preg_replace('/[^A-Z0-9]/', '', $serie);
-	$serie = substr($serie, 0, 7);
-	if ($serie !== '') {
-		return $serie;
-	}
-	if ($tipoComprobante === "Factura") {
-		return "F001";
-	}
-	if ($tipoComprobante === "Ticket") {
-		return "T001";
-	}
-	return "B001";
-}
-
-private function normalizarFechaHora($valor){
-	$raw = trim((string)$valor);
-	if ($raw === '') {
-		return date("Y-m-d H:i:s");
-	}
-	if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
-		return $raw . " 00:00:00";
-	}
-	if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/', $raw)) {
-		$normalizado = str_replace("T", " ", $raw);
-		if (strlen($normalizado) === 16) {
-			$normalizado .= ":00";
+	private function normalizarTipoComprobante($tipo){
+		$tipo = trim((string)$tipo);
+		if (!in_array($tipo, $this->tiposComprobante, true)) {
+			return "Boleta";
 		}
-		return $normalizado;
-	}
-	$ts = strtotime($raw);
-	if ($ts === false) {
-		return date("Y-m-d H:i:s");
-	}
-	return date("Y-m-d H:i:s", $ts);
-}
-
-private function obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, $forUpdate = false){
-	$tipoComprobante = $this->normalizarTipoComprobante($tipoComprobante);
-	$serieComprobante = $this->normalizarSerieComprobante($serieComprobante, $tipoComprobante);
-	$lockSql = $forUpdate ? " FOR UPDATE" : "";
-
-	$sql = "SELECT IFNULL(MAX(CAST(num_comprobante AS UNSIGNED)),0) AS maximo
-		FROM venta
-		WHERE tipo_comprobante='$tipoComprobante'
-		AND serie_comprobante='$serieComprobante'".$lockSql;
-	$row = ejecutarConsultaSimpleFila($sql);
-	$siguiente = isset($row["maximo"]) ? ((int)$row["maximo"] + 1) : 1;
-	if ($siguiente <= 0) {
-		$siguiente = 1;
+		return $tipo;
 	}
 
-	return array(
-		"tipo_comprobante"=>$tipoComprobante,
-		"serie_comprobante"=>$serieComprobante,
-		"correlativo"=>$siguiente,
-		"numero"=>str_pad((string)$siguiente, 8, "0", STR_PAD_LEFT)
-	);
-}
-
-private function normalizarCantidadEntera($valor){
-	$cantidad = (int)round((float)$valor);
-	if ($cantidad < 0) {
-		$cantidad = 0;
+	private function normalizarSerieComprobante($serie, $tipoComprobante){
+		$serie = strtoupper(trim((string)$serie));
+		$serie = preg_replace('/[^A-Z0-9]/', '', $serie);
+		$serie = substr($serie, 0, 7);
+		if ($serie !== '') {
+			return $serie;
+		}
+		if ($tipoComprobante === "Factura") {
+			return "F001";
+		}
+		if ($tipoComprobante === "Ticket") {
+			return "T001";
+		}
+		return "B001";
 	}
-	return $cantidad;
-}
 
-public function obtenerSiguienteCorrelativo($tipoComprobante, $serieComprobante){
-	$data = $this->obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, false);
-	return array(
-		"ok"=>true,
-		"tipo_comprobante"=>$data["tipo_comprobante"],
-		"serie_comprobante"=>$data["serie_comprobante"],
-		"correlativo"=>$data["correlativo"],
-		"numero"=>$data["numero"]
-	);
-}
+	private function normalizarFechaHora($valor){
+		$raw = trim((string)$valor);
+		if ($raw === '') {
+			return date("Y-m-d H:i:s");
+		}
+		if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+			return $raw . " 00:00:00";
+		}
+		if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/', $raw)) {
+			$normalizado = str_replace("T", " ", $raw);
+			if (strlen($normalizado) === 16) {
+				$normalizado .= ":00";
+			}
+			return $normalizado;
+		}
+		$ts = strtotime($raw);
+		if ($ts === false) {
+			return date("Y-m-d H:i:s");
+		}
+		return date("Y-m-d H:i:s", $ts);
+	}
 
-//metodo insertar registro
-public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$total_venta,$idarticulo,$cantidad,$precio_venta,$descuento){
-	global $conexion;
-	$idcliente = (int)$idcliente;
-	$fecha_hora = $this->normalizarFechaHora($fecha_hora);
-	if ($idcliente <= 0) {
+	private function normalizarCantidadEntera($valor){
+		$cantidad = (int)round((float)$valor);
+		if ($cantidad < 0) {
+			$cantidad = 0;
+		}
+		return $cantidad;
+	}
+
+	private function normalizarTipoPago($valor){
+		$valor = strtoupper(trim((string)$valor));
+		return in_array($valor, $this->tiposPago, true) ? $valor : "CONTADO";
+	}
+
+	private function normalizarMedioPago($valor){
+		$valor = strtoupper(trim((string)$valor));
+		return in_array($valor, $this->mediosPago, true) ? $valor : "EFECTIVO";
+	}
+
+	/** Texto opcional recortado a $max caracteres; null si viene vacio. */
+	private function textoOpcional($valor, $max){
+		$valor = trim((string)$valor);
+		if ($valor === '') {
+			return null;
+		}
+		if (function_exists('mb_substr')) {
+			return mb_substr($valor, 0, $max, 'UTF-8');
+		}
+		return substr($valor, 0, $max);
+	}
+
+	private function obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, $forUpdate = false){
+		$tipoComprobante = $this->normalizarTipoComprobante($tipoComprobante);
+		$serieComprobante = $this->normalizarSerieComprobante($serieComprobante, $tipoComprobante);
+		$lockSql = $forUpdate ? " FOR UPDATE" : "";
+
+		$row = dbRow(
+			"SELECT IFNULL(MAX(CAST(num_comprobante AS UNSIGNED)),0) AS maximo
+			 FROM venta
+			 WHERE tipo_comprobante=? AND serie_comprobante=?" . $lockSql,
+			array($tipoComprobante, $serieComprobante)
+		);
+		$siguiente = ($row && isset($row["maximo"])) ? ((int)$row["maximo"] + 1) : 1;
+		if ($siguiente <= 0) {
+			$siguiente = 1;
+		}
+
 		return array(
-			"ok"=>false,
-			"message"=>"Debes seleccionar un cliente valido"
+			"tipo_comprobante"=>$tipoComprobante,
+			"serie_comprobante"=>$serieComprobante,
+			"correlativo"=>$siguiente,
+			"numero"=>str_pad((string)$siguiente, 8, "0", STR_PAD_LEFT)
 		);
 	}
 
-	$validarCliente = ejecutarConsultaSimpleFila("SELECT idpersona FROM persona WHERE idpersona='$idcliente' AND tipo_persona='Cliente' LIMIT 1");
-	if (!$validarCliente || !isset($validarCliente["idpersona"])) {
-		return array(
-			"ok"=>false,
-			"message"=>"El cliente seleccionado no existe o no es valido"
+	/** Id de la caja ABIERTA del usuario (0 si no tiene). */
+	private function cajaAbiertaUsuario($idusuario){
+		return (int)dbValue(
+			"SELECT idcaja FROM caja_diaria WHERE idusuario=? AND estado='ABIERTA' ORDER BY idcaja DESC LIMIT 1",
+			array((int)$idusuario),
+			0
 		);
 	}
 
-	if (!is_array($idarticulo) || count($idarticulo) === 0) {
+	// ---------- Correlativo ----------
+
+	public function obtenerSiguienteCorrelativo($tipoComprobante, $serieComprobante){
+		$data = $this->obtenerCorrelativoInterno($tipoComprobante, $serieComprobante, false);
 		return array(
-			"ok"=>false,
-			"message"=>"Debes agregar al menos un articulo a la venta"
+			"ok"=>true,
+			"tipo_comprobante"=>$data["tipo_comprobante"],
+			"serie_comprobante"=>$data["serie_comprobante"],
+			"correlativo"=>$data["correlativo"],
+			"numero"=>$data["numero"]
 		);
 	}
-	if (!is_array($cantidad) || count($cantidad) !== count($idarticulo)) {
-		return array(
-			"ok"=>false,
-			"message"=>"El detalle de cantidades no es valido"
+
+	// ---------- Registro ----------
+
+	/**
+	 * Registra una venta con su detalle. El total se calcula en servidor.
+	 * Devuelve array {ok, message} o
+	 * {ok:true, idventa, tipo_comprobante, serie_comprobante, num_comprobante, total, alertas, caja_registrada, cuenta_cobrar}.
+	 */
+	public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_venta,$descuento){
+		$idcliente = (int)$idcliente;
+		$idusuario = (int)$idusuario;
+
+		if ($idusuario <= 0) {
+			return $this->error("Sesion de usuario no valida");
+		}
+		if ($idcliente <= 0) {
+			return $this->error("Debes seleccionar un cliente valido");
+		}
+		$cliente = dbRow(
+			"SELECT idpersona FROM persona WHERE idpersona=? AND tipo_persona='Cliente' AND condicion=1 LIMIT 1",
+			array($idcliente)
 		);
-	}
+		if (!$cliente) {
+			return $this->error("El cliente seleccionado no existe o esta inactivo");
+		}
 
-	$cantidadesSolicitadas = array();
-	$articulosAfectados = array();
-	$detalles = array();
+		if (!is_array($idarticulo) || count($idarticulo) === 0) {
+			return $this->error("Debes agregar al menos un articulo a la venta");
+		}
+		if (!is_array($cantidad) || count($cantidad) !== count($idarticulo)) {
+			return $this->error("El detalle de cantidades no es valido");
+		}
+		if (!is_array($precio_venta)) {
+			$precio_venta = array();
+		}
+		if (!is_array($descuento)) {
+			$descuento = array();
+		}
 
-	for ($i = 0; $i < count($idarticulo); $i++) {
-		$idArticuloActual = (int)$idarticulo[$i];
-		$cantidadActual = $this->normalizarCantidadEntera($cantidad[$i]);
-		$precioActual = isset($precio_venta[$i]) ? (float)$precio_venta[$i] : 0;
-		$descuentoActual = isset($descuento[$i]) ? (float)$descuento[$i] : 0;
+		// Cabecera
+		$fecha_hora = $this->normalizarFechaHora($fecha_hora);
+		$fecha_venta = substr($fecha_hora, 0, 10);
+		$impuesto = decimalSeguro($impuesto, 2, 0);
+		if ($impuesto < 0) {
+			$impuesto = 0.0;
+		}
+		$tipo_pago = $this->normalizarTipoPago($tipo_pago);
+		$medio_pago = $this->normalizarMedioPago($medio_pago);
+		$fecha_vencimiento = fechaSegura($fecha_vencimiento, '');
+		if ($tipo_pago === "CREDITO") {
+			if ($fecha_vencimiento === '') {
+				$fecha_vencimiento = date("Y-m-d", strtotime($fecha_venta . " +30 days"));
+			}
+			if ($fecha_vencimiento < $fecha_venta) {
+				return $this->error("La fecha de vencimiento no puede ser anterior a la fecha de la venta");
+			}
+		} else {
+			$fecha_vencimiento = null;
+		}
+		$observacion = $this->textoOpcional($observacion, 200);
 
-		if ($idArticuloActual <= 0) {
-			return array(
-				"ok"=>false,
-				"message"=>"Se detecto un articulo invalido en el detalle"
+		// Detalle: validaciones y total en servidor
+		$cantidadesSolicitadas = array();
+		$detalles = array();
+		$total = 0.0;
+		$n = count($idarticulo);
+		for ($i = 0; $i < $n; $i++) {
+			$idArticuloActual = (int)$idarticulo[$i];
+			$cantidadActual = $this->normalizarCantidadEntera($cantidad[$i]);
+			$precioActual = isset($precio_venta[$i]) ? decimalSeguro($precio_venta[$i], 2, -1) : -1;
+			$descuentoActual = isset($descuento[$i]) ? decimalSeguro($descuento[$i], 2, 0) : 0.0;
+
+			if ($idArticuloActual <= 0) {
+				return $this->error("Se detecto un articulo invalido en el detalle");
+			}
+			if ($cantidadActual <= 0) {
+				return $this->error("La cantidad debe ser mayor que cero");
+			}
+			if ($precioActual < 0) {
+				return $this->error("El precio de venta no puede ser negativo");
+			}
+			if ($descuentoActual < 0) {
+				return $this->error("El descuento no puede ser negativo");
+			}
+			$subtotalBruto = round($cantidadActual * $precioActual, 2);
+			if ($descuentoActual > $subtotalBruto) {
+				return $this->error("El descuento no puede superar el subtotal del artículo");
+			}
+
+			if (!isset($cantidadesSolicitadas[$idArticuloActual])) {
+				$cantidadesSolicitadas[$idArticuloActual] = 0;
+			}
+			$cantidadesSolicitadas[$idArticuloActual] += $cantidadActual;
+			$detalles[] = array(
+				"idarticulo"=>$idArticuloActual,
+				"cantidad"=>$cantidadActual,
+				"precio_venta"=>(float)$precioActual,
+				"descuento"=>(float)$descuentoActual
 			);
+			$total += ($subtotalBruto - $descuentoActual);
 		}
-		if ($cantidadActual <= 0) {
-			return array(
-				"ok"=>false,
-				"message"=>"La cantidad debe ser mayor que cero"
-			);
-		}
+		$total = round($total, 2);
+		ksort($cantidadesSolicitadas);
 
-		if (!isset($cantidadesSolicitadas[$idArticuloActual])) {
-			$cantidadesSolicitadas[$idArticuloActual] = 0;
-		}
-		$cantidadesSolicitadas[$idArticuloActual] += $cantidadActual;
-		$articulosAfectados[$idArticuloActual] = true;
-		$detalles[] = array(
-			"idarticulo"=>$idArticuloActual,
-			"cantidad"=>$cantidadActual,
-			"precio_venta"=>$precioActual,
-			"descuento"=>$descuentoActual
-		);
-	}
-
-	ksort($cantidadesSolicitadas);
-
-	$conexion->autocommit(false);
-
-	try {
 		$tipo_comprobante = $this->normalizarTipoComprobante($tipo_comprobante);
 		$serie_comprobante = $this->normalizarSerieComprobante($serie_comprobante, $tipo_comprobante);
 		$num_comprobante = substr(preg_replace('/[^0-9]/', '', (string)$num_comprobante), 0, 10);
 
-		if ($num_comprobante === '') {
-			$correlativo = $this->obtenerCorrelativoInterno($tipo_comprobante, $serie_comprobante, true);
-			$tipo_comprobante = $correlativo["tipo_comprobante"];
-			$serie_comprobante = $correlativo["serie_comprobante"];
-			$num_comprobante = $correlativo["numero"];
-		} else {
-			$sqlExisteComprobante = "SELECT idventa FROM venta
-				WHERE tipo_comprobante='$tipo_comprobante'
-				AND serie_comprobante='$serie_comprobante'
-				AND num_comprobante='$num_comprobante'
-				LIMIT 1 FOR UPDATE";
-			$existeComprobante = ejecutarConsultaSimpleFila($sqlExisteComprobante);
-			if ($existeComprobante && isset($existeComprobante["idventa"])) {
-				$conexion->rollback();
-				$conexion->autocommit(true);
-				return array(
-					"ok"=>false,
-					"message"=>"Ya existe una venta con el mismo tipo, serie y numero de comprobante"
+		$ctx = array(
+			"idcliente"=>$idcliente,
+			"idusuario"=>$idusuario,
+			"tipo_comprobante"=>$tipo_comprobante,
+			"serie_comprobante"=>$serie_comprobante,
+			"num_comprobante"=>$num_comprobante,
+			"fecha_hora"=>$fecha_hora,
+			"fecha_venta"=>$fecha_venta,
+			"fecha_vencimiento"=>$fecha_vencimiento,
+			"impuesto"=>(float)$impuesto,
+			"tipo_pago"=>$tipo_pago,
+			"medio_pago"=>$medio_pago,
+			"observacion"=>$observacion,
+			"total"=>(float)$total
+		);
+		$mensajeError = '';
+
+		$resultado = dbTransaccion(function($cx) use ($ctx, $detalles, $cantidadesSolicitadas, &$mensajeError) {
+			$tipo = $ctx["tipo_comprobante"];
+			$serie = $ctx["serie_comprobante"];
+			$num = $ctx["num_comprobante"];
+
+			// Correlativo automatico (con bloqueo) o verificacion de unicidad
+			if ($num === '') {
+				$correlativo = $this->obtenerCorrelativoInterno($tipo, $serie, true);
+				$num = $correlativo["numero"];
+			} else {
+				$existe = (int)dbValue(
+					"SELECT idventa FROM venta WHERE tipo_comprobante=? AND serie_comprobante=? AND num_comprobante=? LIMIT 1 FOR UPDATE",
+					array($tipo, $serie, $num),
+					0
+				);
+				if ($existe > 0) {
+					$mensajeError = "Ya existe una venta con el mismo tipo, serie y numero de comprobante";
+					return false;
+				}
+			}
+
+			// Stock con bloqueo de filas
+			$ids = array_keys($cantidadesSolicitadas);
+			$placeholders = implode(",", array_fill(0, count($ids), "?"));
+			$filas = dbAll(
+				"SELECT idarticulo,nombre,stock,condicion FROM articulo WHERE idarticulo IN (" . $placeholders . ") FOR UPDATE",
+				$ids
+			);
+			$stockActual = array();
+			foreach ($filas as $f) {
+				$stockActual[(int)$f["idarticulo"]] = $f;
+			}
+			$erroresStock = array();
+			foreach ($cantidadesSolicitadas as $idArt => $cantSolicitada) {
+				if (!isset($stockActual[$idArt])) {
+					$erroresStock[] = "Articulo ID " . $idArt . " no encontrado";
+					continue;
+				}
+				if ((int)$stockActual[$idArt]["condicion"] !== 1) {
+					$erroresStock[] = $stockActual[$idArt]["nombre"] . " esta inactivo";
+					continue;
+				}
+				$stockDisp = (int)floor((float)$stockActual[$idArt]["stock"]);
+				if ($stockDisp < $cantSolicitada) {
+					$erroresStock[] = $stockActual[$idArt]["nombre"] . " (stock: " . number_format($stockDisp, 0) . ", solicitado: " . number_format($cantSolicitada, 0) . ")";
+				}
+			}
+			if (count($erroresStock) > 0) {
+				$mensajeError = "Stock insuficiente: " . implode("; ", $erroresStock);
+				return false;
+			}
+
+			// Caja abierta del usuario (solo CONTADO)
+			$idcaja = 0;
+			if ($ctx["tipo_pago"] === "CONTADO") {
+				$idcaja = $this->cajaAbiertaUsuario($ctx["idusuario"]);
+			}
+
+			$idventa = dbInsert(
+				"INSERT INTO venta (idcliente,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,fecha_vencimiento,impuesto,tipo_pago,medio_pago,idcaja,total_venta,estado,observacion)
+				 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'Aceptado',?)",
+				array(
+					$ctx["idcliente"], $ctx["idusuario"], $tipo, $serie, $num, $ctx["fecha_hora"],
+					$ctx["fecha_vencimiento"], $ctx["impuesto"], $ctx["tipo_pago"], $ctx["medio_pago"],
+					($idcaja > 0 ? $idcaja : null), $ctx["total"], $ctx["observacion"]
+				)
+			);
+			if ($idventa <= 0) {
+				$mensajeError = "No se pudo registrar la cabecera de la venta";
+				return false;
+			}
+
+			// Detalle (el trigger descuenta el stock)
+			foreach ($detalles as $d) {
+				$ok = dbExec(
+					"INSERT INTO detalle_venta (idventa,idarticulo,cantidad,precio_venta,descuento) VALUES (?,?,?,?,?)",
+					array($idventa, $d["idarticulo"], $d["cantidad"], $d["precio_venta"], $d["descuento"])
+				);
+				if (!$ok) {
+					$mensajeError = "No se pudo registrar el detalle de la venta";
+					return false;
+				}
+			}
+
+			$documento = $tipo . " " . $serie . "-" . $num;
+			$cuentaCobrar = false;
+			$cajaRegistrada = false;
+
+			if ($ctx["tipo_pago"] === "CREDITO") {
+				$idcc = dbInsert(
+					"INSERT INTO cuenta_cobrar (idcliente,idventa,fecha_emision,fecha_vencimiento,documento_ref,monto_total,saldo,estado,observacion)
+					 VALUES (?,?,?,?,?,?,?,'PENDIENTE','Generada automaticamente desde venta')",
+					array($ctx["idcliente"], $idventa, $ctx["fecha_venta"], $ctx["fecha_vencimiento"], $documento, $ctx["total"], $ctx["total"])
+				);
+				if ($idcc <= 0) {
+					$mensajeError = "No se pudo generar la cuenta por cobrar";
+					return false;
+				}
+				$cuentaCobrar = true;
+			} elseif ($idcaja > 0) {
+				$idmov = dbInsert(
+					"INSERT INTO caja_movimiento (idcaja,idusuario,tipo,concepto,referencia,medio_pago,monto,fecha_hora)
+					 VALUES (?,?,'INGRESO',?,?,?,?,NOW())",
+					array($idcaja, $ctx["idusuario"], "Venta " . $documento, "V-" . $idventa, $ctx["medio_pago"], $ctx["total"])
+				);
+				if ($idmov <= 0) {
+					$mensajeError = "No se pudo registrar el movimiento de caja";
+					return false;
+				}
+				$cajaRegistrada = true;
+			}
+
+			return array(
+				"idventa"=>$idventa,
+				"tipo_comprobante"=>$tipo,
+				"serie_comprobante"=>$serie,
+				"num_comprobante"=>$num,
+				"caja_registrada"=>$cajaRegistrada,
+				"cuenta_cobrar"=>$cuentaCobrar
+			);
+		});
+
+		if ($resultado === false || !is_array($resultado)) {
+			return $this->error($mensajeError !== '' ? $mensajeError : "No se pudo registrar la venta");
+		}
+
+		// Alertas de stock bajo (fuera de la transaccion)
+		$alertas = array();
+		$ids = array_keys($cantidadesSolicitadas);
+		if (count($ids) > 0) {
+			$placeholders = implode(",", array_fill(0, count($ids), "?"));
+			$filas = dbAll(
+				"SELECT idarticulo,codigo,nombre,stock,IFNULL(stock_minimo,0) AS stock_minimo
+				 FROM articulo
+				 WHERE idarticulo IN (" . $placeholders . ")
+				 AND stock<=GREATEST(IFNULL(stock_minimo,0),5)",
+				$ids
+			);
+			foreach ($filas as $reg) {
+				$alertas[] = array(
+					"idarticulo"=>(int)$reg["idarticulo"],
+					"codigo"=>$reg["codigo"],
+					"nombre"=>$reg["nombre"],
+					"stock"=>$this->normalizarCantidadEntera($reg["stock"]),
+					"stock_minimo"=>$this->normalizarCantidadEntera($reg["stock_minimo"])
 				);
 			}
 		}
 
-		$ids = implode(",", array_keys($cantidadesSolicitadas));
-		$sqlStock = "SELECT idarticulo,nombre,stock FROM articulo WHERE idarticulo IN ($ids) FOR UPDATE";
-		$rsStock = ejecutarConsulta($sqlStock);
-		if (!$rsStock) {
-			$conexion->rollback();
-			$conexion->autocommit(true);
-			return array(
-				"ok"=>false,
-				"message"=>"No se pudo validar el stock de los articulos"
-			);
-		}
-
-		$stockActual = array();
-		while ($row = $rsStock->fetch_assoc()) {
-			$stockActual[(int)$row["idarticulo"]] = array(
-				"nombre"=>$row["nombre"],
-				"stock"=>$this->normalizarCantidadEntera($row["stock"])
-			);
-		}
-
-		$erroresStock = array();
-		foreach ($cantidadesSolicitadas as $idArt => $cantSolicitada) {
-			if (!isset($stockActual[$idArt])) {
-				$erroresStock[] = "Articulo ID ".$idArt." no encontrado";
-				continue;
-			}
-			$stockDisp = $this->normalizarCantidadEntera($stockActual[$idArt]["stock"]);
-			if ($stockDisp < $cantSolicitada) {
-				$erroresStock[] = $stockActual[$idArt]["nombre"]." (stock: ".number_format($stockDisp,0).", solicitado: ".number_format($cantSolicitada,0).")";
-			}
-		}
-
-		if (count($erroresStock) > 0) {
-			$conexion->rollback();
-			$conexion->autocommit(true);
-			return array(
-				"ok"=>false,
-				"message"=>"Stock insuficiente: ".implode("; ", $erroresStock)
-			);
-		}
-
-		$sql="INSERT INTO venta (idcliente,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,impuesto,total_venta,estado) VALUES ('$idcliente','$idusuario','$tipo_comprobante','$serie_comprobante','$num_comprobante','$fecha_hora','$impuesto','$total_venta','Aceptado')";
-		$idventanew=ejecutarConsulta_retornarID($sql);
-		if (!$idventanew) {
-			$conexion->rollback();
-			$conexion->autocommit(true);
-			return array(
-				"ok"=>false,
-				"message"=>"No se pudo registrar la cabecera de la venta"
-			);
-		}
-
-		$sw=true;
-		for ($j = 0; $j < count($detalles); $j++) {
-			$d = $detalles[$j];
-			$sql_detalle="INSERT INTO detalle_venta (idventa,idarticulo,cantidad,precio_venta,descuento) VALUES('".$idventanew."','".$d["idarticulo"]."','".$d["cantidad"]."','".$d["precio_venta"]."','".$d["descuento"]."')";
-			ejecutarConsulta($sql_detalle) or $sw=false;
-			if (!$sw) {
-				break;
-			}
-		}
-
-		if (!$sw) {
-			$conexion->rollback();
-			$conexion->autocommit(true);
-			return array(
-				"ok"=>false,
-				"message"=>"No se pudo registrar el detalle de la venta"
-			);
-		}
-
-		$conexion->commit();
-		$conexion->autocommit(true);
-	} catch (Throwable $e) {
-		$conexion->rollback();
-		$conexion->autocommit(true);
 		return array(
-			"ok"=>false,
-			"message"=>"No se pudo registrar la venta: ".$e->getMessage()
+			"ok"=>true,
+			"idventa"=>(int)$resultado["idventa"],
+			"tipo_comprobante"=>$resultado["tipo_comprobante"],
+			"serie_comprobante"=>$resultado["serie_comprobante"],
+			"num_comprobante"=>$resultado["num_comprobante"],
+			"total"=>$total,
+			"alertas"=>$alertas,
+			"caja_registrada"=>(bool)$resultado["caja_registrada"],
+			"cuenta_cobrar"=>(bool)$resultado["cuenta_cobrar"]
 		);
 	}
 
-	$alertas=array();
-	if (count($articulosAfectados)>0) {
-		$ids=implode(",", array_keys($articulosAfectados));
-		$sqlAlertas="SELECT idarticulo,codigo,nombre,stock,IFNULL(stock_minimo,0) AS stock_minimo
-		FROM articulo
-		WHERE idarticulo IN ($ids)
-		AND stock<=GREATEST(IFNULL(stock_minimo,0),5)";
-		$rsAlertas=ejecutarConsulta($sqlAlertas);
-		while ($reg=$rsAlertas->fetch_assoc()) {
-			$alertas[]=array(
-				"idarticulo"=>$reg["idarticulo"],
-				"codigo"=>$reg["codigo"],
-				"nombre"=>$reg["nombre"],
-				"stock"=>$this->normalizarCantidadEntera($reg["stock"]),
-				"stock_minimo"=>$this->normalizarCantidadEntera($reg["stock_minimo"])
-			);
+	// ---------- Anulacion ----------
+
+	/**
+	 * Anula una venta: devuelve el stock, anula la cuenta por cobrar (si no tiene pagos)
+	 * y registra el egreso en caja si la caja de origen sigue abierta.
+	 * Devuelve array {ok, message}.
+	 */
+	public function anular($idventa, $idusuario){
+		$idventa = (int)$idventa;
+		$idusuario = (int)$idusuario;
+		if ($idventa <= 0) {
+			return $this->error("Venta no valida");
 		}
+		if ($idusuario <= 0) {
+			return $this->error("Sesion de usuario no valida");
+		}
+		$mensajeError = '';
+
+		$resultado = dbTransaccion(function($cx) use ($idventa, $idusuario, &$mensajeError) {
+			$venta = dbRow(
+				"SELECT idventa,estado,tipo_comprobante,serie_comprobante,num_comprobante,medio_pago,total_venta
+				 FROM venta WHERE idventa=? FOR UPDATE",
+				array($idventa)
+			);
+			if (!$venta) {
+				$mensajeError = "La venta no existe";
+				return false;
+			}
+			if ($venta["estado"] === "Anulado") {
+				$mensajeError = "La venta ya se encuentra anulada";
+				return false;
+			}
+			$documento = $venta["tipo_comprobante"] . " " . $venta["serie_comprobante"] . "-" . $venta["num_comprobante"];
+
+			// Cuentas por cobrar vinculadas: bloquear si ya tienen pagos
+			$cuentas = dbAll("SELECT idcuenta_cobrar FROM cuenta_cobrar WHERE idventa=? FOR UPDATE", array($idventa));
+			foreach ($cuentas as $c) {
+				$pagos = (int)dbValue(
+					"SELECT COUNT(*) FROM pago_cuenta_cobrar WHERE idcuenta_cobrar=?",
+					array((int)$c["idcuenta_cobrar"]),
+					0
+				);
+				if ($pagos > 0) {
+					$mensajeError = "La venta tiene cobros registrados; anula primero los pagos";
+					return false;
+				}
+			}
+			foreach ($cuentas as $c) {
+				if (!dbExec("UPDATE cuenta_cobrar SET estado='ANULADO', saldo=0 WHERE idcuenta_cobrar=?", array((int)$c["idcuenta_cobrar"]))) {
+					$mensajeError = "No se pudo anular la cuenta por cobrar";
+					return false;
+				}
+			}
+
+			// Devolver stock
+			$detalle = dbAll("SELECT idarticulo,cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
+			foreach ($detalle as $d) {
+				if (!dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
+					$mensajeError = "No se pudo devolver el stock de los articulos";
+					return false;
+				}
+			}
+
+			// Egreso en caja si la caja de origen sigue abierta
+			$mov = dbRow(
+				"SELECT m.idcaja,m.medio_pago,m.monto,c.estado
+				 FROM caja_movimiento m
+				 INNER JOIN caja_diaria c ON c.idcaja=m.idcaja
+				 WHERE m.referencia=? AND m.tipo='INGRESO'
+				 ORDER BY m.idmovimiento DESC LIMIT 1",
+				array("V-" . $idventa)
+			);
+			if ($mov && $mov["estado"] === "ABIERTA") {
+				$idmov = dbInsert(
+					"INSERT INTO caja_movimiento (idcaja,idusuario,tipo,concepto,referencia,medio_pago,monto,fecha_hora)
+					 VALUES (?,?,'EGRESO',?,?,?,?,NOW())",
+					array((int)$mov["idcaja"], $idusuario, "Anulacion venta " . $documento, "AV-" . $idventa, $mov["medio_pago"], (float)$mov["monto"])
+				);
+				if ($idmov <= 0) {
+					$mensajeError = "No se pudo registrar el egreso en caja";
+					return false;
+				}
+			}
+
+			if (!dbExec("UPDATE venta SET estado='Anulado' WHERE idventa=?", array($idventa))) {
+				$mensajeError = "No se pudo actualizar el estado de la venta";
+				return false;
+			}
+			return true;
+		});
+
+		if ($resultado === false) {
+			return $this->error($mensajeError !== '' ? $mensajeError : "No se pudo anular la venta");
+		}
+		return array("ok"=>true, "message"=>"Venta anulada correctamente");
 	}
 
-	return array(
-		"ok"=>true,
-		"idventa"=>$idventanew,
-		"tipo_comprobante"=>$tipo_comprobante,
-		"serie_comprobante"=>$serie_comprobante,
-		"num_comprobante"=>$num_comprobante,
-		"alertas"=>$alertas
-	);
-}
+	// ---------- Consultas ----------
 
-public function anular($idventa){
-	$sql="UPDATE venta SET estado='Anulado' WHERE idventa='$idventa'";
-	return ejecutarConsulta($sql);
-}
-
-
-//implementar un metodopara mostrar los datos de unregistro a modificar
-public function mostrar($idventa){
-	$sql="SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%Y-%m-%d %H:%i:%s') as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario WHERE idventa='$idventa'";
-	return ejecutarConsultaSimpleFila($sql);
-}
-
-public function listarDetalle($idventa){
-	$sql="SELECT dv.idventa,dv.idarticulo,a.nombre,IFNULL(u.abreviatura,'und') as unidad,dv.cantidad,dv.precio_venta,dv.descuento,(dv.cantidad*dv.precio_venta-dv.descuento) as subtotal
-	FROM detalle_venta dv
-	INNER JOIN articulo a ON dv.idarticulo=a.idarticulo
-	LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
-	WHERE dv.idventa='$idventa'";
-	return ejecutarConsulta($sql);
-}
-
-//listar registros
-public function listar(){
-	$sql="SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario ORDER BY v.idventa DESC";
-	return ejecutarConsulta($sql);
-}
-
-public function listarPorFecha($fechaInicio, $fechaFin){
-	$where = array();
-	if ($fechaInicio !== '') {
-		$where[] = "DATE(v.fecha_hora)>='$fechaInicio'";
-	}
-	if ($fechaFin !== '') {
-		$where[] = "DATE(v.fecha_hora)<='$fechaFin'";
-	}
-	$filtro = '';
-	if (count($where) > 0) {
-		$filtro = " WHERE " . implode(" AND ", $where);
+	public function mostrar($idventa){
+		return dbRow(
+			"SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%Y-%m-%d %H:%i:%s') AS fecha,v.idcliente,p.nombre AS cliente,
+				u.idusuario,u.nombre AS usuario,v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado,
+				v.tipo_pago,v.medio_pago,v.fecha_vencimiento,v.observacion,v.idcaja
+			 FROM venta v
+			 INNER JOIN persona p ON v.idcliente=p.idpersona
+			 INNER JOIN usuario u ON v.idusuario=u.idusuario
+			 WHERE v.idventa=?",
+			array((int)$idventa)
+		);
 	}
 
-	$sql="SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') as fecha,v.idcliente,p.nombre as cliente,u.idusuario,u.nombre as usuario, v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado
-	FROM venta v
-	INNER JOIN persona p ON v.idcliente=p.idpersona
-	INNER JOIN usuario u ON v.idusuario=u.idusuario".$filtro."
-	ORDER BY v.idventa DESC";
-	return ejecutarConsulta($sql);
+	/** @return mysqli_result|false */
+	public function listarDetalle($idventa){
+		return dbQuery(
+			"SELECT dv.idventa,dv.idarticulo,a.nombre,IFNULL(u.abreviatura,'und') AS unidad,dv.cantidad,dv.precio_venta,dv.descuento,
+				(dv.cantidad*dv.precio_venta-dv.descuento) AS subtotal
+			 FROM detalle_venta dv
+			 INNER JOIN articulo a ON dv.idarticulo=a.idarticulo
+			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 WHERE dv.idventa=?",
+			array((int)$idventa)
+		);
+	}
+
+	/** @return mysqli_result|false */
+	public function listar(){
+		return $this->listarPorFecha('', '');
+	}
+
+	/**
+	 * Lista ventas con filtros opcionales. $estado y $tipo_pago se validan por whitelist.
+	 * @return mysqli_result|false
+	 */
+	public function listarPorFecha($fechaInicio, $fechaFin, $estado = '', $tipo_pago = ''){
+		$where = array();
+		$params = array();
+		$fechaInicio = fechaSegura($fechaInicio, '');
+		$fechaFin = fechaSegura($fechaFin, '');
+		if ($fechaInicio !== '') {
+			$where[] = "DATE(v.fecha_hora)>=?";
+			$params[] = $fechaInicio;
+		}
+		if ($fechaFin !== '') {
+			$where[] = "DATE(v.fecha_hora)<=?";
+			$params[] = $fechaFin;
+		}
+		$estado = trim((string)$estado);
+		if ($estado !== '' && in_array($estado, $this->estados, true)) {
+			$where[] = "v.estado=?";
+			$params[] = $estado;
+		}
+		$tipo_pago = strtoupper(trim((string)$tipo_pago));
+		if ($tipo_pago !== '' && in_array($tipo_pago, $this->tiposPago, true)) {
+			$where[] = "v.tipo_pago=?";
+			$params[] = $tipo_pago;
+		}
+		$filtro = count($where) > 0 ? " WHERE " . implode(" AND ", $where) : "";
+
+		return dbQuery(
+			"SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') AS fecha,v.idcliente,p.nombre AS cliente,
+				u.idusuario,u.nombre AS usuario,v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado,
+				v.tipo_pago,v.medio_pago,v.fecha_vencimiento
+			 FROM venta v
+			 INNER JOIN persona p ON v.idcliente=p.idpersona
+			 INNER JOIN usuario u ON v.idusuario=u.idusuario" . $filtro . "
+			 ORDER BY v.idventa DESC",
+			$params
+		);
+	}
+
+	/** @return mysqli_result|false */
+	public function ventacabecera($idventa){
+		return dbQuery(
+			"SELECT v.idventa, v.idcliente, p.nombre AS cliente, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono,
+				v.idusuario, u.nombre AS usuario, v.tipo_comprobante, v.serie_comprobante, v.num_comprobante,
+				DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') AS fecha, v.impuesto, v.total_venta,
+				v.tipo_pago, v.medio_pago, v.fecha_vencimiento, v.observacion, v.estado
+			 FROM venta v
+			 INNER JOIN persona p ON v.idcliente=p.idpersona
+			 INNER JOIN usuario u ON v.idusuario=u.idusuario
+			 WHERE v.idventa=?",
+			array((int)$idventa)
+		);
+	}
+
+	/** @return mysqli_result|false */
+	public function ventadetalles($idventa){
+		return dbQuery(
+			"SELECT a.nombre AS articulo, a.codigo, IFNULL(u.abreviatura,'und') AS unidad, d.cantidad, d.precio_venta, d.descuento,
+				(d.cantidad*d.precio_venta-d.descuento) AS subtotal
+			 FROM detalle_venta d
+			 INNER JOIN articulo a ON d.idarticulo=a.idarticulo
+			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 WHERE d.idventa=?",
+			array((int)$idventa)
+		);
+	}
+
+	/** Clientes activos para el selector de ventas. */
+	public function clientesActivos(){
+		return dbAll(
+			"SELECT idpersona,nombre,num_documento FROM persona
+			 WHERE tipo_persona='Cliente' AND condicion=1
+			 ORDER BY nombre ASC"
+		);
+	}
+
+	/** Resumen de ventas aceptadas agrupado por medio de pago en un rango de fechas. */
+	public function resumenPorMedioPago($fechaInicio, $fechaFin){
+		$where = array("v.estado='Aceptado'");
+		$params = array();
+		$fechaInicio = fechaSegura($fechaInicio, '');
+		$fechaFin = fechaSegura($fechaFin, '');
+		if ($fechaInicio !== '') {
+			$where[] = "DATE(v.fecha_hora)>=?";
+			$params[] = $fechaInicio;
+		}
+		if ($fechaFin !== '') {
+			$where[] = "DATE(v.fecha_hora)<=?";
+			$params[] = $fechaFin;
+		}
+		return dbAll(
+			"SELECT v.medio_pago, v.tipo_pago, COUNT(*) AS comprobantes, IFNULL(SUM(v.total_venta),0) AS total
+			 FROM venta v
+			 WHERE " . implode(" AND ", $where) . "
+			 GROUP BY v.medio_pago, v.tipo_pago
+			 ORDER BY total DESC",
+			$params
+		);
+	}
+
+	/** Totales de las ventas aceptadas de hoy. */
+	public function totalesDia(){
+		$row = dbRow(
+			"SELECT COUNT(*) AS comprobantes,
+				IFNULL(SUM(total_venta),0) AS monto,
+				IFNULL(SUM(CASE WHEN tipo_pago='CONTADO' THEN total_venta ELSE 0 END),0) AS contado,
+				IFNULL(SUM(CASE WHEN tipo_pago='CREDITO' THEN total_venta ELSE 0 END),0) AS credito
+			 FROM venta
+			 WHERE estado='Aceptado' AND DATE(fecha_hora)=CURDATE()"
+		);
+		return array(
+			"fecha"=>date("Y-m-d"),
+			"comprobantes"=>$row ? (int)$row["comprobantes"] : 0,
+			"monto"=>$row ? round((float)$row["monto"], 2) : 0.0,
+			"contado"=>$row ? round((float)$row["contado"], 2) : 0.0,
+			"credito"=>$row ? round((float)$row["credito"], 2) : 0.0
+		);
+	}
+
 }
-
-
-public function ventacabecera($idventa){
-	$sql= "SELECT v.idventa, v.idcliente, p.nombre AS cliente, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono, v.idusuario, u.nombre AS usuario, v.tipo_comprobante, v.serie_comprobante, v.num_comprobante, DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') AS fecha, v.impuesto, v.total_venta FROM venta v INNER JOIN persona p ON v.idcliente=p.idpersona INNER JOIN usuario u ON v.idusuario=u.idusuario WHERE v.idventa='$idventa'";
-	return ejecutarConsulta($sql);
-}
-
-public function ventadetalles($idventa){
-	$sql="SELECT a.nombre AS articulo, a.codigo, IFNULL(u.abreviatura,'und') as unidad, d.cantidad, d.precio_venta, d.descuento, (d.cantidad*d.precio_venta-d.descuento) AS subtotal
-	FROM detalle_venta d
-	INNER JOIN articulo a ON d.idarticulo=a.idarticulo
-	LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
-	WHERE d.idventa='$idventa'";
-         return ejecutarConsulta($sql);
-}
-
-
-}
-
- ?>

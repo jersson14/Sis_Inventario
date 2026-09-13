@@ -1,15 +1,11 @@
 <?php
-//activamos almacenamiento en el buffer
-ob_start();
-session_start();
-if (!isset($_SESSION['nombre'])) {
-  header("Location: login.html");
-}else{
-
-
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$tituloPagina = "Compras por fecha";
+$iconoPagina = "fa-calendar";
 require 'header.php';
 
-if ($_SESSION['consultac']==1) {
+if (usuarioTienePermiso('consultac')) {
 
  ?>
     <div class="content-wrapper">
@@ -79,10 +75,5 @@ if ($_SESSION['consultac']==1) {
 
 require 'footer.php';
  ?>
- <script src="scripts/comprasfecha.js"></script>
- <?php 
-}
-
-ob_end_flush();
-  ?>
-
+ <script src="scripts/comprasfecha.js?v=<?php echo e(APP_VERSION); ?>"></script>
+ 

@@ -1,22 +1,46 @@
 <?php
+require_once "../config/seguridad.php";
+requiereLogin();
+requierePermiso(array('procenter', 'almacen'));
 require_once "../modelos/ProCenter.php";
 
 $pro = new ProCenter();
 
-switch ($_GET['op']) {
+/** Contrato DataTables. */
+function respuestaDataTable(array $data)
+{
+    echo json_encode(array(
+        'sEcho' => 1,
+        'iTotalRecords' => count($data),
+        'iTotalDisplayRecords' => count($data),
+        'aaData' => $data
+    ), JSON_UNESCAPED_UNICODE);
+}
+
+$op = isset($_GET['op']) ? (string)$_GET['op'] : '';
+
+// Fechas opcionales ('' = sin filtro)
+$desde = fechaSegura(isset($_GET['desde']) ? $_GET['desde'] : '', '');
+$hasta = fechaSegura(isset($_GET['hasta']) ? $_GET['hasta'] : '', '');
+if ($desde !== '' && $hasta !== '' && $desde > $hasta) {
+    $tmp = $desde;
+    $desde = $hasta;
+    $hasta = $tmp;
+}
+
+switch ($op) {
     case 'selectArticulo':
         $rspta = $pro->articulosActivos();
-        while ($reg = $rspta->fetch_object()) {
-            echo '<option value="' . $reg->idarticulo . '">' . $reg->nombre . ' (' . $reg->codigo . ')</option>';
+        if ($rspta) {
+            while ($reg = $rspta->fetch_object()) {
+                echo '<option value="' . (int)$reg->idarticulo . '">' . e($reg->nombre) . ' (' . e($reg->codigo) . ')</option>';
+            }
         }
         break;
 
     case 'kardex':
-        $idarticulo = isset($_GET['idarticulo']) ? limpiarCadena($_GET['idarticulo']) : '';
-        $desde = isset($_GET['desde']) ? limpiarCadena($_GET['desde']) : '';
-        $hasta = isset($_GET['hasta']) ? limpiarCadena($_GET['hasta']) : '';
-
-        if ($idarticulo === '') {
+        $idarticulo = enteroSeguro(isset($_GET['idarticulo']) ? $_GET['idarticulo'] : 0);
+        if ($idarticulo <= 0) {
             echo json_encode(array('ok' => false, 'message' => 'Selecciona un articulo.'));
             break;
         }
@@ -35,27 +59,30 @@ switch ($_GET['op']) {
         $salidasTotal = (float)$totales['salidas_total'];
         $stockActual = (float)$info['stock'];
 
+        // Saldo inicial global = stock actual - (todo lo que entro - todo lo que salio)
         $saldoInicialGlobal = $stockActual - ($entradasTotal - $salidasTotal);
         $saldoInicialRango = $saldoInicialGlobal + ((float)$antes['entradas_antes'] - (float)$antes['salidas_antes']);
 
         $saldo = $saldoInicialRango;
         $data = array();
-        while ($reg = $movs->fetch_object()) {
-            $entrada = (float)$reg->entrada;
-            $salida = (float)$reg->salida;
-            $saldo += ($entrada - $salida);
+        if ($movs) {
+            while ($reg = $movs->fetch_object()) {
+                $entrada = (float)$reg->entrada;
+                $salida = (float)$reg->salida;
+                $saldo += ($entrada - $salida);
 
-            $data[] = array(
-                'fecha' => date('d/m/Y H:i', strtotime($reg->fecha_hora)),
-                'tipo' => $reg->tipo,
-                'documento' => $reg->documento,
-                'tercero' => $reg->tercero,
-                'entrada' => number_format($entrada, 0),
-                'salida' => number_format($salida, 0),
-                'saldo' => number_format($saldo, 0),
-                'costo' => (float)$reg->costo,
-                'precio_ref' => (float)$reg->precio_ref
-            );
+                $data[] = array(
+                    'fecha' => date('d/m/Y H:i', strtotime($reg->fecha_hora)),
+                    'tipo' => $reg->tipo,
+                    'documento' => $reg->documento,
+                    'tercero' => $reg->tercero,
+                    'entrada' => number_format($entrada, 0),
+                    'salida' => number_format($salida, 0),
+                    'saldo' => number_format($saldo, 0),
+                    'costo' => (float)$reg->costo,
+                    'precio_ref' => (float)$reg->precio_ref
+                );
+            }
         }
 
         echo json_encode(array(
@@ -67,139 +94,131 @@ switch ($_GET['op']) {
             'stock_minimo' => number_format((float)$info['stock_minimo'], 0),
             'saldo_inicial' => number_format($saldoInicialRango, 0),
             'movimientos' => $data
-        ));
+        ), JSON_UNESCAPED_UNICODE);
         break;
 
     case 'alertaStock':
         $rspta = $pro->alertasStockMinimo();
         $data = array();
-        while ($reg = $rspta->fetch_object()) {
-            $data[] = array(
-                '0' => $reg->codigo,
-                '1' => $reg->nombre,
-                '2' => number_format((float)$reg->stock, 0) . ' ' . $reg->unidad,
-                '3' => number_format((float)$reg->stock_minimo, 0) . ' ' . $reg->unidad,
-                '4' => number_format((float)$reg->faltante, 0) . ' ' . $reg->unidad
-            );
+        if ($rspta) {
+            while ($reg = $rspta->fetch_object()) {
+                $data[] = array(
+                    '0' => e($reg->codigo),
+                    '1' => e($reg->nombre),
+                    '2' => number_format((float)$reg->stock, 0) . ' ' . e($reg->unidad),
+                    '3' => number_format((float)$reg->stock_minimo, 0) . ' ' . e($reg->unidad),
+                    '4' => number_format((float)$reg->faltante, 0) . ' ' . e($reg->unidad)
+                );
+            }
         }
-
-        echo json_encode(array(
-            'sEcho' => 1,
-            'iTotalRecords' => count($data),
-            'iTotalDisplayRecords' => count($data),
-            'aaData' => $data
-        ));
+        respuestaDataTable($data);
         break;
 
     case 'alertaSinMov':
-        $dias = isset($_GET['dias']) ? limpiarCadena($_GET['dias']) : '30';
+        $dias = enteroSeguro(isset($_GET['dias']) ? $_GET['dias'] : 30, 1, 30);
+        if ($dias > 3650) {
+            $dias = 3650;
+        }
         $rspta = $pro->alertasSinMovimiento($dias);
         $data = array();
-
-        while ($reg = $rspta->fetch_object()) {
-            $ultimo = empty($reg->ultimo_mov) ? 'Sin movimientos' : date('d/m/Y', strtotime($reg->ultimo_mov));
-            $data[] = array(
-                '0' => $reg->codigo,
-                '1' => $reg->nombre,
-                '2' => number_format((float)$reg->stock, 0) . ' ' . $reg->unidad,
-                '3' => $ultimo
-            );
+        if ($rspta) {
+            while ($reg = $rspta->fetch_object()) {
+                $ultimo = empty($reg->ultimo_mov) ? 'Sin movimientos' : date('d/m/Y', strtotime($reg->ultimo_mov));
+                $data[] = array(
+                    '0' => e($reg->codigo),
+                    '1' => e($reg->nombre),
+                    '2' => number_format((float)$reg->stock, 0) . ' ' . e($reg->unidad),
+                    '3' => $ultimo
+                );
+            }
         }
-
-        echo json_encode(array(
-            'sEcho' => 1,
-            'iTotalRecords' => count($data),
-            'iTotalDisplayRecords' => count($data),
-            'aaData' => $data
-        ));
+        respuestaDataTable($data);
         break;
 
     case 'topVendidos':
-        $desde = isset($_GET['desde']) ? limpiarCadena($_GET['desde']) : '';
-        $hasta = isset($_GET['hasta']) ? limpiarCadena($_GET['hasta']) : '';
-        $rspta = $pro->topVendidos($desde, $hasta, 10);
-
-        $data = array();
-        while ($reg = $rspta->fetch_object()) {
-            $data[] = array(
-                '0' => $reg->codigo,
-                '1' => $reg->nombre,
-                '2' => number_format((float)$reg->cantidad, 0) . ' ' . $reg->unidad,
-                '3' => formatearMoneda((float)$reg->total)
-            );
+        $limite = enteroSeguro(isset($_GET['limite']) ? $_GET['limite'] : 10, 1, 10);
+        if ($limite > 100) {
+            $limite = 100;
         }
-
-        echo json_encode(array(
-            'sEcho' => 1,
-            'iTotalRecords' => count($data),
-            'iTotalDisplayRecords' => count($data),
-            'aaData' => $data
-        ));
+        $rspta = $pro->topVendidos($desde, $hasta, $limite);
+        $data = array();
+        if ($rspta) {
+            while ($reg = $rspta->fetch_object()) {
+                $data[] = array(
+                    '0' => e($reg->codigo),
+                    '1' => e($reg->nombre),
+                    '2' => number_format((float)$reg->cantidad, 0) . ' ' . e($reg->unidad),
+                    '3' => formatearMoneda((float)$reg->total)
+                );
+            }
+        }
+        respuestaDataTable($data);
         break;
 
     case 'utilidad':
-        $desde = isset($_GET['desde']) ? limpiarCadena($_GET['desde']) : '';
-        $hasta = isset($_GET['hasta']) ? limpiarCadena($_GET['hasta']) : '';
-        $agrupar = isset($_GET['agrupar']) ? limpiarCadena($_GET['agrupar']) : 'producto';
+        $agrupar = isset($_GET['agrupar']) ? strtolower(trim((string)$_GET['agrupar'])) : 'producto';
+        if (!in_array($agrupar, array('producto', 'categoria', 'vendedor'), true)) {
+            $agrupar = 'producto';
+        }
 
         $rspta = $pro->utilidad($desde, $hasta, $agrupar);
         $data = array();
+        if ($rspta) {
+            while ($reg = $rspta->fetch_object()) {
+                if ($agrupar === 'categoria') {
+                    $grupo = e($reg->categoria);
+                    $detalle = '-';
+                } elseif ($agrupar === 'vendedor') {
+                    $grupo = e($reg->vendedor);
+                    $detalle = '-';
+                } else {
+                    $grupo = e($reg->producto);
+                    $detalle = e($reg->categoria) . ' / ' . e($reg->vendedor);
+                }
 
-        while ($reg = $rspta->fetch_object()) {
-            if ($agrupar === 'categoria') {
-                $grupo = $reg->categoria;
-                $detalle = '-';
-            } elseif ($agrupar === 'vendedor') {
-                $grupo = $reg->vendedor;
-                $detalle = '-';
-            } else {
-                $grupo = $reg->producto;
-                $detalle = $reg->categoria . ' / ' . $reg->vendedor;
+                $data[] = array(
+                    '0' => $grupo,
+                    '1' => $detalle,
+                    '2' => number_format((float)$reg->cantidad, 0),
+                    '3' => formatearMoneda((float)$reg->venta),
+                    '4' => formatearMoneda((float)$reg->costo),
+                    '5' => formatearMoneda((float)$reg->utilidad)
+                );
             }
-
-            $data[] = array(
-                '0' => $grupo,
-                '1' => $detalle,
-                '2' => number_format((float)$reg->cantidad, 0),
-                '3' => formatearMoneda((float)$reg->venta),
-                '4' => formatearMoneda((float)$reg->costo),
-                '5' => formatearMoneda((float)$reg->utilidad)
-            );
         }
-
-        echo json_encode(array(
-            'sEcho' => 1,
-            'iTotalRecords' => count($data),
-            'iTotalDisplayRecords' => count($data),
-            'aaData' => $data
-        ));
+        respuestaDataTable($data);
         break;
 
     case 'sugerencias':
-        $diasAnalisis = isset($_GET['dias_analisis']) ? limpiarCadena($_GET['dias_analisis']) : '30';
-        $diasCobertura = isset($_GET['dias_cobertura']) ? limpiarCadena($_GET['dias_cobertura']) : '15';
+        $diasAnalisis = enteroSeguro(isset($_GET['dias_analisis']) ? $_GET['dias_analisis'] : 30, 1, 30);
+        $diasCobertura = enteroSeguro(isset($_GET['dias_cobertura']) ? $_GET['dias_cobertura'] : 15, 1, 15);
+        if ($diasAnalisis > 3650) {
+            $diasAnalisis = 3650;
+        }
+        if ($diasCobertura > 3650) {
+            $diasCobertura = 3650;
+        }
 
         $rspta = $pro->comprasSugeridas($diasAnalisis, $diasCobertura);
         $data = array();
-        while ($reg = $rspta->fetch_object()) {
-            $data[] = array(
-                '0' => $reg->codigo,
-                '1' => $reg->nombre,
-                '2' => number_format((float)$reg->stock, 0) . ' ' . $reg->unidad,
-                '3' => number_format((float)$reg->stock_minimo, 0) . ' ' . $reg->unidad,
-                '4' => number_format((float)$reg->vendido_periodo, 0),
-                '5' => number_format((float)$reg->promedio_diario, 0),
-                '6' => number_format((float)$reg->stock_objetivo, 0),
-                '7' => number_format((float)$reg->sugerido, 0)
-            );
+        if ($rspta) {
+            while ($reg = $rspta->fetch_object()) {
+                $data[] = array(
+                    '0' => e($reg->codigo),
+                    '1' => e($reg->nombre),
+                    '2' => number_format((float)$reg->stock, 0) . ' ' . e($reg->unidad),
+                    '3' => number_format((float)$reg->stock_minimo, 0) . ' ' . e($reg->unidad),
+                    '4' => number_format((float)$reg->vendido_periodo, 0),
+                    '5' => number_format((float)$reg->promedio_diario, 0),
+                    '6' => number_format((float)$reg->stock_objetivo, 0),
+                    '7' => number_format((float)$reg->sugerido, 0)
+                );
+            }
         }
+        respuestaDataTable($data);
+        break;
 
-        echo json_encode(array(
-            'sEcho' => 1,
-            'iTotalRecords' => count($data),
-            'iTotalDisplayRecords' => count($data),
-            'aaData' => $data
-        ));
+    default:
+        responderJson(array('ok' => false, 'message' => 'Operacion no valida.'), 400);
         break;
 }
-?>

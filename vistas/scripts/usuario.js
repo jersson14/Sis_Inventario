@@ -1,178 +1,165 @@
+/* Usuarios / Mi perfil */
 var tabla;
 var PERFIL_MODE = !!window.appPerfilMode;
 var PERFIL_ID = window.appPerfilId || null;
+var ES_ADMIN = !!window.appEsAdmin;
 
-//funcion que se ejecuta al inicio
 function init(){
-   mostrarform(PERFIL_MODE ? true : false);
-   if (!PERFIL_MODE) {
-   	listar();
-   } else {
-   	$("#listadoregistros").hide();
-   	$("#btnagregar").hide();
-   	if (PERFIL_ID) {
-   		mostrar(PERFIL_ID);
-   	}
-   }
-
-   $("#formulario").on("submit",function(e){
-   	guardaryeditar(e);
-   })
-
-   $("#imagenmuestra").hide();
-//mostramos los permisos
-$.post("../ajax/usuario.php?op=permisos&id="+(PERFIL_MODE && PERFIL_ID ? PERFIL_ID : ""), function(r){
-	$("#permisos").html(r);
-});
+	if (PERFIL_MODE) {
+		$("#formularioregistros").show();
+		if (PERFIL_ID) { mostrar(PERFIL_ID); cargarResumenPerfil(); }
+	} else {
+		mostrarform(false);
+		listar();
+	}
+	$("#formulario").on("submit", function(e){ guardaryeditar(e); });
+	$("#formClave").on("submit", cambiarClave);
+	$("#imagen").on("change", function(){
+		var file = this.files && this.files[0];
+		if (!file) { return; }
+		if (file.size > 3 * 1024 * 1024) { appNotify("warning", "La imagen supera los 3 MB."); $(this).val(""); return; }
+		var reader = new FileReader();
+		reader.onload = function(ev){ $("#imagenmuestra").attr("src", ev.target.result).show(); };
+		reader.readAsDataURL(file);
+	});
+	$("#imagenmuestra").hide();
+	if (!PERFIL_MODE && window.appQueryParam && window.appQueryParam("nuevo") === "1") { mostrarform(true); }
 }
 
-//funcion limpiar
 function limpiar(){
-	$("#nombre").val("");
-    $("#num_documento").val("");
-	$("#direccion").val("");
-	$("#telefono").val("");
-	$("#email").val("");
-	$("#cargo").val("");
-	$("#login").val("");
-	$("#clave").val("");
-	$("#imagenmuestra").attr("src","");
-	$("#imagenactual").val("");
-	$("#idusuario").val("");
+	$("#idusuario, #nombre, #num_documento, #direccion, #telefono, #email, #cargo, #login, #clave, #imagenactual").val("");
+	$("#tipo_documento").val("DNI");
+	$("#imagenmuestra").attr("src", "").hide();
+	$("#imagen").val("");
+	$("#formTitulo").text("Nuevo usuario");
+	$("#claveReq").show();
+	$("#claveAyuda").text("Obligatoria para usuarios nuevos.");
+	$("#clave").attr("required", true);
 }
 
-//funcion mostrar formulario
-// uid: si se pasa, es edición (mostrar() carga sus permisos); si no, es nuevo usuario
+function cargarPermisos(id){
+	$.post("../ajax/usuario.php?op=permisos&id=" + (id || ""), function(r){
+		$("#permisos").html(r);
+	});
+}
+
 function mostrarform(flag, uid){
 	limpiar();
-	if(flag){
+	if (flag) {
 		$("#listadoregistros").hide();
 		$("#formularioregistros").show();
-		$("#btnGuardar").prop("disabled",false);
+		$("#btnGuardar").prop("disabled", false);
 		$("#btnagregar").hide();
-		if (!uid) {
-			$.post("../ajax/usuario.php?op=permisos&id=", function(r){
-				$("#permisos").html(r);
-			});
-		}
-	}else{
+		if (!uid) { cargarPermisos(""); setTimeout(function(){ $("#nombre").focus(); }, 60); }
+	} else {
 		$("#listadoregistros").show();
 		$("#formularioregistros").hide();
 		$("#btnagregar").show();
 	}
 }
 
-//cancelar form
 function cancelarform(){
-	if (PERFIL_MODE && PERFIL_ID) {
-		mostrar(PERFIL_ID);
-		return;
-	}
+	if (PERFIL_MODE && PERFIL_ID) { mostrar(PERFIL_ID); return; }
 	limpiar();
 	mostrarform(false);
 }
 
-//funcion listar
 function listar(){
-	tabla=$('#tbllistado').dataTable({
-		"aProcessing": true,//activamos el procedimiento del datatable
-		"aServerSide": true,//paginacion y filrado realizados por el server
-		dom: 'Bfrtip',//definimos los elementos del control de la tabla
+	tabla = $('#tbllistado').dataTable({
+		"aProcessing": true, "aServerSide": true, dom: 'Bfrtip',
 		buttons: window.appDataTableButtons('Reporte de Usuarios', true),
-		"ajax":
-		{
-			url:'../ajax/usuario.php?op=listar',
-			type: "get",
-			dataType : "json",
-			error:function(e){
-				console.log(e.responseText);
-			}
-		},
-		"bDestroy":true,
-		"iDisplayLength":10,//paginacion
-		"order":[[0,"desc"]]//ordenar (columna, orden)
+		"ajax": { url: '../ajax/usuario.php?op=listar', type: "get", dataType: "json", error: function(e){ console.log(e.responseText); } },
+		"bDestroy": true, "iDisplayLength": 10, "order": [[1, "asc"]],
+		"columnDefs": [{ "orderable": false, "targets": [0, 8] }]
 	}).DataTable();
 }
-//funcion para guardaryeditar
+
 function guardaryeditar(e){
-     e.preventDefault();//no se activara la accion predeterminada 
-     $("#btnGuardar").prop("disabled",true);
-     var formData=new FormData($("#formulario")[0]);
-
-     $.ajax({
-     	url: "../ajax/usuario.php?op=guardaryeditar",
-     	type: "POST",
-     	data: formData,
-     	contentType: false,
-     	processData: false,
-
-     	success: function(datos){
-     		bootbox.alert(datos);
-     		if (PERFIL_MODE && PERFIL_ID) {
-     			mostrarform(true);
-     			mostrar(PERFIL_ID);
-     		} else {
-     			mostrarform(false);
-     			tabla.ajax.reload();
-     		}
-     	}
-     });
-
-     limpiar();
+	e.preventDefault();
+	if (!$.trim($("#nombre").val())) { appNotify("warning", "El nombre es obligatorio."); return; }
+	if (!$.trim($("#login").val())) { appNotify("warning", "El nombre de usuario es obligatorio."); return; }
+	var clave = $("#clave").val();
+	if (!$("#idusuario").val() && !clave) { appNotify("warning", "La contraseña es obligatoria para un usuario nuevo."); return; }
+	if (clave && (clave.length < 8 || !/[A-Za-z]/.test(clave) || !/\d/.test(clave))) { appNotify("warning", "La contraseña debe tener al menos 8 caracteres con letras y números."); return; }
+	appSetLoading("#btnGuardar", true);
+	$.ajax({
+		url: "../ajax/usuario.php?op=guardaryeditar", type: "POST",
+		data: new FormData($("#formulario")[0]), contentType: false, processData: false,
+		success: function(datos){
+			appSetLoading("#btnGuardar", false);
+			var txt = $.trim(datos || "");
+			appNotifyFromResponse(txt);
+			if (txt.toLowerCase().indexOf("correctamente") !== -1) {
+				if (PERFIL_MODE && PERFIL_ID) { mostrar(PERFIL_ID); cargarResumenPerfil(); setTimeout(function(){ window.location.reload(); }, 1200); }
+				else { mostrarform(false); tabla.ajax.reload(null, false); }
+			}
+		},
+		error: function(){ appSetLoading("#btnGuardar", false); }
+	});
 }
 
 function mostrar(idusuario){
-	$.post("../ajax/usuario.php?op=mostrar",{idusuario : idusuario},
-		function(data,status)
-		{
-			data=JSON.parse(data);
-			mostrarform(true, data.idusuario);
-
-			$("#nombre").val(data.nombre);
-            $("#tipo_documento").val(data.tipo_documento);
-            $("#tipo_documento").selectpicker('refresh');
-            $("#num_documento").val(data.num_documento);
-            $("#direccion").val(data.direccion);
-            $("#telefono").val(data.telefono);
-            $("#email").val(data.email);
-            $("#cargo").val(data.cargo);
-            $("#login").val(data.login);
-            $("#clave").val("");
-            $("#imagenmuestra").show();
-            $("#imagenmuestra").attr("src","../files/usuarios/"+data.imagen);
-            $("#imagenactual").val(data.imagen);
-            $("#idusuario").val(data.idusuario);
-
-
-		});
-	$.post("../ajax/usuario.php?op=permisos&id="+idusuario, function(r){
-	$("#permisos").html(r);
-});
+	$.post("../ajax/usuario.php?op=mostrar", { idusuario: idusuario }, function(data){
+		data = appParseJson(data, null);
+		if (!data) { appNotify("error", "No se pudo cargar el usuario."); return; }
+		if (!PERFIL_MODE) { mostrarform(true, data.idusuario); }
+		$("#formTitulo").text(PERFIL_MODE ? "Mis datos" : "Editar usuario");
+		$("#nombre").val(data.nombre);
+		$("#tipo_documento").val(data.tipo_documento || "DNI");
+		$("#num_documento").val(data.num_documento);
+		$("#direccion").val(data.direccion);
+		$("#telefono").val(data.telefono);
+		$("#email").val(data.email);
+		$("#cargo").val(data.cargo);
+		$("#login").val(data.login);
+		$("#clave").val("").removeAttr("required");
+		$("#claveReq").hide();
+		$("#claveAyuda").text("Déjala vacía para no cambiarla.");
+		if (data.imagen) { $("#imagenmuestra").attr("src", "../files/usuarios/" + data.imagen).show(); }
+		$("#imagenactual").val(data.imagen || "");
+		$("#idusuario").val(data.idusuario);
+		cargarPermisos(idusuario);
+	});
 }
 
+function cargarResumenPerfil(){
+	$.get("../ajax/usuario.php?op=resumenPerfil", function(resp){
+		var r = appParseJson(resp, null);
+		if (!r) { $("#resumenPerfil").html('<span class="text-soft">No disponible.</span>'); return; }
+		var perms = (r.permisos || []).map(function(p){ return '<span class="chip">' + appEscapeHtml(p) + '</span>'; }).join(" ");
+		$("#resumenPerfil").html(
+			'<p><strong>Usuario:</strong> ' + appEscapeHtml(r.login) + '</p>' +
+			'<p><strong>Cargo:</strong> ' + appEscapeHtml(r.cargo || "-") + '</p>' +
+			'<p><strong>Último acceso:</strong> ' + appEscapeHtml(r.ultimo_acceso || "-") + '</p>' +
+			'<p class="mb-0"><strong>Permisos:</strong><br>' + (perms || '<span class="text-soft">Sin permisos</span>') + '</p>'
+		);
+	});
+}
 
-//funcion para desactivar
+function cambiarClave(e){
+	e.preventDefault();
+	var nueva = $("#clave_nueva").val();
+	if (nueva !== $("#clave_confirma").val()) { appNotify("warning", "La confirmación no coincide con la nueva contraseña."); return; }
+	if (nueva.length < 8 || !/[A-Za-z]/.test(nueva) || !/\d/.test(nueva)) { appNotify("warning", "La nueva contraseña debe tener al menos 8 caracteres con letras y números."); return; }
+	appSetLoading("#btnCambiarClave", true);
+	$.post("../ajax/usuario.php?op=cambiarClave", $("#formClave").serialize(), function(resp){
+		appSetLoading("#btnCambiarClave", false);
+		var r = appParseJson(resp, { ok: false, message: resp });
+		appNotify(r.ok ? "success" : "error", r.message || "");
+		if (r.ok) { $("#formClave")[0].reset(); }
+	}).fail(function(){ appSetLoading("#btnCambiarClave", false); });
+}
+
 function desactivar(idusuario){
-	bootbox.confirm("¿Esta seguro de desactivar este dato?", function(result){
-		if (result) {
-			$.post("../ajax/usuario.php?op=desactivar", {idusuario : idusuario}, function(e){
-				bootbox.alert(e);
-				tabla.ajax.reload();
-			});
-		}
-	})
+	appConfirm("El usuario no podrá iniciar sesión hasta que lo actives de nuevo. ¿Desactivar?", function(){
+		$.post("../ajax/usuario.php?op=desactivar", { idusuario: idusuario }, function(e){ appNotifyFromResponse(e); tabla.ajax.reload(null, false); });
+	}, { titulo: "Desactivar usuario", ok: "Sí, desactivar", tipo: "warning" });
 }
 
 function activar(idusuario){
-	bootbox.confirm("¿Esta seguro de activar este dato?" , function(result){
-		if (result) {
-			$.post("../ajax/usuario.php?op=activar", {idusuario : idusuario}, function(e){
-				bootbox.alert(e);
-				tabla.ajax.reload();
-			});
-		}
-	})
+	appConfirm("¿Activar este usuario?", function(){
+		$.post("../ajax/usuario.php?op=activar", { idusuario: idusuario }, function(e){ appNotifyFromResponse(e); tabla.ajax.reload(null, false); });
+	}, { titulo: "Activar usuario", ok: "Sí, activar", tipo: "success" });
 }
-
 
 init();

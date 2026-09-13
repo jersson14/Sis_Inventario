@@ -177,7 +177,7 @@ function fact_dev( $libelle, $num )
     $y2  = $y1 + 2;
     $mid = ($r1 + $r2 ) / 2;
     
-    $texte  = $libelle . utf8_decode(" N° : ") . $num;    
+    $texte  = $libelle . textoLatin1(" N° : ") . $num;    
     $szfont = 12;
     $loop   = 0;
     

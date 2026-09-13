@@ -1,5 +1,11 @@
 <?php
-require "../config/Conexion.php";
+/**
+ * Modelo ProCenter: kardex, alertas, top vendidos, utilidad y compras sugeridas.
+ *
+ * Todas las consultas con datos externos usan sentencias preparadas.
+ * Los kardex unen ingresos + ventas + ajustes de inventario.
+ */
+require_once "../config/Conexion.php";
 
 class ProCenter
 {
@@ -9,68 +15,99 @@ class ProCenter
 
     public function articulosActivos()
     {
-        $sql = "SELECT a.idarticulo,a.nombre,IFNULL(a.codigo,'') AS codigo,IFNULL(u.abreviatura,'und') AS unidad
+        $sql = "SELECT a.idarticulo, a.nombre, IFNULL(a.codigo,'') AS codigo, IFNULL(u.abreviatura,'und') AS unidad
         FROM articulo a
         LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
         WHERE a.condicion=1
         ORDER BY a.nombre ASC";
-        return ejecutarConsulta($sql);
+        return dbQuery($sql);
     }
 
     public function infoArticulo($idarticulo)
     {
-        $sql = "SELECT a.idarticulo,a.nombre,a.codigo,a.stock,a.stock_minimo,IFNULL(u.abreviatura,'und') AS unidad
+        $sql = "SELECT a.idarticulo, a.nombre, a.codigo, a.stock, a.stock_minimo, a.precio_compra, IFNULL(u.abreviatura,'und') AS unidad
         FROM articulo a
         LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
-        WHERE a.idarticulo='$idarticulo' LIMIT 1";
-        return ejecutarConsultaSimpleFila($sql);
+        WHERE a.idarticulo=? LIMIT 1";
+        return dbRow($sql, array((int)$idarticulo));
     }
 
+    /** Entradas y salidas historicas totales (ingresos + ventas + ajustes). */
     public function kardexTotales($idarticulo)
     {
+        $id = (int)$idarticulo;
         $sql = "SELECT
           IFNULL((SELECT SUM(di.cantidad)
               FROM detalle_ingreso di
               INNER JOIN ingreso i ON i.idingreso=di.idingreso
-              WHERE di.idarticulo='$idarticulo' AND i.estado='Aceptado'),0) AS entradas_total,
+              WHERE di.idarticulo=? AND i.estado='Aceptado'),0)
+          + IFNULL((SELECT SUM(aj.cantidad) FROM ajuste_inventario aj WHERE aj.idarticulo=? AND aj.tipo='ENTRADA'),0) AS entradas_total,
           IFNULL((SELECT SUM(dv.cantidad)
               FROM detalle_venta dv
               INNER JOIN venta v ON v.idventa=dv.idventa
-              WHERE dv.idarticulo='$idarticulo' AND v.estado='Aceptado'),0) AS salidas_total";
-        return ejecutarConsultaSimpleFila($sql);
+              WHERE dv.idarticulo=? AND v.estado='Aceptado'),0)
+          + IFNULL((SELECT SUM(aj.cantidad) FROM ajuste_inventario aj WHERE aj.idarticulo=? AND aj.tipo='SALIDA'),0) AS salidas_total";
+        $row = dbRow($sql, array($id, $id, $id, $id));
+        return $row ? $row : array('entradas_total' => 0, 'salidas_total' => 0);
     }
 
+    /** Entradas y salidas anteriores a una fecha (para el saldo inicial del rango). */
     public function kardexAntesDeFecha($idarticulo, $fechaDesde)
     {
         $fechaDesde = trim((string)$fechaDesde);
         if ($fechaDesde === '') {
             return array('entradas_antes' => 0, 'salidas_antes' => 0);
         }
-
+        $id = (int)$idarticulo;
         $sql = "SELECT
           IFNULL((SELECT SUM(di.cantidad)
               FROM detalle_ingreso di
               INNER JOIN ingreso i ON i.idingreso=di.idingreso
-              WHERE di.idarticulo='$idarticulo' AND i.estado='Aceptado' AND DATE(i.fecha_hora) < '$fechaDesde'),0) AS entradas_antes,
+              WHERE di.idarticulo=? AND i.estado='Aceptado' AND DATE(i.fecha_hora) < ?),0)
+          + IFNULL((SELECT SUM(aj.cantidad) FROM ajuste_inventario aj
+              WHERE aj.idarticulo=? AND aj.tipo='ENTRADA' AND DATE(aj.fecha_hora) < ?),0) AS entradas_antes,
           IFNULL((SELECT SUM(dv.cantidad)
               FROM detalle_venta dv
               INNER JOIN venta v ON v.idventa=dv.idventa
-              WHERE dv.idarticulo='$idarticulo' AND v.estado='Aceptado' AND DATE(v.fecha_hora) < '$fechaDesde'),0) AS salidas_antes";
-        return ejecutarConsultaSimpleFila($sql);
+              WHERE dv.idarticulo=? AND v.estado='Aceptado' AND DATE(v.fecha_hora) < ?),0)
+          + IFNULL((SELECT SUM(aj.cantidad) FROM ajuste_inventario aj
+              WHERE aj.idarticulo=? AND aj.tipo='SALIDA' AND DATE(aj.fecha_hora) < ?),0) AS salidas_antes";
+        $row = dbRow($sql, array($id, $fechaDesde, $id, $fechaDesde, $id, $fechaDesde, $id, $fechaDesde));
+        return $row ? $row : array('entradas_antes' => 0, 'salidas_antes' => 0);
     }
 
+    /**
+     * Movimientos del kardex (ingresos, ventas y ajustes) ordenados por fecha.
+     * $fechaDesde / $fechaHasta pueden ir vacios (sin filtro).
+     */
     public function kardexMovimientos($idarticulo, $fechaDesde, $fechaHasta)
     {
-        $whereIngreso = "di.idarticulo='$idarticulo' AND i.estado='Aceptado'";
-        $whereVenta = "dv.idarticulo='$idarticulo' AND v.estado='Aceptado'";
+        $id = (int)$idarticulo;
+        $fechaDesde = trim((string)$fechaDesde);
+        $fechaHasta = trim((string)$fechaHasta);
+
+        $whereIngreso = "di.idarticulo=? AND i.estado='Aceptado'";
+        $whereVenta = "dv.idarticulo=? AND v.estado='Aceptado'";
+        $whereAjuste = "aj.idarticulo=?";
+        $pIngreso = array($id);
+        $pVenta = array($id);
+        $pAjuste = array($id);
 
         if ($fechaDesde !== '') {
-            $whereIngreso .= " AND DATE(i.fecha_hora) >= '$fechaDesde'";
-            $whereVenta .= " AND DATE(v.fecha_hora) >= '$fechaDesde'";
+            $whereIngreso .= " AND DATE(i.fecha_hora) >= ?";
+            $whereVenta .= " AND DATE(v.fecha_hora) >= ?";
+            $whereAjuste .= " AND DATE(aj.fecha_hora) >= ?";
+            $pIngreso[] = $fechaDesde;
+            $pVenta[] = $fechaDesde;
+            $pAjuste[] = $fechaDesde;
         }
         if ($fechaHasta !== '') {
-            $whereIngreso .= " AND DATE(i.fecha_hora) <= '$fechaHasta'";
-            $whereVenta .= " AND DATE(v.fecha_hora) <= '$fechaHasta'";
+            $whereIngreso .= " AND DATE(i.fecha_hora) <= ?";
+            $whereVenta .= " AND DATE(v.fecha_hora) <= ?";
+            $whereAjuste .= " AND DATE(aj.fecha_hora) <= ?";
+            $pIngreso[] = $fechaHasta;
+            $pVenta[] = $fechaHasta;
+            $pAjuste[] = $fechaHasta;
         }
 
         $sql = "SELECT * FROM (
@@ -95,33 +132,49 @@ class ProCenter
             IFNULL(p.nombre,'-') AS tercero,
             0.000 AS entrada,
             dv.cantidad AS salida,
-            (SELECT di2.precio_compra
+            IFNULL((SELECT di2.precio_compra
               FROM detalle_ingreso di2
               INNER JOIN ingreso i2 ON i2.idingreso=di2.idingreso
               WHERE di2.idarticulo=dv.idarticulo AND i2.estado='Aceptado' AND i2.fecha_hora<=v.fecha_hora
-              ORDER BY i2.fecha_hora DESC, di2.iddetalle_ingreso DESC LIMIT 1) AS costo,
+              ORDER BY i2.fecha_hora DESC, di2.iddetalle_ingreso DESC LIMIT 1), a.precio_compra) AS costo,
             dv.precio_venta AS precio_ref
           FROM detalle_venta dv
           INNER JOIN venta v ON v.idventa=dv.idventa
+          INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
           LEFT JOIN persona p ON p.idpersona=v.idcliente
           WHERE $whereVenta
+
+          UNION ALL
+
+          SELECT aj.fecha_hora,
+            IF(aj.tipo='ENTRADA','AJUSTE +','AJUSTE -') AS tipo,
+            CONCAT('AJUSTE #',aj.idajuste,' ',aj.motivo) AS documento,
+            IFNULL(u.nombre,'-') AS tercero,
+            IF(aj.tipo='ENTRADA',aj.cantidad,0) AS entrada,
+            IF(aj.tipo='SALIDA',aj.cantidad,0) AS salida,
+            aj.costo_unitario AS costo,
+            0 AS precio_ref
+          FROM ajuste_inventario aj
+          LEFT JOIN usuario u ON u.idusuario=aj.idusuario
+          WHERE $whereAjuste
         ) k
         ORDER BY k.fecha_hora ASC";
 
-        return ejecutarConsulta($sql);
+        return dbQuery($sql, array_merge($pIngreso, $pVenta, $pAjuste));
     }
 
     public function alertasStockMinimo()
     {
-        $sql = "SELECT a.idarticulo,a.nombre,a.codigo,a.stock,a.stock_minimo,IFNULL(u.abreviatura,'und') AS unidad,
+        $sql = "SELECT a.idarticulo, a.nombre, a.codigo, a.stock, a.stock_minimo, IFNULL(u.abreviatura,'und') AS unidad,
         (a.stock_minimo-a.stock) AS faltante
         FROM articulo a
         LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
         WHERE a.condicion=1 AND a.stock<=a.stock_minimo
         ORDER BY faltante DESC, a.nombre ASC";
-        return ejecutarConsulta($sql);
+        return dbQuery($sql);
     }
 
+    /** Articulos sin movimiento (ingreso, venta o ajuste) en los ultimos $dias dias. */
     public function alertasSinMovimiento($dias)
     {
         $dias = (int)$dias;
@@ -129,7 +182,7 @@ class ProCenter
             $dias = 30;
         }
 
-        $sql = "SELECT a.idarticulo,a.nombre,a.codigo,a.stock,IFNULL(u.abreviatura,'und') AS unidad,
+        $sql = "SELECT a.idarticulo, a.nombre, a.codigo, a.stock, IFNULL(u.abreviatura,'und') AS unidad,
           MAX(m.fecha_hora) AS ultimo_mov
         FROM articulo a
         LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
@@ -143,12 +196,15 @@ class ProCenter
             FROM detalle_venta dv
             INNER JOIN venta v ON v.idventa=dv.idventa
             WHERE v.estado='Aceptado'
+            UNION ALL
+            SELECT aj.idarticulo, aj.fecha_hora
+            FROM ajuste_inventario aj
         ) m ON m.idarticulo=a.idarticulo
         WHERE a.condicion=1
-        GROUP BY a.idarticulo,a.nombre,a.codigo,a.stock,u.abreviatura
-        HAVING ultimo_mov IS NULL OR ultimo_mov < DATE_SUB(NOW(), INTERVAL $dias DAY)
+        GROUP BY a.idarticulo, a.nombre, a.codigo, a.stock, u.abreviatura
+        HAVING ultimo_mov IS NULL OR ultimo_mov < DATE_SUB(NOW(), INTERVAL ? DAY)
         ORDER BY ultimo_mov ASC";
-        return ejecutarConsulta($sql);
+        return dbQuery($sql, array($dias));
     }
 
     public function topVendidos($desde, $hasta, $limit = 10)
@@ -157,16 +213,21 @@ class ProCenter
         if ($limit <= 0) {
             $limit = 10;
         }
+        $desde = trim((string)$desde);
+        $hasta = trim((string)$hasta);
 
         $where = "v.estado='Aceptado'";
+        $params = array();
         if ($desde !== '') {
-            $where .= " AND DATE(v.fecha_hora)>='$desde'";
+            $where .= " AND DATE(v.fecha_hora)>=?";
+            $params[] = $desde;
         }
         if ($hasta !== '') {
-            $where .= " AND DATE(v.fecha_hora)<='$hasta'";
+            $where .= " AND DATE(v.fecha_hora)<=?";
+            $params[] = $hasta;
         }
 
-        $sql = "SELECT a.nombre,a.codigo,IFNULL(u.abreviatura,'und') AS unidad,
+        $sql = "SELECT a.nombre, a.codigo, IFNULL(u.abreviatura,'und') AS unidad,
           SUM(dv.cantidad) AS cantidad,
           SUM((dv.cantidad*dv.precio_venta)-dv.descuento) AS total
         FROM detalle_venta dv
@@ -174,27 +235,41 @@ class ProCenter
         INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
         LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
         WHERE $where
-        GROUP BY a.idarticulo,a.nombre,a.codigo,u.abreviatura
+        GROUP BY a.idarticulo, a.nombre, a.codigo, u.abreviatura
         ORDER BY cantidad DESC
-        LIMIT $limit";
-        return ejecutarConsulta($sql);
+        LIMIT " . (int)$limit;
+        return dbQuery($sql, $params);
     }
 
+    /**
+     * Utilidad por producto / categoria / vendedor. Costo unitario: ultimo
+     * ingreso aceptado anterior a la venta o articulo.precio_compra.
+     */
     public function utilidad($desde, $hasta, $agrupar)
     {
+        $desde = trim((string)$desde);
+        $hasta = trim((string)$hasta);
+        $agrupar = strtolower(trim((string)$agrupar));
+        if (!in_array($agrupar, array('producto', 'categoria', 'vendedor'), true)) {
+            $agrupar = 'producto';
+        }
+
         $where = "v.estado='Aceptado'";
+        $params = array();
         if ($desde !== '') {
-            $where .= " AND DATE(v.fecha_hora)>='$desde'";
+            $where .= " AND DATE(v.fecha_hora)>=?";
+            $params[] = $desde;
         }
         if ($hasta !== '') {
-            $where .= " AND DATE(v.fecha_hora)<='$hasta'";
+            $where .= " AND DATE(v.fecha_hora)<=?";
+            $params[] = $hasta;
         }
 
         $base = "SELECT
             v.idventa,
             DATE(v.fecha_hora) AS fecha,
             u.nombre AS vendedor,
-            c.nombre AS categoria,
+            IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
             a.nombre AS producto,
             dv.cantidad,
             dv.precio_venta,
@@ -208,47 +283,29 @@ class ProCenter
                 AND i2.fecha_hora<=v.fecha_hora
               ORDER BY i2.fecha_hora DESC, di2.iddetalle_ingreso DESC
               LIMIT 1
-            ),0) AS costo_unit
+            ), a.precio_compra) AS costo_unit
           FROM detalle_venta dv
           INNER JOIN venta v ON v.idventa=dv.idventa
           INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
-          INNER JOIN categoria c ON c.idcategoria=a.idcategoria
+          LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
           INNER JOIN usuario u ON u.idusuario=v.idusuario
           WHERE $where";
 
+        $agregados = "SUM(cantidad) AS cantidad,
+              SUM((cantidad*precio_venta)-descuento) AS venta,
+              SUM(cantidad*costo_unit) AS costo,
+              SUM(((cantidad*precio_venta)-descuento)-(cantidad*costo_unit)) AS utilidad";
+
         if ($agrupar === 'categoria') {
-            $sql = "SELECT categoria,
-              SUM(cantidad) AS cantidad,
-              SUM((cantidad*precio_venta)-descuento) AS venta,
-              SUM(cantidad*costo_unit) AS costo,
-              SUM(((cantidad*precio_venta)-descuento)-(cantidad*costo_unit)) AS utilidad
-            FROM ($base) t
-            GROUP BY categoria
-            ORDER BY utilidad DESC";
-            return ejecutarConsulta($sql);
+            $sql = "SELECT categoria, $agregados FROM ($base) t GROUP BY categoria ORDER BY utilidad DESC";
+            return dbQuery($sql, $params);
         }
-
         if ($agrupar === 'vendedor') {
-            $sql = "SELECT vendedor,
-              SUM(cantidad) AS cantidad,
-              SUM((cantidad*precio_venta)-descuento) AS venta,
-              SUM(cantidad*costo_unit) AS costo,
-              SUM(((cantidad*precio_venta)-descuento)-(cantidad*costo_unit)) AS utilidad
-            FROM ($base) t
-            GROUP BY vendedor
-            ORDER BY utilidad DESC";
-            return ejecutarConsulta($sql);
+            $sql = "SELECT vendedor, $agregados FROM ($base) t GROUP BY vendedor ORDER BY utilidad DESC";
+            return dbQuery($sql, $params);
         }
-
-        $sql = "SELECT producto,categoria,vendedor,
-          SUM(cantidad) AS cantidad,
-          SUM((cantidad*precio_venta)-descuento) AS venta,
-          SUM(cantidad*costo_unit) AS costo,
-          SUM(((cantidad*precio_venta)-descuento)-(cantidad*costo_unit)) AS utilidad
-        FROM ($base) t
-        GROUP BY producto,categoria,vendedor
-        ORDER BY utilidad DESC";
-        return ejecutarConsulta($sql);
+        $sql = "SELECT producto, categoria, vendedor, $agregados FROM ($base) t GROUP BY producto, categoria, vendedor ORDER BY utilidad DESC";
+        return dbQuery($sql, $params);
     }
 
     public function comprasSugeridas($diasAnalisis, $diasCobertura)
@@ -270,9 +327,9 @@ class ProCenter
           a.stock,
           a.stock_minimo,
           IFNULL(vt.cantidad_vendida,0) AS vendido_periodo,
-          ROUND(IFNULL(vt.cantidad_vendida,0)/$diasAnalisis,3) AS promedio_diario,
-          ROUND(((IFNULL(vt.cantidad_vendida,0)/$diasAnalisis)*$diasCobertura) + a.stock_minimo,3) AS stock_objetivo,
-          ROUND(GREATEST((((IFNULL(vt.cantidad_vendida,0)/$diasAnalisis)*$diasCobertura) + a.stock_minimo) - a.stock,0),3) AS sugerido
+          ROUND(IFNULL(vt.cantidad_vendida,0)/?,3) AS promedio_diario,
+          ROUND(((IFNULL(vt.cantidad_vendida,0)/?)*?) + a.stock_minimo,3) AS stock_objetivo,
+          ROUND(GREATEST((((IFNULL(vt.cantidad_vendida,0)/?)*?) + a.stock_minimo) - a.stock,0),3) AS sugerido
         FROM articulo a
         LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
         LEFT JOIN (
@@ -280,12 +337,11 @@ class ProCenter
           FROM detalle_venta dv
           INNER JOIN venta v ON v.idventa=dv.idventa
           WHERE v.estado='Aceptado'
-            AND DATE(v.fecha_hora) >= DATE_SUB(CURDATE(), INTERVAL $diasAnalisis DAY)
+            AND DATE(v.fecha_hora) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
           GROUP BY dv.idarticulo
         ) vt ON vt.idarticulo=a.idarticulo
         WHERE a.condicion=1
         ORDER BY sugerido DESC, promedio_diario DESC";
-        return ejecutarConsulta($sql);
+        return dbQuery($sql, array($diasAnalisis, $diasAnalisis, $diasCobertura, $diasAnalisis, $diasCobertura, $diasAnalisis));
     }
 }
-?>

@@ -1,6 +1,8 @@
 # Base de datos — no subir al repositorio
 *.sql
-files/backups/
+!migrations/*.sql
+files/backups/*
+!files/backups/.gitkeep
 
 # Archivos subidos por usuarios
 files/usuarios/*
@@ -12,7 +14,17 @@ files/empresa/*
 !files/articulos/.gitkeep
 !files/empresa/.gitkeep
 
+# Configuración local y logs
+config/local.php
+logs/
+*.log
+
 # Entorno y sistema
 .env
 Thumbs.db
 .DS_Store
+/*.jpeg
+/*.jpg
+/*.png
+!files/backups/.htaccess
+!scripts/sql/*.sql

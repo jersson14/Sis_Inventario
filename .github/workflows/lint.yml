@@ -1,0 +1,26 @@
+name: Lint PHP y JS
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mysqli, mbstring, gd, fileinfo
+      - name: php -l
+        run: |
+          set -e
+          find ajax config modelos reportes vistas scripts index.php instalar.php -name "*.php" -print0 | xargs -0 -n1 php -l
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: node --check
+        run: |
+          set -e
+          for f in public/js/app-*.js vistas/scripts/*.js; do node --check "$f"; done

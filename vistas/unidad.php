@@ -1,79 +1,66 @@
 <?php
-ob_start();
-session_start();
-if (!isset($_SESSION['nombre'])) {
-  header("Location: login.html");
-}else{
-
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$tituloPagina = "Unidades de medida";
+$iconoPagina = "fa-balance-scale";
 require 'header.php';
-
-if ($_SESSION['almacen']==1) {
- ?>
-  <div class="content-wrapper">
-    <section class="content">
-      <div class="row">
-        <div class="col-md-12">
-          <div class="box">
-            <div class="box-header with-border">
-              <h1 class="box-title">Unidades de medida <button class="btn btn-success" onclick="mostrarform(true)"><i class="fa fa-plus-circle"></i> Agregar</button></h1>
-            </div>
-
-            <div class="panel-body table-responsive" id="listadoregistros">
-              <table id="tbllistado" class="table table-striped table-bordered table-condensed table-hover">
-                <thead>
-                  <th>Opciones</th>
-                  <th>Nombre</th>
-                  <th>Abrev.</th>
-                  <th>Descripcion</th>
-                  <th>Estado</th>
-                </thead>
-                <tbody></tbody>
-                <tfoot>
-                  <th>Opciones</th>
-                  <th>Nombre</th>
-                  <th>Abrev.</th>
-                  <th>Descripcion</th>
-                  <th>Estado</th>
-                </tfoot>
-              </table>
-            </div>
-
-            <div class="panel-body" id="formularioregistros">
-              <form name="formulario" id="formulario" method="POST">
-                <div class="form-group col-lg-4 col-md-4 col-xs-12">
-                  <label>Nombre(*)</label>
-                  <input class="form-control" type="hidden" name="idunidad" id="idunidad">
-                  <input class="form-control" type="text" name="nombre" id="nombre" maxlength="60" placeholder="Ejemplo: Kilogramo" required>
-                </div>
-                <div class="form-group col-lg-2 col-md-2 col-xs-12">
-                  <label>Abreviatura(*)</label>
-                  <input class="form-control" type="text" name="abreviatura" id="abreviatura" maxlength="10" placeholder="kg" required>
-                </div>
-                <div class="form-group col-lg-6 col-md-6 col-xs-12">
-                  <label>Descripcion</label>
-                  <input class="form-control" type="text" name="descripcion" id="descripcion" maxlength="120" placeholder="Uso interno de la unidad">
-                </div>
-                <div class="form-group col-lg-12 col-md-12 col-sm-12 col-xs-12">
-                  <button class="btn btn-primary" type="submit" id="btnGuardar"><i class="fa fa-save"></i> Guardar</button>
-                  <button class="btn btn-danger" onclick="cancelarform()" type="button"><i class="fa fa-arrow-circle-left"></i> Cancelar</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+if (usuarioTienePermiso('almacen')) {
+?>
+<div class="content-wrapper">
+  <section class="content">
+    <div class="page-head">
+      <div>
+        <div class="breadcrumb-app"><a href="escritorio.php">Inicio</a> <i class="fa fa-chevron-right"></i> Inventario <i class="fa fa-chevron-right"></i> Unidades</div>
+        <h1><span class="page-icon"><i class="fa fa-balance-scale"></i></span> Unidades de medida</h1>
+        <p>Unidad, kilo, litro, caja, paquete… define cómo cuentas cada artículo.</p>
       </div>
-    </section>
-  </div>
+      <div class="page-actions">
+        <button class="btn btn-primary" onclick="mostrarform(true)" id="btnagregar"><i class="fa fa-plus"></i> Nueva unidad</button>
+      </div>
+    </div>
+
+    <div class="box" id="listadoregistros">
+      <div class="box-body table-responsive">
+        <table id="tbllistado" class="table table-striped table-bordered table-hover" style="width:100%">
+          <thead><tr><th>Opciones</th><th>Nombre</th><th>Abreviatura</th><th>Descripción</th><th>Estado</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="box" id="formularioregistros">
+      <div class="box-header with-border">
+        <h3 class="box-title"><i class="fa fa-pencil"></i> <span id="formTitulo">Nueva unidad</span></h3>
+        <div class="box-tools"><button class="btn btn-default btn-sm" onclick="cancelarform()" type="button"><i class="fa fa-arrow-left"></i> Volver al listado</button></div>
+      </div>
+      <div class="box-body">
+        <form action="" name="formulario" id="formulario" method="POST" autocomplete="off">
+          <input type="hidden" name="idunidad" id="idunidad">
+          <div class="form-group col-lg-4 col-md-5 col-xs-12">
+            <label for="nombre">Nombre <span class="req">*</span></label>
+            <input class="form-control" type="text" name="nombre" id="nombre" maxlength="60" placeholder="Ej. Kilogramo" required>
+          </div>
+          <div class="form-group col-lg-2 col-md-3 col-xs-12">
+            <label for="abreviatura">Abreviatura <span class="req">*</span></label>
+            <input class="form-control" type="text" name="abreviatura" id="abreviatura" maxlength="10" placeholder="kg" required>
+          </div>
+          <div class="form-group col-lg-6 col-md-4 col-xs-12">
+            <label for="descripcion">Descripción</label>
+            <input class="form-control" type="text" name="descripcion" id="descripcion" maxlength="120" placeholder="Opcional">
+          </div>
+          <div class="form-group col-xs-12 form-actions-row">
+            <button class="btn btn-primary" type="submit" id="btnGuardar"><i class="fa fa-save"></i> Guardar</button>
+            <button class="btn btn-default" onclick="cancelarform()" type="button"><i class="fa fa-times"></i> Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+</div>
 <?php
-}else{
+} else {
   require 'noacceso.php';
 }
-
 require 'footer.php';
 ?>
-<script src="scripts/unidad.js"></script>
-<?php
-}
-
-ob_end_flush();
-?>
+<script src="scripts/unidad.js?v=<?php echo e(APP_VERSION); ?>"></script>

@@ -1,73 +1,32 @@
-(function () {
+(function ($) {
+  "use strict";
   var KEY_REMEMBER = "mi_tienda_remember_login";
   var KEY_USER = "mi_tienda_remember_user";
+  var enviando = false;
+  var bloqueoTimer = null;
 
-  function decodeHtml(text) {
-    return $("<textarea/>").html(text || "").text().trim();
+  function storage(fn) {
+    try { return fn(); } catch (e) { return null; }
   }
 
-  function escapeHtml(text) {
-    return $("<div/>").text(text || "").html();
+  function mostrarAlerta(html, tipo) {
+    var $a = $("#loginAlert");
+    $a.attr("class", "login-alert" + (tipo ? " login-alert-" + tipo : "")).html(html).prop("hidden", false);
   }
 
-  function limpiarSubtitulo(nombre, sub) {
-    var subtitulo = (sub || "").trim();
-    if (!subtitulo || subtitulo === nombre) return "";
-
-    if (subtitulo.indexOf(nombre) !== -1) {
-      subtitulo = $.trim(subtitulo.replace(nombre, ""));
-    }
-
-    subtitulo = subtitulo.replace(/^[\s"'`|:-]+|[\s"'`|:-]+$/g, "");
-    return subtitulo;
+  function ocultarAlerta() {
+    $("#loginAlert").prop("hidden", true);
   }
 
-  function darkenHex(hex, amount) {
-    var h = (hex || "").replace("#", "");
-    if (!/^[0-9a-fA-F]{6}$/.test(h)) return "#0b4f4a";
-    var factor = 1 - (amount || 0.22);
-    var r = Math.max(0, Math.round(parseInt(h.substring(0, 2), 16) * factor));
-    var g = Math.max(0, Math.round(parseInt(h.substring(2, 4), 16) * factor));
-    var b = Math.max(0, Math.round(parseInt(h.substring(4, 6), 16) * factor));
-    var toHex = function (n) { return ("0" + n.toString(16)).slice(-2); };
-    return "#" + toHex(r) + toHex(g) + toHex(b);
-  }
-
-  function aplicarBrandPublico() {
-    $.get("../ajax/empresa.php?op=publicBrand", function (resp) {
-      var cfg = null;
-      try {
-        cfg = JSON.parse(resp);
-      } catch (e) {
-        cfg = null;
-      }
-      if (!cfg) return;
-
-      var primary = cfg.color_primario || "#0f766e";
-      var accent = cfg.color_secundario || "#f59e0b";
-      document.documentElement.style.setProperty("--brand-primary", primary);
-      document.documentElement.style.setProperty("--brand-primary-dark", darkenHex(primary, 0.25));
-      document.documentElement.style.setProperty("--brand-accent", accent);
-
-      if (cfg.logo_url) {
-        $("#loginBrandLogo").attr("src", cfg.logo_url);
-        $("#loginFavicon").attr("href", cfg.logo_url);
-      }
-
-      var nombre = decodeHtml(cfg.nombre_comercial || "PERNO CENTRO").toUpperCase();
-      var subRaw = decodeHtml(cfg.razon_social || "SEÑOR DE HUANCA").toUpperCase();
-      var sub = limpiarSubtitulo(nombre, subRaw);
-      var titulo = escapeHtml(nombre) + (sub ? "<br>" + escapeHtml(sub) : "");
-      $("#loginBrandTitle").html(titulo);
-      document.title = nombre + " | Login";
-    });
+  function setLoading(flag) {
+    enviando = flag;
+    $("#btnLogin").toggleClass("is-loading", flag).prop("disabled", flag);
   }
 
   function cargarRecordarme() {
-    var remember = localStorage.getItem(KEY_REMEMBER) === "1";
-    var user = localStorage.getItem(KEY_USER) || "";
-
-    $("#rememberLogin").prop("checked", remember);
+    var remember = storage(function () { return localStorage.getItem(KEY_REMEMBER) === "1"; });
+    var user = storage(function () { return localStorage.getItem(KEY_USER) || ""; }) || "";
+    $("#rememberLogin").prop("checked", !!remember);
     if (remember && user !== "") {
       $("#logina").val(user);
       $("#clavea").focus();
@@ -79,52 +38,104 @@
   function guardarRecordarme() {
     var remember = $("#rememberLogin").is(":checked");
     var user = $.trim($("#logina").val());
-
-    if (remember) {
-      localStorage.setItem(KEY_REMEMBER, "1");
-      localStorage.setItem(KEY_USER, user);
-    } else {
-      localStorage.removeItem(KEY_REMEMBER);
-      localStorage.removeItem(KEY_USER);
-    }
+    storage(function () {
+      if (remember) {
+        localStorage.setItem(KEY_REMEMBER, "1");
+        localStorage.setItem(KEY_USER, user);
+      } else {
+        localStorage.removeItem(KEY_REMEMBER);
+        localStorage.removeItem(KEY_USER);
+      }
+    });
   }
 
   function togglePassword() {
     var $clave = $("#clavea");
     var $icon = $("#toggleClave i");
     var isPassword = $clave.attr("type") === "password";
-
     $clave.attr("type", isPassword ? "text" : "password");
     $icon.removeClass("fa-eye fa-eye-slash").addClass(isPassword ? "fa-eye-slash" : "fa-eye");
-    $("#toggleClave")
-      .attr("aria-label", isPassword ? "Ocultar contraseña" : "Mostrar contraseña")
-      .attr("title", isPassword ? "Ocultar contraseña" : "Mostrar contraseña");
+    $("#toggleClave").attr("aria-label", isPassword ? "Ocultar contraseña" : "Mostrar contraseña").attr("title", isPassword ? "Ocultar contraseña" : "Mostrar contraseña");
+    $clave.focus();
   }
 
-  $("#toggleClave").on("click", function () {
-    togglePassword();
-  });
+  function iniciarCuentaRegresiva(segundos) {
+    clearInterval(bloqueoTimer);
+    var restante = Math.max(1, parseInt(segundos, 10) || 60);
+    $("#btnLogin").prop("disabled", true);
+    var pintar = function () {
+      var m = Math.floor(restante / 60);
+      var s = restante % 60;
+      mostrarAlerta('<i class="fa fa-lock"></i> Demasiados intentos fallidos. Podrás volver a intentar en <strong>' + m + ":" + ("0" + s).slice(-2) + "</strong>.", "danger");
+    };
+    pintar();
+    bloqueoTimer = setInterval(function () {
+      restante--;
+      if (restante <= 0) {
+        clearInterval(bloqueoTimer);
+        $("#btnLogin").prop("disabled", false);
+        mostrarAlerta('<i class="fa fa-unlock"></i> Ya puedes volver a intentarlo.', "info");
+        return;
+      }
+      pintar();
+    }, 1000);
+  }
 
-  $("#frmAcceso").on("submit", function (e) {
+  function enviar(e) {
     e.preventDefault();
-
+    if (enviando) { return; }
     var logina = $.trim($("#logina").val());
     var clavea = $("#clavea").val();
+    if (!logina || !clavea) {
+      mostrarAlerta('<i class="fa fa-exclamation-circle"></i> Ingresa tu usuario y contraseña.', "warning");
+      (!logina ? $("#logina") : $("#clavea")).focus();
+      return;
+    }
+    ocultarAlerta();
+    setLoading(true);
 
-    $.post(
-      "../ajax/usuario.php?op=verificar",
-      { logina: logina, clavea: clavea },
-      function (data) {
-        if ($.trim(data) !== "null") {
-          guardarRecordarme();
-          $(location).attr("href", "escritorio.php");
-        } else {
-          bootbox.alert("Usuario y/o contraseña incorrectos");
-        }
+    $.ajax({
+      url: "../ajax/usuario.php?op=verificar",
+      type: "POST",
+      data: { logina: logina, clavea: clavea, _csrf: $("#csrf").val() },
+      headers: { "X-CSRF-Token": $("#csrf").val() },
+      dataType: "text"
+    }).done(function (data) {
+      var r = null;
+      try { r = JSON.parse(data); } catch (err) { r = null; }
+      if (r && r.ok) {
+        guardarRecordarme();
+        mostrarAlerta('<i class="fa fa-check-circle"></i> ¡Hola ' + $("<div/>").text(r.nombre || "").html() + '! Ingresando…', "success");
+        window.location.href = r.redirect || "escritorio.php";
+        return;
       }
-    );
-  });
+      setLoading(false);
+      if (r && r.bloqueado) {
+        iniciarCuentaRegresiva(r.segundos);
+        return;
+      }
+      // Compatibilidad con respuesta antigua ("null")
+      var msg = (r && r.message) ? r.message : "Usuario y/o contraseña incorrectos";
+      mostrarAlerta('<i class="fa fa-times-circle"></i> ' + $("<div/>").text(msg).html(), "danger");
+      $("#clavea").val("").focus();
+      $(".login-form-card").addClass("shake");
+      setTimeout(function () { $(".login-form-card").removeClass("shake"); }, 500);
+    }).fail(function (xhr) {
+      setLoading(false);
+      var msg = "No se pudo conectar con el servidor.";
+      try {
+        var r = JSON.parse(xhr.responseText || "{}");
+        if (r.message) { msg = r.message; }
+        if (xhr.status === 419) { msg += " Recargando la página…"; setTimeout(function () { window.location.reload(); }, 1500); }
+      } catch (err) { /* ignore */ }
+      mostrarAlerta('<i class="fa fa-plug"></i> ' + $("<div/>").text(msg).html(), "danger");
+    });
+  }
 
-  aplicarBrandPublico();
-  cargarRecordarme();
-})();
+  $(function () {
+    $("#toggleClave").on("click", togglePassword);
+    $("#frmAcceso").on("submit", enviar);
+    $("#logina, #clavea").on("input", ocultarAlerta);
+    cargarRecordarme();
+  });
+})(jQuery);

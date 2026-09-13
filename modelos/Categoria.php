@@ -1,50 +1,46 @@
-<?php 
-//incluir la conexion de base de datos
-require "../config/Conexion.php";
+<?php
+// Modelo de categorias: consultas preparadas.
+require_once "../config/Conexion.php";
+
 class Categoria{
 
+	public function __construct(){
+	}
 
-	//implementamos nuestro constructor
-public function __construct(){
+	public function insertar($nombre,$descripcion){
+		return dbExec("INSERT INTO categoria (nombre,descripcion,condicion) VALUES (?,?,1)", array((string)$nombre, (string)$descripcion));
+	}
 
-}
+	public function editar($idcategoria,$nombre,$descripcion){
+		return dbExec("UPDATE categoria SET nombre=?,descripcion=? WHERE idcategoria=?", array((string)$nombre, (string)$descripcion, (int)$idcategoria));
+	}
 
-//metodo insertar regiustro
-public function insertar($nombre,$descripcion){
-	$sql="INSERT INTO categoria (nombre,descripcion,condicion) VALUES ('$nombre','$descripcion','1')";
-	return ejecutarConsulta($sql);
-}
+	public function desactivar($idcategoria){
+		return dbExec("UPDATE categoria SET condicion=0 WHERE idcategoria=?", array((int)$idcategoria));
+	}
 
-public function editar($idcategoria,$nombre,$descripcion){
-	$sql="UPDATE categoria SET nombre='$nombre',descripcion='$descripcion' 
-	WHERE idcategoria='$idcategoria'";
-	return ejecutarConsulta($sql);
-}
-public function desactivar($idcategoria){
-	$sql="UPDATE categoria SET condicion='0' WHERE idcategoria='$idcategoria'";
-	return ejecutarConsulta($sql);
-}
-public function activar($idcategoria){
-	$sql="UPDATE categoria SET condicion='1' WHERE idcategoria='$idcategoria'";
-	return ejecutarConsulta($sql);
-}
+	public function activar($idcategoria){
+		return dbExec("UPDATE categoria SET condicion=1 WHERE idcategoria=?", array((int)$idcategoria));
+	}
 
-//metodo para mostrar registros
-public function mostrar($idcategoria){
-	$sql="SELECT * FROM categoria WHERE idcategoria='$idcategoria'";
-	return ejecutarConsultaSimpleFila($sql);
-}
+	// Devuelve la fila (array asociativo) o null.
+	public function mostrar($idcategoria){
+		return dbRow("SELECT idcategoria,nombre,descripcion,condicion FROM categoria WHERE idcategoria=?", array((int)$idcategoria));
+	}
 
-//listar registros
-public function listar(){
-	$sql="SELECT * FROM categoria";
-	return ejecutarConsulta($sql);
-}
-//listar y mostrar en selct
-public function select(){
-	$sql="SELECT * FROM categoria WHERE condicion=1";
-	return ejecutarConsulta($sql);
-}
-}
+	// Existe otra categoria con el mismo nombre (excluyendo $excluirId).
+	public function existeNombre($nombre, $excluirId = 0){
+		$n = dbValue("SELECT COUNT(*) FROM categoria WHERE nombre=? AND idcategoria<>?", array((string)$nombre, (int)$excluirId), 0);
+		return (int)$n > 0;
+	}
 
- ?>
+	// Listado completo (mysqli_result).
+	public function listar(){
+		return dbQuery("SELECT idcategoria,nombre,descripcion,condicion FROM categoria ORDER BY nombre ASC");
+	}
+
+	// Solo activas, para selects (mysqli_result).
+	public function select(){
+		return dbQuery("SELECT idcategoria,nombre FROM categoria WHERE condicion=1 ORDER BY nombre ASC");
+	}
+}

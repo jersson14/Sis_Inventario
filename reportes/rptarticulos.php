@@ -1,14 +1,14 @@
 <?php 
 //activamos almacenamiento en el buffer
 ob_start();
-if (strlen(session_id())<1) 
-  session_start();
-
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$idReporte = enteroSeguro(isset($_GET["id"]) ? $_GET["id"] : 0);
 if (!isset($_SESSION['nombre'])) {
   echo "debe ingresar al sistema correctamente para vosualizar el reporte";
 }else{
 
-if ($_SESSION['almacen']==1) {
+if (usuarioTienePermiso('almacen')) {
 
 //incluimos a la clase PDF_MC_Table
 require('PDF_MC_Table.php');
@@ -45,18 +45,18 @@ if ($logoPath !== "") {
 
 $pdf->SetFont('Arial','B',11);
 $pdf->SetXY(44,10);
-$pdf->Cell(120,5,utf8_decode((string)$empresa["nombre"]),0,1,'L');
+$pdf->Cell(120,5,textoLatin1((string)$empresa["nombre"]),0,1,'L');
 $pdf->SetFont('Arial','',9.5);
 $pdf->SetX(44);
-$pdf->Cell(120,4,'RUC: '.utf8_decode((string)$empresa["ruc"]),0,1,'L');
+$pdf->Cell(120,4,'RUC: '.textoLatin1((string)$empresa["ruc"]),0,1,'L');
 $pdf->SetX(44);
-$pdf->Cell(120,4,utf8_decode((string)$empresa["direccion_linea1"]),0,1,'L');
+$pdf->Cell(120,4,textoLatin1((string)$empresa["direccion_linea1"]),0,1,'L');
 if (!empty($empresa["direccion_linea2"])) {
   $pdf->SetX(44);
-  $pdf->Cell(120,4,utf8_decode((string)$empresa["direccion_linea2"]),0,1,'L');
+  $pdf->Cell(120,4,textoLatin1((string)$empresa["direccion_linea2"]),0,1,'L');
 }
 $pdf->SetX(44);
-$pdf->Cell(120,4,'Tel: '.utf8_decode((string)$empresa["telefono"]).'  |  '.utf8_decode((string)$empresa["email"]),0,1,'L');
+$pdf->Cell(120,4,'Tel: '.textoLatin1((string)$empresa["telefono"]).'  |  '.textoLatin1((string)$empresa["email"]),0,1,'L');
 
 $pdf->SetY(36);
 $pdf->SetFont('Arial','B',12);
@@ -67,10 +67,10 @@ $pdf->Ln(2);
 $pdf->SetFillColor(232,232,232);
 $pdf->SetFont('Arial','B',10);
 $pdf->Cell(58,6,'Nombre',1,0,'C',1);
-$pdf->Cell(50,6,utf8_decode('Categoría'),1,0,'C',1);
-$pdf->Cell(30,6,utf8_decode('Código'),1,0,'C',1);
+$pdf->Cell(50,6,textoLatin1('Categoría'),1,0,'C',1);
+$pdf->Cell(30,6,textoLatin1('Código'),1,0,'C',1);
 $pdf->Cell(12,6,'Stock',1,0,'C',1);
-$pdf->Cell(35,6,utf8_decode('Descripcion'),1,0,'C',1);
+$pdf->Cell(35,6,textoLatin1('Descripcion'),1,0,'C',1);
 $pdf->Ln(10);
 
 //creamos las filas de los registros según la consulta mysql
@@ -89,7 +89,7 @@ while ($reg= $rspta->fetch_object()) {
 	$descripcion=$reg->descripcion;
 
 	$pdf->SetFont('Arial','',10);
-	$pdf->Row(array(utf8_decode($nombre),utf8_decode($categoria),$codigo,$stock,utf8_decode($descripcion)));
+	$pdf->Row(array(textoLatin1($nombre),textoLatin1($categoria),$codigo,$stock,textoLatin1($descripcion)));
 }
 
 //mostramos el documento pdf

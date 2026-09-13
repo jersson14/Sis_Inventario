@@ -1,12 +1,10 @@
 <?php
-ob_start();
-session_start();
-if (!isset($_SESSION['nombre'])) {
-  header("Location: login.html");
-}else{
-
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$tituloPagina = "Kardex y alertas";
+$iconoPagina = "fa-line-chart";
 require 'header.php';
-if ($_SESSION['almacen']==1 || $_SESSION['consultac']==1 || $_SESSION['consultav']==1) {
+if (usuarioTienePermiso('almacen') || usuarioTienePermiso('consultac') || usuarioTienePermiso('consultav')) {
 ?>
 <div class="content-wrapper">
   <section class="content">
@@ -164,8 +162,4 @@ if ($_SESSION['almacen']==1 || $_SESSION['consultac']==1 || $_SESSION['consultav
 }
 require 'footer.php';
 ?>
-<script src="scripts/procenter.js?v=20260321b"></script>
-<?php
-}
-ob_end_flush();
-?>
+<script src="scripts/procenter.js?v=<?php echo e(APP_VERSION); ?>"></script>

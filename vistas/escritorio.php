@@ -1,168 +1,127 @@
 <?php
-ob_start();
-session_start();
-if (!isset($_SESSION['nombre'])) {
-  header("Location: login.html");
-} else {
-
+require_once "../config/seguridad.php";
+requiereLogin(false);
+$tituloPagina = "Escritorio";
+$iconoPagina = "fa-dashboard";
 require 'header.php';
 
-if ($_SESSION['escritorio'] == 1) {
+if (usuarioTienePermiso('escritorio')) {
   require_once "../modelos/Consultas.php";
   $consulta = new Consultas();
 
+  if (!function_exists('filasResultado')) {
+    function filasResultado($rs) {
+      if (is_array($rs)) return $rs;
+      $out = array();
+      if ($rs instanceof mysqli_result) {
+        while ($row = $rs->fetch_assoc()) { $out[] = $row; }
+      }
+      return $out;
+    }
+  }
+
   $hoy = date("Y-m-d");
   $inicioDefault = date("Y-m-01");
+  $fechaInicio = fechaSegura(isset($_GET["fecha_inicio"]) ? $_GET["fecha_inicio"] : '', $inicioDefault);
+  $fechaFin = fechaSegura(isset($_GET["fecha_fin"]) ? $_GET["fecha_fin"] : '', $hoy);
+  if (strtotime($fechaInicio) > strtotime($fechaFin)) { $t = $fechaInicio; $fechaInicio = $fechaFin; $fechaFin = $t; }
+  $rangoTexto = date("d/m/Y", strtotime($fechaInicio)) . " – " . date("d/m/Y", strtotime($fechaFin));
+  $codigoMoneda = obtenerMonedaEmpresaCodigo();
+  $simbolo = obtenerSimboloMoneda($codigoMoneda);
 
-  $fechaInicio = isset($_GET["fecha_inicio"]) ? trim($_GET["fecha_inicio"]) : $inicioDefault;
-  $fechaFin = isset($_GET["fecha_fin"]) ? trim($_GET["fecha_fin"]) : $hoy;
+  $regc = filasResultado($consulta->totalcomprarango($fechaInicio, $fechaFin));
+  $totalc = $regc ? (float)$regc[0]['total_compra'] : 0;
+  $regv = filasResultado($consulta->totalventarango($fechaInicio, $fechaFin));
+  $totalv = $regv ? (float)$regv[0]['total_venta'] : 0;
 
-  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaInicio)) {
-    $fechaInicio = $inicioDefault;
-  }
-  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaFin)) {
-    $fechaFin = $hoy;
-  }
-  if (strtotime($fechaInicio) > strtotime($fechaFin)) {
-    $tmpFecha = $fechaInicio;
-    $fechaInicio = $fechaFin;
-    $fechaFin = $tmpFecha;
-  }
+  $kpiRow = filasResultado($consulta->kpisgenerales());
+  $kpi = $kpiRow ? $kpiRow[0] : array();
+  $articulosActivos = isset($kpi['articulos_activos']) ? (int)$kpi['articulos_activos'] : 0;
+  $categoriasActivas = isset($kpi['categorias_activas']) ? (int)$kpi['categorias_activas'] : 0;
+  $clientes = isset($kpi['clientes']) ? (int)$kpi['clientes'] : 0;
+  $proveedores = isset($kpi['proveedores']) ? (int)$kpi['proveedores'] : 0;
+  $stockTotal = isset($kpi['stock_total']) ? (float)$kpi['stock_total'] : 0;
 
-  $rangoTexto = date("d/m/Y", strtotime($fechaInicio)) . " - " . date("d/m/Y", strtotime($fechaFin));
+  $util = $consulta->utilidadResumenRango($fechaInicio, $fechaFin);
+  $utilidad = $util ? (float)$util['utilidad'] : 0;
+  $margen = $util ? (float)$util['margen'] : 0;
+  $numVentas = $util ? (int)$util['num_ventas'] : 0;
+  $ticketPromedio = $util ? (float)$util['ticket_promedio'] : 0;
+  $costoTotal = $util ? (float)$util['costo_total'] : 0;
 
-  $rsptac = $consulta->totalcomprarango($fechaInicio, $fechaFin);
-  $regc = $rsptac->fetch_object();
-  $totalc = $regc ? (float)$regc->total_compra : 0;
-
-  $rsptav = $consulta->totalventarango($fechaInicio, $fechaFin);
-  $regv = $rsptav->fetch_object();
-  $totalv = $regv ? (float)$regv->total_venta : 0;
-  $totalcm = $totalc;
-  $totalvm = $totalv;
-  $codigoMoneda = function_exists('obtenerMonedaEmpresaCodigo') ? obtenerMonedaEmpresaCodigo() : 'PEN';
-
-  $rskpi = $consulta->kpisgenerales();
-  $kpi = $rskpi->fetch_object();
-  $articulosActivos = $kpi ? (int)$kpi->articulos_activos : 0;
-  $categoriasActivas = $kpi ? (int)$kpi->categorias_activas : 0;
-  $clientes = $kpi ? (int)$kpi->clientes : 0;
-  $proveedores = $kpi ? (int)$kpi->proveedores : 0;
-  $stockTotal = $kpi ? (float)$kpi->stock_total : 0;
+  $alertas = $consulta->resumenAlertas((int)$_SESSION['idusuario']);
+  if (!$alertas) { $alertas = array(); }
+  $al = function ($k) use ($alertas) { return isset($alertas[$k]) ? $alertas[$k] : 0; };
 
   $diasPeriodo = (int)floor((strtotime($fechaFin) - strtotime($fechaInicio)) / 86400) + 1;
-  if ($diasPeriodo <= 0) {
-    $diasPeriodo = 1;
-  }
-  $promedioVentas = $totalv / $diasPeriodo;
-  $promedioCompras = $totalc / $diasPeriodo;
+  if ($diasPeriodo <= 0) $diasPeriodo = 1;
 
-  $labelsCompras10 = array();
-  $dataCompras10 = array();
-  $compras10 = $consulta->comprasdiariasrango($fechaInicio, $fechaFin);
-  while ($reg = $compras10->fetch_object()) {
-    $labelsCompras10[] = date("d/m", strtotime($reg->fecha));
-    $dataCompras10[] = round((float)$reg->total, 2);
-  }
+  // Series para graficos
+  $ventasDia = filasResultado($consulta->ventasPorDiaRango($fechaInicio, $fechaFin));
+  $labelsVentasDia = array(); $dataVentasDia = array();
+  foreach ($ventasDia as $r) { $labelsVentasDia[] = date("d/m", strtotime($r['fecha'])); $dataVentasDia[] = round((float)$r['total'], 2); }
 
-  $labelsVentas12 = array();
-  $dataVentas12 = array();
-  $ventas12 = $consulta->ventasmensualesrango($fechaInicio, $fechaFin);
-  while ($reg = $ventas12->fetch_object()) {
-    $labelsVentas12[] = $reg->fecha;
-    $dataVentas12[] = round((float)$reg->total, 2);
-  }
-
-  $labelsComparativo = array();
-  $compras6Map = array();
-  $ventas6Map = array();
-
-  $compras6 = $consulta->comprasmensualesrango($fechaInicio, $fechaFin);
-  while ($reg = $compras6->fetch_object()) {
-    $periodo = isset($reg->periodo) ? $reg->periodo : '';
-    if ($periodo !== '') {
-      $compras6Map[$periodo] = round((float)$reg->total, 2);
-    }
-  }
-
-  $ventas6 = $consulta->ventasmensualesrango($fechaInicio, $fechaFin);
-  while ($reg = $ventas6->fetch_object()) {
-    $periodo = isset($reg->periodo) ? $reg->periodo : '';
-    if ($periodo !== '') {
-      $ventas6Map[$periodo] = round((float)$reg->total, 2);
-    }
-  }
-
-  $periodosComparativo = array();
-  $cursorMes = strtotime(date("Y-m-01", strtotime($fechaInicio)));
+  $comprasMap = array(); $ventasMap = array();
+  foreach (filasResultado($consulta->comprasmensualesrango($fechaInicio, $fechaFin)) as $r) { $comprasMap[$r['periodo']] = round((float)$r['total'], 2); }
+  foreach (filasResultado($consulta->ventasmensualesrango($fechaInicio, $fechaFin)) as $r) { $ventasMap[$r['periodo']] = round((float)$r['total'], 2); }
+  $labelsMes = array(); $dataComprasMes = array(); $dataVentasMes = array();
+  $cursor = strtotime(date("Y-m-01", strtotime($fechaInicio)));
   $finMes = strtotime(date("Y-m-01", strtotime($fechaFin)));
-  while ($cursorMes <= $finMes) {
-    $periodosComparativo[] = date("Y-m", $cursorMes);
-    $cursorMes = strtotime("+1 month", $cursorMes);
+  while ($cursor <= $finMes) {
+    $p = date("Y-m", $cursor);
+    $labelsMes[] = date("M Y", $cursor);
+    $dataComprasMes[] = isset($comprasMap[$p]) ? $comprasMap[$p] : 0;
+    $dataVentasMes[] = isset($ventasMap[$p]) ? $ventasMap[$p] : 0;
+    $cursor = strtotime("+1 month", $cursor);
   }
 
-  if (count($periodosComparativo) === 0) {
-    $periodosComparativo[] = date("Y-m", strtotime($fechaInicio));
-  }
-
-  $dataCompras6 = array();
-  $dataVentas6 = array();
-  foreach ($periodosComparativo as $periodo) {
-    $labelsComparativo[] = date("M Y", strtotime($periodo . "-01"));
-    $dataCompras6[] = isset($compras6Map[$periodo]) ? $compras6Map[$periodo] : 0;
-    $dataVentas6[] = isset($ventas6Map[$periodo]) ? $ventas6Map[$periodo] : 0;
-  }
-
-  $labelsTop = array();
-  $dataTop = array();
-  $topProductos = $consulta->topproductosvendidosrango($fechaInicio, $fechaFin, 7);
-  while ($reg = $topProductos->fetch_object()) {
-    $labelsTop[] = $reg->producto;
-    $dataTop[] = round((float)$reg->total, 2);
-  }
-
-  $labelsCategoria = array();
-  $dataCategoria = array();
-  $ventasCategoria = $consulta->ventasporcategoriarango($fechaInicio, $fechaFin, 8);
-  while ($reg = $ventasCategoria->fetch_object()) {
-    $labelsCategoria[] = $reg->categoria;
-    $dataCategoria[] = round((float)$reg->total, 2);
-  }
+  $labelsTop = array(); $dataTop = array();
+  foreach (filasResultado($consulta->topproductosvendidosrango($fechaInicio, $fechaFin, 7)) as $r) { $labelsTop[] = $r['producto']; $dataTop[] = round((float)$r['total'], 2); }
+  $labelsCat = array(); $dataCat = array();
+  foreach (filasResultado($consulta->ventasporcategoriarango($fechaInicio, $fechaFin, 8)) as $r) { $labelsCat[] = $r['categoria']; $dataCat[] = round((float)$r['total'], 2); }
+  $labelsMedio = array(); $dataMedio = array();
+  foreach (filasResultado($consulta->ventasPorMedioPago($fechaInicio, $fechaFin)) as $r) { $labelsMedio[] = $r['medio_pago']; $dataMedio[] = round((float)$r['total'], 2); }
+  $labelsVend = array(); $dataVend = array();
+  foreach (filasResultado($consulta->ventasPorVendedor($fechaInicio, $fechaFin, 8)) as $r) { $labelsVend[] = $r['vendedor']; $dataVend[] = round((float)$r['total'], 2); }
+  $horas = array_fill(0, 24, 0);
+  foreach (filasResultado($consulta->ventasPorHora($fechaInicio, $fechaFin)) as $r) { $h = (int)$r['hora']; if ($h >= 0 && $h < 24) $horas[$h] = round((float)$r['total'], 2); }
+  $labelsHora = array(); for ($h = 0; $h < 24; $h++) { $labelsHora[] = sprintf("%02d:00", $h); }
 
   $movimientos = array();
-  $rsmov = $consulta->ultimomovimientosrango($fechaInicio, $fechaFin, 10);
-  while ($reg = $rsmov->fetch_object()) {
-    $movimientos[] = array(
-      "tipo" => $reg->tipo,
-      "fecha" => date("d/m/Y H:i", strtotime($reg->fecha)),
-      "documento" => $reg->documento,
-      "persona" => $reg->persona,
-      "total" => (float)$reg->total
-    );
+  foreach (filasResultado($consulta->ultimomovimientosrango($fechaInicio, $fechaFin, 8)) as $r) {
+    $movimientos[] = array('tipo' => $r['tipo'], 'fecha' => date("d/m/Y H:i", strtotime($r['fecha'])), 'documento' => $r['documento'], 'persona' => $r['persona'], 'total' => (float)$r['total']);
   }
+  $hora = (int)date('G');
+  $saludo = $hora < 12 ? 'Buenos días' : ($hora < 19 ? 'Buenas tardes' : 'Buenas noches');
+  $primerNombre = trim(explode(' ', trim((string)$_SESSION['nombre']))[0]);
 ?>
 <div class="content-wrapper">
   <section class="content dashboard-wrap">
-    <div class="dashboard-head">
-      <h1>Panel Ejecutivo</h1>
-      <p>Resumen interactivo de compras, ventas e inventario.</p>
+    <div class="page-head">
+      <div class="dashboard-head">
+        <h1><?php echo e($saludo); ?>, <?php echo e($primerNombre); ?> 👋</h1>
+        <p>Así va tu negocio del <strong><?php echo e($rangoTexto); ?></strong>.</p>
+      </div>
+      <div class="quick-actions">
+        <?php if (usuarioTienePermiso('ventas')) { ?><a href="venta.php?nuevo=1" class="btn btn-primary"><i class="fa fa-plus"></i> Nueva venta</a><?php } ?>
+        <?php if (usuarioTienePermiso('compras')) { ?><a href="ingreso.php?nuevo=1" class="btn btn-default"><i class="fa fa-truck"></i> Nueva compra</a><?php } ?>
+        <?php if (usuarioTienePermiso('caja') || usuarioTienePermiso('ventas')) { ?><a href="caja.php" class="btn btn-default"><i class="fa fa-money"></i> Caja</a><?php } ?>
+      </div>
     </div>
 
-    <div class="box dashboard-box dashboard-filter-box">
+    <div class="box dashboard-filter-box">
       <div class="box-body">
         <form method="get" action="escritorio.php" class="row dashboard-filter-form">
-          <div class="col-md-3 col-sm-6 col-xs-12">
-            <label>Desde</label>
-            <input type="date" class="form-control" name="fecha_inicio" value="<?php echo htmlspecialchars($fechaInicio); ?>" max="<?php echo htmlspecialchars($fechaFin); ?>">
-          </div>
-          <div class="col-md-3 col-sm-6 col-xs-12">
-            <label>Hasta</label>
-            <input type="date" class="form-control" name="fecha_fin" value="<?php echo htmlspecialchars($fechaFin); ?>" min="<?php echo htmlspecialchars($fechaInicio); ?>">
-          </div>
-          <div class="col-md-6 col-sm-12 col-xs-12 dashboard-filter-actions">
-            <button type="submit" class="btn btn-primary"><i class="fa fa-filter"></i> Aplicar filtros</button>
-            <a href="escritorio.php" class="btn btn-default"><i class="fa fa-refresh"></i> Limpiar</a>
-            <span class="text-muted" style="margin-left:12px;">Rango activo: <strong><?php echo htmlspecialchars($rangoTexto); ?></strong></span>
+          <div class="col-md-2 col-sm-4 col-xs-6"><label>Desde</label><input type="date" class="form-control input-sm" name="fecha_inicio" value="<?php echo e($fechaInicio); ?>"></div>
+          <div class="col-md-2 col-sm-4 col-xs-6"><label>Hasta</label><input type="date" class="form-control input-sm" name="fecha_fin" value="<?php echo e($fechaFin); ?>"></div>
+          <div class="col-md-8 col-sm-12 col-xs-12 dashboard-filter-actions">
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fa fa-filter"></i> Aplicar</button>
+            <span class="text-soft" style="margin-left:6px">Rápido:</span>
+            <a href="escritorio.php?fecha_inicio=<?php echo $hoy; ?>&fecha_fin=<?php echo $hoy; ?>" class="btn btn-default btn-xs">Hoy</a>
+            <a href="escritorio.php?fecha_inicio=<?php echo date('Y-m-d', strtotime('monday this week')); ?>&fecha_fin=<?php echo $hoy; ?>" class="btn btn-default btn-xs">Esta semana</a>
+            <a href="escritorio.php?fecha_inicio=<?php echo $inicioDefault; ?>&fecha_fin=<?php echo $hoy; ?>" class="btn btn-default btn-xs">Este mes</a>
+            <a href="escritorio.php?fecha_inicio=<?php echo date('Y-m-01', strtotime('-1 month')); ?>&fecha_fin=<?php echo date('Y-m-t', strtotime('-1 month')); ?>" class="btn btn-default btn-xs">Mes pasado</a>
+            <a href="escritorio.php?fecha_inicio=<?php echo date('Y-01-01'); ?>&fecha_fin=<?php echo $hoy; ?>" class="btn btn-default btn-xs">Este año</a>
           </div>
         </form>
       </div>
@@ -170,163 +129,101 @@ if ($_SESSION['escritorio'] == 1) {
 
     <div class="row dashboard-kpis">
       <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12">
-        <a href="venta.php" class="kpi-card kpi-sales">
-          <div class="kpi-icon"><i class="fa fa-line-chart"></i></div>
-          <div class="kpi-meta">
-            <span>Ventas del Periodo</span>
-            <strong><?php echo formatearMoneda($totalv, $codigoMoneda); ?></strong>
-          </div>
-        </a>
+        <a href="venta.php" class="kpi-card kpi-sales"><div class="kpi-icon"><i class="fa fa-line-chart"></i></div><div class="kpi-meta"><span>Ventas del periodo</span><strong><?php echo e(formatearMoneda($totalv, $codigoMoneda)); ?></strong><small><?php echo $numVentas; ?> comprobante(s) · ticket prom. <?php echo e(formatearMoneda($ticketPromedio, $codigoMoneda)); ?></small></div></a>
       </div>
       <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12">
-        <a href="ingreso.php" class="kpi-card kpi-buy">
-          <div class="kpi-icon"><i class="fa fa-shopping-basket"></i></div>
-          <div class="kpi-meta">
-            <span>Compras del Periodo</span>
-            <strong><?php echo formatearMoneda($totalc, $codigoMoneda); ?></strong>
-          </div>
-        </a>
+        <div class="kpi-card kpi-profit"><div class="kpi-icon"><i class="fa fa-trophy"></i></div><div class="kpi-meta"><span>Utilidad estimada</span><strong><?php echo e(formatearMoneda($utilidad, $codigoMoneda)); ?></strong><small>Margen <?php echo number_format($margen, 1); ?>% · costo <?php echo e(formatearMoneda($costoTotal, $codigoMoneda)); ?></small></div></div>
       </div>
       <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12">
-        <div class="kpi-card kpi-stock">
-          <div class="kpi-icon"><i class="fa fa-cubes"></i></div>
-          <div class="kpi-meta">
-            <span>Stock Total</span>
-            <strong><?php echo number_format($stockTotal, 0); ?></strong>
-          </div>
-        </div>
+        <a href="ingreso.php" class="kpi-card kpi-buy"><div class="kpi-icon"><i class="fa fa-shopping-basket"></i></div><div class="kpi-meta"><span>Compras del periodo</span><strong><?php echo e(formatearMoneda($totalc, $codigoMoneda)); ?></strong><small>Promedio <?php echo e(formatearMoneda($totalc / $diasPeriodo, $codigoMoneda)); ?> / día</small></div></a>
       </div>
       <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12">
-        <div class="kpi-card kpi-month">
-          <div class="kpi-icon"><i class="fa fa-calendar"></i></div>
-          <div class="kpi-meta">
-            <span>Balance del Periodo</span>
-            <strong><?php echo formatearMoneda($totalvm - $totalcm, $codigoMoneda); ?></strong>
-          </div>
-        </div>
+        <a href="procenter.php" class="kpi-card kpi-stock"><div class="kpi-icon"><i class="fa fa-cubes"></i></div><div class="kpi-meta"><span>Inventario</span><strong><?php echo number_format($stockTotal, 0); ?> und</strong><small><?php echo $articulosActivos; ?> artículos · <?php echo $categoriasActivas; ?> categorías</small></div></a>
       </div>
     </div>
 
-    <div class="row dashboard-kpis secondary">
-      <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
-        <div class="mini-kpi">
-          <label>Promedio Ventas / Dia</label>
-          <strong><?php echo formatearMoneda($promedioVentas, $codigoMoneda); ?></strong>
+    <div class="alert-cards">
+      <a href="procenter.php" class="alert-card <?php echo $al('articulos_agotados') > 0 ? 'is-danger' : 'is-success'; ?>"><div class="alert-ico"><i class="fa fa-ban"></i></div><div><strong><?php echo (int)$al('articulos_agotados'); ?></strong><span>Artículos agotados</span></div></a>
+      <a href="procenter.php" class="alert-card <?php echo $al('articulos_bajo_minimo') > 0 ? 'is-warning' : 'is-success'; ?>"><div class="alert-ico"><i class="fa fa-exclamation-triangle"></i></div><div><strong><?php echo (int)$al('articulos_bajo_minimo'); ?></strong><span>Bajo stock mínimo</span></div></a>
+      <a href="cuentas.php" class="alert-card <?php echo $al('cxc_vencidas') > 0 ? 'is-danger' : 'is-info'; ?>"><div class="alert-ico"><i class="fa fa-arrow-circle-down"></i></div><div><strong><?php echo e(formatearMoneda($al('cxc_pendiente_monto'), $codigoMoneda)); ?></strong><span>Por cobrar · <?php echo (int)$al('cxc_vencidas'); ?> vencida(s)</span></div></a>
+      <a href="cuentas.php#cxp" class="alert-card <?php echo $al('cxp_vencidas') > 0 ? 'is-warning' : 'is-info'; ?>"><div class="alert-ico"><i class="fa fa-arrow-circle-up"></i></div><div><strong><?php echo e(formatearMoneda($al('cxp_pendiente_monto'), $codigoMoneda)); ?></strong><span>Por pagar · <?php echo (int)$al('cxp_vencidas'); ?> vencida(s)</span></div></a>
+      <a href="caja.php" class="alert-card <?php echo (int)$al('caja_abierta') === 1 ? 'is-success' : 'is-purple'; ?>"><div class="alert-ico"><i class="fa <?php echo (int)$al('caja_abierta') === 1 ? 'fa-unlock' : 'fa-lock'; ?>"></i></div><div><strong><?php echo e(formatearMoneda($al('ventas_hoy_monto'), $codigoMoneda)); ?></strong><span>Ventas de hoy · caja <?php echo (int)$al('caja_abierta') === 1 ? 'abierta' : 'cerrada'; ?></span></div></a>
+    </div>
+
+    <div class="row">
+      <div class="col-lg-8 col-md-7">
+        <div class="box dashboard-box">
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-area-chart"></i> Ventas por día</h3></div>
+          <div class="box-body"><canvas id="chartVentasDia"></canvas></div>
         </div>
       </div>
-      <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
-        <div class="mini-kpi">
-          <label>Promedio Compras / Dia</label>
-          <strong><?php echo formatearMoneda($promedioCompras, $codigoMoneda); ?></strong>
-        </div>
-      </div>
-      <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
-        <div class="mini-kpi">
-          <label>Clientes</label>
-          <strong><?php echo $clientes; ?></strong>
-        </div>
-      </div>
-      <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
-        <div class="mini-kpi">
-          <label>Proveedores / Categorias / Articulos</label>
-          <strong><?php echo $proveedores; ?> / <?php echo $categoriasActivas; ?> / <?php echo $articulosActivos; ?></strong>
+      <div class="col-lg-4 col-md-5">
+        <div class="box dashboard-box">
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-credit-card"></i> Ventas por medio de pago</h3></div>
+          <div class="box-body"><canvas id="chartMedio"></canvas></div>
         </div>
       </div>
     </div>
 
     <div class="row">
-      <div class="col-lg-8 col-md-8 col-sm-12 col-xs-12">
+      <div class="col-lg-6 col-md-6">
         <div class="box dashboard-box">
-          <div class="box-header with-border">
-            <h3 class="box-title">Comparativo Compras vs Ventas (Rango Seleccionado)</h3>
-          </div>
-          <div class="box-body">
-            <canvas id="chartComparativo" height="120"></canvas>
-          </div>
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-bar-chart"></i> Compras vs ventas por mes</h3></div>
+          <div class="box-body"><canvas id="chartComparativo"></canvas></div>
         </div>
       </div>
-      <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+      <div class="col-lg-6 col-md-6">
         <div class="box dashboard-box">
-          <div class="box-header with-border">
-            <h3 class="box-title">Ventas por Categoria (Rango Seleccionado)</h3>
-          </div>
-          <div class="box-body">
-            <canvas id="chartCategoria" height="170"></canvas>
-          </div>
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-clock-o"></i> Ventas por hora del día</h3></div>
+          <div class="box-body"><canvas id="chartHora"></canvas></div>
         </div>
       </div>
     </div>
 
     <div class="row">
-      <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+      <div class="col-lg-4 col-md-6">
         <div class="box dashboard-box">
-          <div class="box-header with-border">
-            <h3 class="box-title">Compras por Dia (Rango Seleccionado)</h3>
-          </div>
-          <div class="box-body">
-            <canvas id="chartCompras10" height="150"></canvas>
-          </div>
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-star"></i> Top productos</h3></div>
+          <div class="box-body"><canvas id="chartTop"></canvas></div>
         </div>
       </div>
-      <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+      <div class="col-lg-4 col-md-6">
         <div class="box dashboard-box">
-          <div class="box-header with-border">
-            <h3 class="box-title">Ventas por Mes (Rango Seleccionado)</h3>
-          </div>
-          <div class="box-body">
-            <canvas id="chartVentas12" height="150"></canvas>
-          </div>
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-tags"></i> Ventas por categoría</h3></div>
+          <div class="box-body"><canvas id="chartCategoria"></canvas></div>
+        </div>
+      </div>
+      <div class="col-lg-4 col-md-12">
+        <div class="box dashboard-box">
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-user"></i> Ventas por vendedor</h3></div>
+          <div class="box-body"><canvas id="chartVendedor"></canvas></div>
         </div>
       </div>
     </div>
 
     <div class="row">
-      <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+      <div class="col-xs-12">
         <div class="box dashboard-box">
-          <div class="box-header with-border">
-            <h3 class="box-title">Top Productos Vendidos</h3>
-          </div>
-          <div class="box-body">
-            <canvas id="chartTopProductos" height="180"></canvas>
-          </div>
-        </div>
-      </div>
-      <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
-        <div class="box dashboard-box">
-          <div class="box-header with-border">
-            <h3 class="box-title">Ultimos Movimientos</h3>
-          </div>
-          <div class="box-body table-responsive">
-            <table class="table table-striped table-condensed">
-              <thead>
-                <tr>
-                  <th>Tipo</th>
-                  <th>Fecha</th>
-                  <th>Documento</th>
-                  <th>Persona</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
+          <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-history"></i> Últimos movimientos</h3><div class="box-tools"><a href="venta.php" class="btn btn-default btn-xs">Ver ventas</a> <a href="ingreso.php" class="btn btn-default btn-xs">Ver compras</a></div></div>
+          <div class="box-body table-responsive" style="min-height:auto">
+            <?php if (count($movimientos) === 0) { ?>
+            <div class="empty-state"><i class="fa fa-inbox"></i><strong>Sin movimientos en el periodo</strong>Registra tu primera venta o compra para ver actividad aquí.</div>
+            <?php } else { ?>
+            <table class="table table-striped table-hover">
+              <thead><tr><th>Tipo</th><th>Fecha</th><th>Documento</th><th>Cliente / Proveedor</th><th class="text-right">Total</th></tr></thead>
               <tbody>
-                <?php if (count($movimientos) === 0) { ?>
+              <?php foreach ($movimientos as $mov) { ?>
                 <tr>
-                  <td colspan="5">Sin movimientos recientes.</td>
+                  <td><span class="label <?php echo $mov['tipo'] === 'Venta' ? 'bg-green' : 'bg-aqua'; ?>"><?php echo e($mov['tipo']); ?></span></td>
+                  <td><?php echo e($mov['fecha']); ?></td>
+                  <td><?php echo e($mov['documento']); ?></td>
+                  <td><?php echo e($mov['persona']); ?></td>
+                  <td class="text-right money"><?php echo e(formatearMoneda($mov['total'], $codigoMoneda)); ?></td>
                 </tr>
-                <?php } else { foreach ($movimientos as $mov) { ?>
-                <tr>
-                  <td>
-                    <span class="label <?php echo $mov["tipo"] === "Venta" ? "bg-green" : "bg-aqua"; ?>">
-                      <?php echo $mov["tipo"]; ?>
-                    </span>
-                  </td>
-                  <td><?php echo $mov["fecha"]; ?></td>
-                  <td><?php echo $mov["documento"]; ?></td>
-                  <td><?php echo $mov["persona"]; ?></td>
-                  <td><?php echo formatearMoneda($mov["total"], $codigoMoneda); ?></td>
-                </tr>
-                <?php } } ?>
+              <?php } ?>
               </tbody>
             </table>
+            <?php } ?>
           </div>
         </div>
       </div>
@@ -335,152 +232,37 @@ if ($_SESSION['escritorio'] == 1) {
 </div>
 <?php
 } else {
- require 'noacceso.php';
+  require 'noacceso.php';
 }
-
 require 'footer.php';
+if (usuarioTienePermiso('escritorio')) {
 ?>
 <script src="../public/js/Chart.bundle.min.js"></script>
 <script>
 (function () {
-  var labelsCompras10 = <?php echo json_encode($labelsCompras10); ?>;
-  var dataCompras10 = <?php echo json_encode($dataCompras10); ?>;
-  var labelsVentas12 = <?php echo json_encode($labelsVentas12); ?>;
-  var dataVentas12 = <?php echo json_encode($dataVentas12); ?>;
-  var labelsComparativo = <?php echo json_encode($labelsComparativo); ?>;
-  var dataCompras6 = <?php echo json_encode($dataCompras6); ?>;
-  var dataVentas6 = <?php echo json_encode($dataVentas6); ?>;
-  var labelsTop = <?php echo json_encode($labelsTop); ?>;
-  var dataTop = <?php echo json_encode($dataTop); ?>;
-  var labelsCategoria = <?php echo json_encode($labelsCategoria); ?>;
-  var dataCategoria = <?php echo json_encode($dataCategoria); ?>;
-
-  Chart.defaults.global.animation.duration = 350;
-  Chart.defaults.global.defaultFontFamily = '"Trebuchet MS", "Verdana", "Segoe UI", sans-serif';
-  Chart.defaults.global.defaultFontColor = '#334155';
-
-  var currencySymbol = window.appCurrencySymbol || <?php echo json_encode(obtenerSimboloMoneda($codigoMoneda)); ?>;
-  var moneyTick = function(value){
-    return currencySymbol + ' ' + Number(value).toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  var S = <?php echo json_encode($simbolo); ?>;
+  var money = function (v) { return S + ' ' + Number(v).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
+  Chart.defaults.global.animation.duration = 400;
+  Chart.defaults.global.defaultFontFamily = '"Segoe UI", Inter, system-ui, sans-serif';
+  Chart.defaults.global.defaultFontColor = '#64748b';
+  Chart.defaults.global.legend.labels.boxWidth = 12;
+  Chart.defaults.global.tooltips.callbacks.label = function (item, data) {
+    var ds = data.datasets[item.datasetIndex];
+    var v = ds.data[item.index];
+    return (ds.label ? ds.label + ': ' : (data.labels[item.index] ? data.labels[item.index] + ': ' : '')) + S + ' ' + Number(v).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
+  var palette = ['#0f766e', '#f59e0b', '#0284c7', '#16a34a', '#7c3aed', '#e11d48', '#06b6d4', '#f97316', '#84cc16', '#64748b'];
+  var ejeMoney = { yAxes: [{ ticks: { beginAtZero: true, callback: money }, gridLines: { color: '#eef2f7' } }], xAxes: [{ gridLines: { display: false } }] };
+  function vacio(labels) { return labels.length ? labels : ['Sin datos']; }
+  function vacioData(d) { return d.length ? d : [0]; }
 
-  new Chart(document.getElementById('chartComparativo').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels: labelsComparativo,
-      datasets: [{
-        label: 'Compras',
-        data: dataCompras6,
-        borderColor: '#0284c7',
-        backgroundColor: 'rgba(2,132,199,0.15)',
-        fill: true,
-        borderWidth: 2,
-        pointRadius: 3
-      },{
-        label: 'Ventas',
-        data: dataVentas6,
-        borderColor: '#16a34a',
-        backgroundColor: 'rgba(22,163,74,0.15)',
-        fill: true,
-        borderWidth: 2,
-        pointRadius: 3
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      legend: { position: 'top' },
-      scales: {
-        yAxes: [{ ticks: { beginAtZero: true, callback: moneyTick } }]
-      }
-    }
-  });
-
-  new Chart(document.getElementById('chartCategoria').getContext('2d'), {
-    type: 'doughnut',
-    data: {
-      labels: labelsCategoria.length ? labelsCategoria : ['Sin datos'],
-      datasets: [{
-        data: dataCategoria.length ? dataCategoria : [1],
-        backgroundColor: ['#0ea5e9','#14b8a6','#f59e0b','#16a34a','#8b5cf6','#f97316','#06b6d4','#e11d48']
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      legend: { position: 'bottom' }
-    }
-  });
-
-  new Chart(document.getElementById('chartCompras10').getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: labelsCompras10,
-      datasets: [{
-        label: 'Compras (' + currencySymbol + ')',
-        data: dataCompras10,
-        backgroundColor: 'rgba(2,132,199,0.22)',
-        borderColor: '#0284c7',
-        borderWidth: 1.5
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      legend: { display: false },
-      scales: {
-        yAxes: [{ ticks: { beginAtZero: true, callback: moneyTick } }]
-      }
-    }
-  });
-
-  new Chart(document.getElementById('chartVentas12').getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: labelsVentas12,
-      datasets: [{
-        label: 'Ventas (' + currencySymbol + ')',
-        data: dataVentas12,
-        backgroundColor: 'rgba(22,163,74,0.22)',
-        borderColor: '#16a34a',
-        borderWidth: 1.5
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      legend: { display: false },
-      scales: {
-        yAxes: [{ ticks: { beginAtZero: true, callback: moneyTick } }]
-      }
-    }
-  });
-
-  new Chart(document.getElementById('chartTopProductos').getContext('2d'), {
-    type: 'horizontalBar',
-    data: {
-      labels: labelsTop.length ? labelsTop : ['Sin datos'],
-      datasets: [{
-        label: 'Monto vendido (' + currencySymbol + ')',
-        data: dataTop.length ? dataTop : [0],
-        backgroundColor: 'rgba(245,158,11,0.26)',
-        borderColor: '#d97706',
-        borderWidth: 1.5
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      legend: { display: false },
-      scales: {
-        xAxes: [{ ticks: { beginAtZero: true, callback: moneyTick } }]
-      }
-    }
-  });
+  new Chart(document.getElementById('chartVentasDia'), { type: 'line', data: { labels: vacio(<?php echo json_encode($labelsVentasDia); ?>), datasets: [{ label: 'Ventas', data: vacioData(<?php echo json_encode($dataVentasDia); ?>), borderColor: '#0f766e', backgroundColor: 'rgba(15,118,110,0.12)', fill: true, borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: '#0f766e', lineTension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: false, legend: { display: false }, scales: ejeMoney } });
+  new Chart(document.getElementById('chartMedio'), { type: 'doughnut', data: { labels: vacio(<?php echo json_encode($labelsMedio); ?>), datasets: [{ data: <?php echo count($dataMedio) ? json_encode($dataMedio) : '[1]'; ?>, backgroundColor: palette, borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, cutoutPercentage: 62, legend: { position: 'bottom' } } });
+  new Chart(document.getElementById('chartComparativo'), { type: 'bar', data: { labels: <?php echo json_encode($labelsMes); ?>, datasets: [{ label: 'Compras', data: <?php echo json_encode($dataComprasMes); ?>, backgroundColor: 'rgba(2,132,199,0.75)', borderRadius: 6 }, { label: 'Ventas', data: <?php echo json_encode($dataVentasMes); ?>, backgroundColor: 'rgba(22,163,74,0.8)' }] }, options: { responsive: true, maintainAspectRatio: false, legend: { position: 'top' }, scales: ejeMoney } });
+  new Chart(document.getElementById('chartHora'), { type: 'bar', data: { labels: <?php echo json_encode($labelsHora); ?>, datasets: [{ label: 'Ventas', data: <?php echo json_encode(array_values($horas)); ?>, backgroundColor: 'rgba(245,158,11,0.8)' }] }, options: { responsive: true, maintainAspectRatio: false, legend: { display: false }, scales: { yAxes: ejeMoney.yAxes, xAxes: [{ gridLines: { display: false }, ticks: { autoSkip: true, maxTicksLimit: 12 } }] } } });
+  new Chart(document.getElementById('chartTop'), { type: 'horizontalBar', data: { labels: vacio(<?php echo json_encode($labelsTop); ?>), datasets: [{ label: 'Vendido', data: vacioData(<?php echo json_encode($dataTop); ?>), backgroundColor: 'rgba(15,118,110,0.8)' }] }, options: { responsive: true, maintainAspectRatio: false, legend: { display: false }, scales: { xAxes: [{ ticks: { beginAtZero: true, callback: money }, gridLines: { color: '#eef2f7' } }], yAxes: [{ gridLines: { display: false } }] } } });
+  new Chart(document.getElementById('chartCategoria'), { type: 'doughnut', data: { labels: vacio(<?php echo json_encode($labelsCat); ?>), datasets: [{ data: <?php echo count($dataCat) ? json_encode($dataCat) : '[1]'; ?>, backgroundColor: palette, borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, cutoutPercentage: 55, legend: { position: 'bottom' } } });
+  new Chart(document.getElementById('chartVendedor'), { type: 'bar', data: { labels: vacio(<?php echo json_encode($labelsVend); ?>), datasets: [{ label: 'Ventas', data: vacioData(<?php echo json_encode($dataVend); ?>), backgroundColor: 'rgba(124,58,237,0.8)' }] }, options: { responsive: true, maintainAspectRatio: false, legend: { display: false }, scales: ejeMoney } });
 })();
 </script>
-<?php
-}
-
-ob_end_flush();
-?>
+<?php } ?>

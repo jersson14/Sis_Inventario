@@ -99,6 +99,7 @@ $menu = array(
   array('tipo' => 'header', 'texto' => 'Operaciones', 'permisos' => array('ventas', 'compras', 'caja', 'cuentas')),
   array('tipo' => 'grupo', 'icono' => 'fa-shopping-cart', 'texto' => 'Ventas', 'permisos' => array('ventas'), 'hijos' => array(
     array('href' => 'venta.php', 'texto' => 'Punto de venta'),
+    array('href' => 'cotizacion.php', 'texto' => 'Cotizaciones'),
     array('href' => 'cliente.php', 'texto' => 'Clientes'),
   )),
   array('tipo' => 'grupo', 'icono' => 'fa-truck', 'texto' => 'Compras', 'permisos' => array('compras'), 'hijos' => array(
@@ -116,6 +117,7 @@ $menu = array(
     array('href' => 'categoria.php', 'texto' => 'Categorías'),
     array('href' => 'unidad.php', 'texto' => 'Unidades de medida'),
     array('href' => 'etiquetas.php', 'texto' => 'Etiquetas de código de barras'),
+    array('href' => 'importar.php', 'texto' => 'Importar desde Excel'),
   )),
   array('tipo' => 'item', 'href' => 'inventario.php', 'icono' => 'fa-exchange', 'texto' => 'Ajustes de inventario', 'permisos' => array('inventario', 'almacen')),
   array('tipo' => 'item', 'href' => 'procenter.php', 'icono' => 'fa-line-chart', 'texto' => 'Kardex y alertas', 'permisos' => array('procenter', 'almacen')),

@@ -10,7 +10,7 @@ class Empresa
     /** Campos editables desde el formulario, en el orden del INSERT/UPDATE. */
     const CAMPOS = array(
         'nombre_comercial', 'razon_social', 'ruc', 'direccion', 'telefono', 'celular', 'correo', 'web', 'logo',
-        'color_primario', 'color_secundario', 'serie_boleta', 'serie_factura', 'serie_ticket',
+        'color_primario', 'color_secundario', 'serie_boleta', 'serie_factura', 'serie_ticket', 'serie_cotizacion',
         'impuesto_default', 'moneda', 'mensaje_ticket'
     );
 
@@ -35,6 +35,7 @@ class Empresa
             'serie_boleta' => 'B001',
             'serie_factura' => 'F001',
             'serie_ticket' => 'T001',
+            'serie_cotizacion' => 'COT',
             'impuesto_default' => 18.00,
             'moneda' => 'PEN',
             'mensaje_ticket' => 'Gracias por su compra'

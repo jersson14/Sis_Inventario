@@ -50,7 +50,9 @@ Hallazgos críticos del código heredado:
 - ✅ Permisos ampliados (caja, inventario, reportes, empresa, backup, cuentas) visibles en el formulario de usuario
 - ✅ Panel de auditoría (admin): quién hizo qué y cuándo
 - ✅ Impresión masiva de etiquetas con código de barras (`vistas/etiquetas.php`)
-- 💡 Cotizaciones/proformas · 💡 Múltiples almacenes · 💡 Lotes y fechas de vencimiento · 💡 Importación de artículos desde Excel/CSV · 💡 Notificaciones por correo (stock bajo, vencimientos) · 💡 API REST para app móvil
+- ✅ Cotizaciones/proformas (`vistas/cotizacion.php`, PDF `reportes/exCotizacion.php`, conversión a venta desde el POS)
+- ✅ Importación desde Excel/CSV (`vistas/importar.php`): artículos, clientes y proveedores, sin librerías externas
+- 💡 Múltiples almacenes · 💡 Lotes y fechas de vencimiento · 💡 Notificaciones por correo (stock bajo, vencimientos) · 💡 API REST para app móvil
 
 ## Fase 3 — UI/UX (vendible) ✅ (pendientes: capturas reales, modo oscuro)
 
@@ -89,5 +91,6 @@ Hallazgos críticos del código heredado:
 | Fecha | Avance |
 |-------|--------|
 | 2026-09-11 | Diagnóstico completo; infraestructura de seguridad; migración v2 aplicada; refactor de backend (28 archivos) a consultas preparadas |
+| 2026-09-13 (noche) | Cotizaciones e importación desde Excel/CSV; migración `20260913_cotizaciones.sql`; smoke ampliado a 72 comprobaciones |
 | 2026-09-13 (tarde) | Fase 4: instalador web, esquema base, datos demo, smoke automatizado, guía de despliegue, etiquetas masivas, CI |
 | 2026-09-13 | UI v2 completa (landing, login, layout, 21 vistas), módulos Ajustes de inventario y Auditoría, reportes saneados; pruebas de humo y flujo transaccional OK; README v2 |

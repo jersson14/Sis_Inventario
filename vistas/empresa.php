@@ -42,6 +42,7 @@ if (usuarioTienePermiso('empresa') || usuarioTienePermiso('acceso')) {
                 <div class="form-group col-md-3 col-sm-6"><label>Serie boleta</label><input type="text" class="form-control" name="serie_boleta" id="serie_boleta" maxlength="10" value="B001"></div>
                 <div class="form-group col-md-3 col-sm-6"><label>Serie factura</label><input type="text" class="form-control" name="serie_factura" id="serie_factura" maxlength="10" value="F001"></div>
                 <div class="form-group col-md-3 col-sm-6"><label>Serie ticket</label><input type="text" class="form-control" name="serie_ticket" id="serie_ticket" maxlength="10" value="T001"></div>
+                <div class="form-group col-md-3 col-sm-6"><label>Serie cotización</label><input type="text" class="form-control" name="serie_cotizacion" id="serie_cotizacion" maxlength="6" value="COT"></div>
                 <div class="form-group col-md-3 col-sm-6"><label>Impuesto por defecto (%)</label><input type="number" step="0.01" min="0" max="100" class="form-control" name="impuesto_default" id="impuesto_default" value="18.00"></div>
                 <div class="form-group col-md-4 col-sm-6"><label>Moneda</label>
                   <select class="form-control" name="moneda" id="moneda">

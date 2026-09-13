@@ -150,6 +150,7 @@ CREATE TABLE `configuracion_empresa` (
   `serie_boleta` varchar(10) NOT NULL DEFAULT 'B001',
   `serie_factura` varchar(10) NOT NULL DEFAULT 'F001',
   `serie_ticket` varchar(10) NOT NULL DEFAULT 'T001',
+  `serie_cotizacion` varchar(10) NOT NULL DEFAULT 'COT',
   `impuesto_default` decimal(5,2) NOT NULL DEFAULT 18.00,
   `moneda` varchar(10) NOT NULL DEFAULT 'PEN',
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
@@ -416,6 +417,46 @@ CREATE TABLE `venta` (
   CONSTRAINT `fk_venta_usuario` FOREIGN KEY (`idusuario`) REFERENCES `usuario` (`idusuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
+
+-- Cotizaciones (migracion 20260913)
+CREATE TABLE IF NOT EXISTS `cotizacion` (
+  `idcotizacion` INT(11) NOT NULL AUTO_INCREMENT,
+  `idcliente` INT(11) NOT NULL,
+  `idusuario` INT(11) NOT NULL,
+  `numero` VARCHAR(14) NOT NULL,
+  `fecha_hora` DATETIME NOT NULL,
+  `fecha_validez` DATE NOT NULL,
+  `impuesto` DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+  `total` DECIMAL(11,2) NOT NULL DEFAULT 0.00,
+  `estado` VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' COMMENT 'PENDIENTE | ACEPTADA | RECHAZADA | VENCIDA | CONVERTIDA',
+  `idventa` INT(11) DEFAULT NULL,
+  `observacion` VARCHAR(300) DEFAULT NULL,
+  `condiciones` VARCHAR(300) DEFAULT NULL,
+  `fecha_creacion` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`idcotizacion`),
+  UNIQUE KEY `uq_cotizacion_numero` (`numero`),
+  KEY `fk_cotizacion_cliente_idx` (`idcliente`),
+  KEY `fk_cotizacion_usuario_idx` (`idusuario`),
+  KEY `idx_cotizacion_fecha` (`fecha_hora`),
+  KEY `idx_cotizacion_estado` (`estado`),
+  CONSTRAINT `fk_cotizacion_cliente` FOREIGN KEY (`idcliente`) REFERENCES `persona` (`idpersona`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `fk_cotizacion_usuario` FOREIGN KEY (`idusuario`) REFERENCES `usuario` (`idusuario`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `detalle_cotizacion` (
+  `iddetalle_cotizacion` INT(11) NOT NULL AUTO_INCREMENT,
+  `idcotizacion` INT(11) NOT NULL,
+  `idarticulo` INT(11) NOT NULL,
+  `cantidad` DECIMAL(14,3) NOT NULL,
+  `precio` DECIMAL(11,2) NOT NULL,
+  `descuento` DECIMAL(11,2) NOT NULL DEFAULT 0.00,
+  PRIMARY KEY (`iddetalle_cotizacion`),
+  KEY `fk_detcot_cotizacion_idx` (`idcotizacion`),
+  KEY `fk_detcot_articulo_idx` (`idarticulo`),
+  CONSTRAINT `fk_detcot_cotizacion` FOREIGN KEY (`idcotizacion`) REFERENCES `cotizacion` (`idcotizacion`) ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT `fk_detcot_articulo` FOREIGN KEY (`idarticulo`) REFERENCES `articulo` (`idarticulo`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ------------------------------------------------------------------
 -- Datos semilla
 -- ------------------------------------------------------------------
@@ -427,6 +468,6 @@ INSERT IGNORE INTO `categoria` (`idcategoria`,`nombre`,`descripcion`,`condicion`
 
 INSERT IGNORE INTO `configuracion_empresa` (`idconfig`,`nombre_comercial`,`razon_social`,`ruc`,`direccion`,`telefono`,`celular`,`correo`,`web`,`logo`,`color_primario`,`color_secundario`,`serie_boleta`,`serie_factura`,`serie_ticket`,`impuesto_default`,`moneda`,`mensaje_ticket`) VALUES (1,'Mi Tienda','','','','','','','','','#0f766e','#f59e0b','B001','F001','T001',18.00,'PEN','Gracias por su compra');
 
-INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql');
+INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql'),('20260913_cotizaciones.sql');
 
 SET FOREIGN_KEY_CHECKS=1;

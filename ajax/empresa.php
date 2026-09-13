@@ -79,6 +79,7 @@ switch ($op) {
                 'serie_boleta' => 'B001',
                 'serie_factura' => 'F001',
                 'serie_ticket' => 'T001',
+                'serie_cotizacion' => 'COT',
                 'impuesto_default' => '18.00',
                 'moneda' => 'PEN',
                 'simbolo_moneda' => obtenerSimboloMoneda('PEN'),
@@ -90,6 +91,7 @@ switch ($op) {
             'serie_boleta' => $cfg['serie_boleta'],
             'serie_factura' => $cfg['serie_factura'],
             'serie_ticket' => $cfg['serie_ticket'],
+            'serie_cotizacion' => isset($cfg['serie_cotizacion']) ? $cfg['serie_cotizacion'] : 'COT',
             'impuesto_default' => $cfg['impuesto_default'],
             'moneda' => $moneda,
             'simbolo_moneda' => obtenerSimboloMoneda($moneda),
@@ -165,6 +167,7 @@ switch ($op) {
             'serie_boleta' => serieSegura(isset($_POST['serie_boleta']) ? $_POST['serie_boleta'] : '', 'B001'),
             'serie_factura' => serieSegura(isset($_POST['serie_factura']) ? $_POST['serie_factura'] : '', 'F001'),
             'serie_ticket' => serieSegura(isset($_POST['serie_ticket']) ? $_POST['serie_ticket'] : '', 'T001'),
+            'serie_cotizacion' => serieSegura(isset($_POST['serie_cotizacion']) ? $_POST['serie_cotizacion'] : '', 'COT'),
             'impuesto_default' => $impuesto,
             'moneda' => $moneda,
             'mensaje_ticket' => substr(limpiarCadena(isset($_POST['mensaje_ticket']) ? $_POST['mensaje_ticket'] : ''), 0, 160)

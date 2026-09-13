@@ -28,3 +28,4 @@ Thumbs.db
 /*.png
 !files/backups/.htaccess
 !scripts/sql/*.sql
+files/importaciones/*

@@ -88,14 +88,14 @@ try {
 
 	// ---------- Vistas ----------
 	echo "== Vistas\n";
-	foreach (array('escritorio', 'articulo', 'categoria', 'unidad', 'cliente', 'proveedor', 'venta', 'ingreso', 'caja', 'cuentas', 'inventario', 'procenter', 'reportes', 'comprasfecha', 'ventasfechacliente', 'usuario', 'permiso', 'empresa', 'backup', 'auditoria', 'etiquetas') as $v) {
+	foreach (array('escritorio', 'articulo', 'categoria', 'unidad', 'cliente', 'proveedor', 'venta', 'ingreso', 'caja', 'cuentas', 'inventario', 'procenter', 'reportes', 'comprasfecha', 'ventasfechacliente', 'usuario', 'permiso', 'empresa', 'backup', 'auditoria', 'etiquetas', 'cotizacion', 'importar') as $v) {
 		list($c, $b) = http('GET', "$base/vistas/$v.php");
 		check("vista $v", $c === 200 && sinErroresPhp($b) && strlen($b) > 5000, "code=$c len=" . strlen($b));
 	}
 
 	// ---------- Endpoints ----------
 	echo "== Endpoints\n";
-	foreach (array('articulo.php?op=listar', 'categoria.php?op=listar', 'unidad.php?op=listar', 'persona.php?op=listarc', 'persona.php?op=listarp', 'venta.php?op=listar', 'ingreso.php?op=listar', 'caja.php?op=estado', 'cuentas.php?op=listarCobrar', 'cuentas.php?op=resumen', 'inventario.php?op=listar', 'procenter.php?op=alertaStock', 'consultas.php?op=dashboardAlertas', 'consultas.php?op=utilidadperiodo', 'usuario.php?op=listar', 'empresa.php?op=mostrar', 'backup.php?op=listar', 'auditoria.php?op=listar', 'articulo.php?op=catalogoEtiquetas') as $u) {
+	foreach (array('articulo.php?op=listar', 'categoria.php?op=listar', 'unidad.php?op=listar', 'persona.php?op=listarc', 'persona.php?op=listarp', 'venta.php?op=listar', 'ingreso.php?op=listar', 'caja.php?op=estado', 'cuentas.php?op=listarCobrar', 'cuentas.php?op=resumen', 'inventario.php?op=listar', 'procenter.php?op=alertaStock', 'consultas.php?op=dashboardAlertas', 'consultas.php?op=utilidadperiodo', 'usuario.php?op=listar', 'empresa.php?op=mostrar', 'backup.php?op=listar', 'auditoria.php?op=listar', 'articulo.php?op=catalogoEtiquetas', 'cotizacion.php?op=listar', 'cotizacion.php?op=resumen', 'cotizacion.php?op=siguienteNumero') as $u) {
 		list($c, $b) = http('GET', "$base/ajax/$u");
 		check("ajax $u", $c === 200 && sinErroresPhp($b) && ($b[0] === '{' || $b[0] === '['), "code=$c " . substr($b, 0, 80));
 	}

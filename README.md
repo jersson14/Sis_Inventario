@@ -25,6 +25,8 @@ Sistema web de gestión comercial en **PHP 8 puro + MySQL/MariaDB** (sin framewo
 | **Empresa y marca** | Logo, colores, series de comprobantes, impuesto, moneda (16 monedas), mensaje del ticket |
 | **Backup** | Copias completas desde el panel, descarga, restauración con copia previa automática |
 | **Auditoría** | Registro de acciones por usuario, módulo y fecha; intentos de inicio de sesión |
+| **Cotizaciones** | Proformas con validez, estados (pendiente, aceptada, rechazada, vencida, convertida), PDF y conversión a venta con un clic |
+| **Importación Excel/CSV** | Artículos, clientes y proveedores desde .xlsx o .csv con plantilla descargable, vista previa, detección de duplicados, creación de categorías y ajuste de stock por conteo |
 | **Etiquetas** | Impresión masiva de etiquetas con código de barras (3 tamaños, con precio y marca) |
 | **Instalador y demo** | `instalar.php` crea la BD y el administrador en un minuto; datos de demostración opcionales; prueba de humo automatizada |
 

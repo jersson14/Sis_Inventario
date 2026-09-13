@@ -37,6 +37,13 @@ switch ($op) {
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('ventas', 'crear', "Venta " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));
+				$idcot = enteroSeguro(isset($_POST["idcotizacion"]) ? $_POST["idcotizacion"] : 0);
+				if ($idcot > 0) {
+					require_once "../modelos/Cotizacion.php";
+					$cotModel = new Cotizacion();
+					$cotModel->marcarConvertida($idcot, (int)$rspta["idventa"]);
+					registrarAuditoria('cotizaciones', 'convertir', "Cotización #" . $idcot . " convertida en venta #" . (int)$rspta["idventa"]);
+				}
 				echo json_encode(array(
 					"ok"=>true,
 					"message"=>"Datos registrados correctamente",

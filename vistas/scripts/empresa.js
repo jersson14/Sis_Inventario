@@ -11,7 +11,7 @@ function cargarEmpresa(){
 	$.get("../ajax/empresa.php?op=mostrar", function(resp){
 		var d = appParseJson(resp, null);
 		if (!d || !d.idconfig) { return; }
-		var campos = ["nombre_comercial", "razon_social", "ruc", "direccion", "telefono", "celular", "correo", "web", "serie_boleta", "serie_factura", "serie_ticket", "impuesto_default", "moneda", "mensaje_ticket"];
+		var campos = ["nombre_comercial", "razon_social", "ruc", "direccion", "telefono", "celular", "correo", "web", "serie_boleta", "serie_factura", "serie_ticket", "serie_cotizacion", "impuesto_default", "moneda", "mensaje_ticket"];
 		campos.forEach(function(c){ if (typeof d[c] !== "undefined" && d[c] !== null) { $("#" + c).val($("<textarea/>").html(String(d[c])).text()); } });
 		$("#color_primario").val(d.color_primario || "#0f766e");
 		$("#color_secundario").val(d.color_secundario || "#f59e0b");

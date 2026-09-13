@@ -98,6 +98,31 @@ function init(){
 	});
 
 	if (window.appQueryParam && window.appQueryParam("nuevo") === "1") { mostrarform(true); }
+	if (window.appQueryParam && window.appQueryParam("cotizacion")) { cargarDesdeCotizacion(parseInt(window.appQueryParam("cotizacion"), 10)); }
+}
+
+function cargarDesdeCotizacion(id){
+	$.get("../ajax/cotizacion.php?op=paraVenta", { id: id }, function(resp){
+		var r = appParseJson(resp, null);
+		if (!r || !r.ok) { appNotify("error", (r && r.message) || "No se pudo cargar la cotización."); return; }
+		mostrarform(true);
+		$("#idcotizacion").val(r.idcotizacion);
+		$("#observacion").val(r.observacion || "");
+		if (r.impuesto > 0) { $("#tipo_comprobante").val("Factura"); aplicarSerieImpuesto(); $("#impuesto").val(Number(r.impuesto).toFixed(2)); }
+		var fijarCliente = function(){ $("#idcliente").val(String(r.idcliente)).selectpicker("refresh"); };
+		if (clientesCargados) { fijarCliente(); } else { setTimeout(fijarCliente, 700); }
+		var sinStock = [];
+		(r.items || []).forEach(function(it){
+			if (it.stock <= 0) { sinStock.push(it.nombre); return; }
+			agregarDetalle(it.idarticulo, it.nombre, it.precio, it.unidad, it.stock);
+			var cants = document.getElementsByName("cantidad[]"), descs = document.getElementsByName("descuento[]");
+			var i = cants.length - 1;
+			if (i >= 0) { cants[i].value = Math.min(it.cantidad, it.stock); descs[i].value = Number(it.descuento).toFixed(2); }
+		});
+		modificarSubtotales();
+		appNotify("info", "Cotización " + r.numero + " cargada. Revisa cantidades y registra la venta.", 5000);
+		if (sinStock.length) { appNotify("warning", "Sin stock, no se agregaron: " + sinStock.join(", "), 8000); }
+	});
 }
 
 function cargarResumenDia(){

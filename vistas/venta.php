@@ -80,6 +80,7 @@ if (usuarioTienePermiso('ventas')) {
     <div id="formularioregistros">
       <form action="" name="formulario" id="formulario" method="POST" autocomplete="off">
         <input type="hidden" name="idventa" id="idventa">
+        <input type="hidden" name="idcotizacion" id="idcotizacion" value="">
         <div class="pos-layout">
           <div class="pos-main">
             <div class="box">

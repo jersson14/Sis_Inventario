@@ -68,7 +68,8 @@ Rutas relativas: los `ajax/` y `vistas/` requieren `../config/...` y `../modelos
 11. **Migraciones:** nunca editar una migración ya aplicada; crear `migrations/YYYYMMDD_descripcion.sql` idempotente (patrón `INFORMATION_SCHEMA` + `PREPARE`).
 12. **Datos reales:** la BD local `mi_tienda` tiene datos del cliente. No borrar; pruebas con rollback o limpieza posterior.
 13. **UI:** mantener AdminLTE/Bootstrap 3; el estilo vive en `public/css/custom-theme.css` (variables `--brand-*` inyectadas por `header.php` desde `configuracion_empresa`). Toasts con `appNotify(tipo, msg)`; confirmaciones con `appConfirm`/bootbox; botones con icono + texto + `title`.
-14. Fuera de alcance por decisión del dueño: **facturación electrónica (SUNAT)**.
+14. **Cotizaciones** no mueven stock; se convierten en venta desde `venta.php?cotizacion=ID` (el POST de venta lleva `idcotizacion` y `ajax/venta.php` la marca CONVERTIDA). **Importación**: `modelos/Importacion.php` lee .xlsx (ZipArchive+SimpleXML) y .csv; siempre previsualizar antes de importar; los temporales viven en `files/importaciones/` (ignorado).
+15. Fuera de alcance por decisión del dueño: **facturación electrónica (SUNAT)**.
 
 ## Estado y plan
 

@@ -40,6 +40,24 @@ window.appUser = <?php echo json_encode(array(
   'login' => (string)$_SESSION['login'],
   'permisos' => $appPermisosJs
 ), JSON_UNESCAPED_UNICODE); ?>;
+// Perfil de negocio: los modulos consultan window.appNegocioTiene('lotes') para
+// mostrar u ocultar lo que corresponde al rubro configurado.
+window.appNegocio = <?php echo json_encode(function_exists('negocioParaJs') ? negocioParaJs() : array('perfil' => 'GENERAL', 'capacidades' => array()), JSON_UNESCAPED_UNICODE); ?>;
+window.appNegocioTiene = function (capacidad) {
+  return !!(window.appNegocio && window.appNegocio.capacidades && window.appNegocio.capacidades.indexOf(capacidad) !== -1);
+};
+// Cantidades: enteras salvo que el articulo admita fraccion (metros, kilos).
+window.appNormalizarCantidad = function (valor, permiteFraccion, minimo) {
+  var num = parseFloat(String(valor == null ? "" : valor).replace(",", "."));
+  if (!isFinite(num) || num < 0) { num = 0; }
+  num = permiteFraccion ? Math.round(num * 1000) / 1000 : Math.round(num);
+  if (typeof minimo === "number" && num < minimo) { num = minimo; }
+  return num;
+};
+window.appCantidad = function (valor) {
+  var num = Math.round((parseFloat(valor) || 0) * 1000) / 1000;
+  return num.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+};
 window.appMoney = function(value, decimals) {
   var num = Number(value);
   if (!isFinite(num)) { num = 0; }

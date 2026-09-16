@@ -7,12 +7,12 @@ class Unidad{
 	public function __construct(){
 	}
 
-	public function insertar($nombre, $abreviatura, $descripcion){
-		return dbExec("INSERT INTO unidad_medida (nombre,abreviatura,descripcion,condicion) VALUES (?,?,?,1)", array((string)$nombre, (string)$abreviatura, (string)$descripcion));
+	public function insertar($nombre, $abreviatura, $descripcion, $permiteFraccion = 0){
+		return dbExec("INSERT INTO unidad_medida (nombre,abreviatura,descripcion,permite_fraccion,condicion) VALUES (?,?,?,?,1)", array((string)$nombre, (string)$abreviatura, (string)$descripcion, $permiteFraccion ? 1 : 0));
 	}
 
-	public function editar($idunidad, $nombre, $abreviatura, $descripcion){
-		return dbExec("UPDATE unidad_medida SET nombre=?,abreviatura=?,descripcion=? WHERE idunidad=?", array((string)$nombre, (string)$abreviatura, (string)$descripcion, (int)$idunidad));
+	public function editar($idunidad, $nombre, $abreviatura, $descripcion, $permiteFraccion = 0){
+		return dbExec("UPDATE unidad_medida SET nombre=?,abreviatura=?,descripcion=?,permite_fraccion=? WHERE idunidad=?", array((string)$nombre, (string)$abreviatura, (string)$descripcion, $permiteFraccion ? 1 : 0, (int)$idunidad));
 	}
 
 	public function desactivar($idunidad){
@@ -25,7 +25,7 @@ class Unidad{
 
 	// Devuelve la fila (array asociativo) o null.
 	public function mostrar($idunidad){
-		return dbRow("SELECT idunidad,nombre,abreviatura,descripcion,condicion FROM unidad_medida WHERE idunidad=?", array((int)$idunidad));
+		return dbRow("SELECT idunidad,nombre,abreviatura,descripcion,permite_fraccion,condicion FROM unidad_medida WHERE idunidad=?", array((int)$idunidad));
 	}
 
 	// Existe otra unidad con el mismo nombre (excluyendo $excluirId).
@@ -42,11 +42,11 @@ class Unidad{
 
 	// Listado completo (mysqli_result).
 	public function listar(){
-		return dbQuery("SELECT idunidad,nombre,abreviatura,descripcion,condicion FROM unidad_medida ORDER BY nombre ASC");
+		return dbQuery("SELECT idunidad,nombre,abreviatura,descripcion,permite_fraccion,condicion FROM unidad_medida ORDER BY nombre ASC");
 	}
 
 	// Solo activas, para selects (mysqli_result).
 	public function select(){
-		return dbQuery("SELECT idunidad,nombre,abreviatura FROM unidad_medida WHERE condicion=1 ORDER BY nombre ASC");
+		return dbQuery("SELECT idunidad,nombre,abreviatura,permite_fraccion FROM unidad_medida WHERE condicion=1 ORDER BY nombre ASC");
 	}
 }

@@ -29,11 +29,11 @@ function etiquetaTipoPersona($tipo) {
 // Fila de opciones (editar + desactivar/activar) para el listado.
 function opcionesPersona($id, $activo) {
 	$id = (int)$id;
-	$editar = '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button>';
+	$editar = '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button>';
 	if ($activo) {
 		return $editar . ' <button class="btn btn-danger btn-xs" onclick="eliminar(' . $id . ')" title="Desactivar"><i class="fa fa-ban"></i></button>';
 	}
-	return $editar . ' <button class="btn btn-primary btn-xs" onclick="activar(' . $id . ')" title="Activar"><i class="fa fa-check"></i></button>';
+	return $editar . ' <button class="btn btn-success btn-xs" onclick="activar(' . $id . ')" title="Activar"><i class="fa fa-check"></i></button>';
 }
 
 // Construye la respuesta aaData de un listado.

@@ -37,11 +37,33 @@ function cargarResumen(){
 	});
 }
 
+// En una salida, lista los lotes del articulo para dar de baja uno concreto
+function cargarLotesSalida(){
+	var $sel = $("#aj_idlote");
+	if (!$sel.length || $("#aj_tipo").val() !== "SALIDA") { return; }
+	var id = $("#aj_articulo").val();
+	$sel.html('<option value="0">Automático: primero lo vencido y lo que vence antes</option>');
+	if (!id) { return; }
+	$.get("../ajax/inventario.php?op=lotesArticulo", { idarticulo: id }, function(resp){
+		var r = appParseJson(resp, null);
+		if (!r || !r.lotes) { return; }
+		r.lotes.forEach(function(l){
+			var vence = l.fecha_vencimiento ? l.fecha_vencimiento.split("-").reverse().join("/") : "sin fecha";
+			var estado = l.dias === null ? "" : (l.dias < 0 ? " · VENCIDO" : " · " + l.dias + " día(s)");
+			$sel.append($("<option>").val(l.idlote).attr("data-stock", l.stock)
+				.text((l.codigo_lote || "Lote #" + l.idlote) + " — vence " + vence + estado + " — " + window.appCantidad(l.stock)));
+		});
+	});
+}
+
 function abrirAjuste(tipo){
 	$("#aj_tipo").val(tipo);
 	$("#aj_titulo").html(tipo === "ENTRADA" ? '<i class="fa fa-arrow-down" style="color:#16a34a"></i> Entrada de inventario' : '<i class="fa fa-arrow-up" style="color:#dc2626"></i> Salida de inventario');
 	$("#btnGuardarAjuste").removeClass("btn-success btn-danger").addClass(tipo === "ENTRADA" ? "btn-success" : "btn-danger");
-	$("#aj_cantidad, #aj_costo, #aj_obs").val("");
+	$("#aj_cantidad, #aj_costo, #aj_obs, #aj_lote_codigo, #aj_lote_vence").val("");
+	$("#aj_idlote").html('<option value="0">Automático: primero lo vencido y lo que vence antes</option>');
+	$(".lote-entrada").toggle(tipo === "ENTRADA");
+	$(".lote-salida").toggle(tipo === "SALIDA");
 	$("#aj_articulo").val("").selectpicker("refresh");
 	$("#aj_info").text("Selecciona un artículo para ver su stock actual.");
 	$("#aj_preview").hide();
@@ -52,15 +74,15 @@ function abrirAjuste(tipo){
 
 function actualizarPreview(){
 	var $opt = $("#aj_articulo option:selected");
-	var stock = parseInt($opt.data("stock") || 0, 10);
+	var stock = parseFloat($opt.data("stock") || 0);
 	var unidad = $opt.data("unidad") || "und";
-	var cantidad = parseInt($("#aj_cantidad").val() || 0, 10);
+	var cantidad = window.appNormalizarCantidad($("#aj_cantidad").val(), String($opt.data("fraccion")) === "1");
 	if (!$opt.val()) { $("#aj_preview").hide(); return; }
 	var tipo = $("#aj_tipo").val();
-	var nuevo = tipo === "ENTRADA" ? stock + cantidad : stock - cantidad;
-	var html = "Stock actual: <strong>" + stock + " " + appEscapeHtml(unidad) + "</strong>";
+	var nuevo = Math.round((tipo === "ENTRADA" ? stock + cantidad : stock - cantidad) * 1000) / 1000;
+	var html = "Stock actual: <strong>" + window.appCantidad(stock) + " " + appEscapeHtml(unidad) + "</strong>";
 	if (cantidad > 0) {
-		html += " → nuevo stock: <strong style='color:" + (nuevo < 0 ? "#dc2626" : "#0f766e") + "'>" + nuevo + " " + appEscapeHtml(unidad) + "</strong>";
+		html += " → nuevo stock: <strong style='color:" + (nuevo < 0 ? "#dc2626" : "#0f766e") + "'>" + window.appCantidad(nuevo) + " " + appEscapeHtml(unidad) + "</strong>";
 		if (nuevo < 0) { html += " <span class='text-danger'>(no puedes retirar más de lo disponible)</span>"; }
 	}
 	$("#aj_preview").html(html).show();
@@ -76,18 +98,24 @@ function init(){
 	$("#aj_articulo").on("changed.bs.select change", function(){
 		var $opt = $("#aj_articulo option:selected");
 		if ($opt.val()) {
-			$("#aj_info").text("Stock actual: " + $opt.data("stock") + " " + $opt.data("unidad") + " · costo ref. " + money($opt.data("costo")));
+			$("#aj_info").text("Stock actual: " + window.appCantidad($opt.data("stock")) + " " + $opt.data("unidad") + " · costo ref. " + money($opt.data("costo")));
+			$("#aj_cantidad").attr({ step: String($opt.data("fraccion")) === "1" ? "0.001" : "1", min: String($opt.data("fraccion")) === "1" ? "0.001" : "1" });
 			if (!$("#aj_costo").val()) { $("#aj_costo").attr("placeholder", money($opt.data("costo"))); }
 		}
+		cargarLotesSalida();
 		actualizarPreview();
 	});
 	$("#aj_cantidad").on("input", actualizarPreview);
+	$("#aj_idlote").on("change", function(){
+		var st = $(this).find("option:selected").data("stock");
+		if (st && !$("#aj_cantidad").val()) { $("#aj_cantidad").val(st); actualizarPreview(); }
+	});
 	$("#modalAjuste").on("shown.bs.modal", function(){ if (!$("#aj_articulo").val()) { $("#aj_articulo").selectpicker("toggle"); } });
 
 	$("#formAjuste").on("submit", function(e){
 		e.preventDefault();
 		if (!$("#aj_articulo").val()) { appNotify("warning", "Selecciona un artículo."); return; }
-		if (parseInt($("#aj_cantidad").val() || 0, 10) <= 0) { appNotify("warning", "La cantidad debe ser mayor que cero."); return; }
+		if ((parseFloat($("#aj_cantidad").val()) || 0) <= 0) { appNotify("warning", "La cantidad debe ser mayor que cero."); return; }
 		appSetLoading("#btnGuardarAjuste", true);
 		$.post("../ajax/inventario.php?op=registrar", $(this).serialize(), function(resp){
 			appSetLoading("#btnGuardarAjuste", false);

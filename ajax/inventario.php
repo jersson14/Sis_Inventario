@@ -12,7 +12,7 @@ switch ($op) {
 		$rs = $inventario->articulosActivos();
 		if ($rs) {
 			while ($reg = $rs->fetch_object()) {
-				echo '<option value="' . (int)$reg->idarticulo . '" data-stock="' . (int)round((float)$reg->stock) . '" data-unidad="' . e($reg->unidad) . '" data-costo="' . number_format((float)$reg->precio_compra, 2, '.', '') . '">'
+				echo '<option value="' . (int)$reg->idarticulo . '" data-stock="' . round((float)$reg->stock, 3) . '" data-unidad="' . e($reg->unidad) . '" data-fraccion="' . ((negocioTiene('fracciones') && (int)$reg->permite_fraccion === 1) ? '1' : '0') . '" data-costo="' . number_format((float)$reg->precio_compra, 2, '.', '') . '">'
 					. e($reg->nombre) . ($reg->codigo !== '' ? ' (' . e($reg->codigo) . ')' : '') . '</option>';
 			}
 		}
@@ -29,8 +29,8 @@ switch ($op) {
 			responderJson(array('ok' => false, 'message' => 'Artículo no encontrado.'));
 		}
 		$info['ok'] = true;
-		$info['stock'] = (int)round((float)$info['stock']);
-		$info['stock_minimo'] = (int)round((float)$info['stock_minimo']);
+		$info['stock'] = round((float)$info['stock'], 3);
+		$info['stock_minimo'] = round((float)$info['stock_minimo'], 3);
 		responderJson($info);
 		break;
 
@@ -38,15 +38,38 @@ switch ($op) {
 		$idarticulo = enteroSeguro(isset($_POST['idarticulo']) ? $_POST['idarticulo'] : 0);
 		$tipo = isset($_POST['tipo']) ? limpiarCadena($_POST['tipo']) : '';
 		$motivo = isset($_POST['motivo']) ? limpiarCadena($_POST['motivo']) : '';
-		$cantidad = enteroSeguro(isset($_POST['cantidad']) ? $_POST['cantidad'] : 0);
+		$cantidad = isset($_POST['cantidad']) ? $_POST['cantidad'] : 0; // el modelo la normaliza segun la unidad
 		$costo = decimalSeguro(isset($_POST['costo_unitario']) ? $_POST['costo_unitario'] : 0);
 		$observacion = isset($_POST['observacion']) ? limpiarCadena($_POST['observacion']) : '';
 
-		$r = $inventario->registrar($idarticulo, (int)$_SESSION['idusuario'], $tipo, $motivo, $cantidad, $costo, $observacion);
+		$r = $inventario->registrar(
+			$idarticulo, (int)$_SESSION['idusuario'], $tipo, $motivo, $cantidad, $costo, $observacion,
+			enteroSeguro(isset($_POST['idlote']) ? $_POST['idlote'] : 0),
+			isset($_POST['lote_codigo']) ? limpiarCadena($_POST['lote_codigo']) : '',
+			isset($_POST['lote_vencimiento']) ? trim((string)$_POST['lote_vencimiento']) : ''
+		);
 		if (!empty($r['ok'])) {
 			registrarAuditoria('inventario', 'ajuste_' . strtolower($tipo), $motivo . ' x' . $cantidad . ' ' . (isset($r['articulo']) ? $r['articulo'] : ('#' . $idarticulo)));
 		}
 		responderJson($r);
+		break;
+
+	// Lotes con stock de un articulo (para elegir de cual sale una baja)
+	case 'lotesArticulo':
+		require_once "../modelos/Lote.php";
+		$lista = array();
+		if (Lote::activo()) {
+			foreach (Lote::deArticulo(enteroSeguro(isset($_GET['idarticulo']) ? $_GET['idarticulo'] : 0)) as $l) {
+				$lista[] = array(
+					'idlote' => (int)$l['idlote'],
+					'codigo_lote' => (string)$l['codigo_lote'],
+					'fecha_vencimiento' => $l['fecha_vencimiento'],
+					'dias' => $l['dias'] === null ? null : (int)$l['dias'],
+					'stock' => round((float)$l['stock'], 3)
+				);
+			}
+		}
+		responderJson(array('ok' => true, 'lotes' => $lista));
 		break;
 
 	case 'listar':
@@ -68,8 +91,8 @@ switch ($op) {
 					'1' => $badge,
 					'2' => e($reg->articulo) . ($reg->codigo !== '' ? ' <small class="text-soft">' . e($reg->codigo) . '</small>' : ''),
 					'3' => e($motivoTxt),
-					'4' => number_format((float)$reg->cantidad, 0) . ' ' . e($reg->unidad),
-					'5' => number_format((float)$reg->stock_anterior, 0) . ' → <strong>' . number_format((float)$reg->stock_nuevo, 0) . '</strong>',
+					'4' => formatearCantidad($reg->cantidad) . ' ' . e($reg->unidad),
+					'5' => formatearCantidad($reg->stock_anterior) . ' → <strong>' . formatearCantidad($reg->stock_nuevo) . '</strong>',
 					'6' => formatearMoneda((float)$reg->costo_unitario * (float)$reg->cantidad),
 					'7' => e($reg->usuario),
 					'8' => e($reg->observacion)

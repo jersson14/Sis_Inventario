@@ -120,6 +120,7 @@ $menu = array(
     array('href' => 'importar.php', 'texto' => 'Importar desde Excel'),
   )),
   array('tipo' => 'item', 'href' => 'inventario.php', 'icono' => 'fa-exchange', 'texto' => 'Ajustes de inventario', 'permisos' => array('inventario', 'almacen')),
+  array('tipo' => 'item', 'href' => 'vencimientos.php', 'icono' => 'fa-calendar-times-o', 'texto' => 'Vencimientos', 'permisos' => array('inventario', 'almacen'), 'capacidades' => array('vencimientos', 'lotes')),
   array('tipo' => 'item', 'href' => 'procenter.php', 'icono' => 'fa-line-chart', 'texto' => 'Kardex y alertas', 'permisos' => array('procenter', 'almacen')),
 
   array('tipo' => 'header', 'texto' => 'Análisis', 'permisos' => array('reportes', 'consultac', 'consultav')),
@@ -265,6 +266,8 @@ if (!function_exists('menuTienePermiso')) {
       <ul class="sidebar-menu" data-widget="tree">
         <?php foreach ($menu as $item) {
           if (!menuTienePermiso($item['permisos'])) continue;
+          // Opciones propias de un rubro (ej. Vencimientos solo en abarrotes)
+          if (isset($item['capacidades']) && !array_filter($item['capacidades'], 'negocioTiene')) continue;
           if ($item['tipo'] === 'header') {
             echo '<li class="header">' . e($item['texto']) . '</li>';
           } elseif ($item['tipo'] === 'item') {

@@ -12,8 +12,10 @@ $idcategoria   = enteroSeguro(isset($_POST["idcategoria"]) ? $_POST["idcategoria
 $idunidad      = enteroSeguro(isset($_POST["idunidad"]) ? $_POST["idunidad"] : 0);
 $codigo        = isset($_POST["codigo"]) ? limpiarCadena($_POST["codigo"]) : "";
 $nombre        = isset($_POST["nombre"]) ? limpiarCadena($_POST["nombre"]) : "";
-$stock         = (int)round(decimalSeguro(isset($_POST["stock"]) ? $_POST["stock"] : 0, 3, 0));
-$stock_minimo  = (int)round(decimalSeguro(isset($_POST["stock_minimo"]) ? $_POST["stock_minimo"] : 1, 3, 1));
+// Stock con decimales solo si el rubro usa fracciones y la unidad lo admite
+$stockFraccion = ($idunidad > 0 && negocioTiene('fracciones')) ? $articulo->unidadPermiteFraccion($idunidad) : false;
+$stock         = cantidadSegura(isset($_POST["stock"]) ? $_POST["stock"] : 0, $stockFraccion);
+$stock_minimo  = cantidadSegura(isset($_POST["stock_minimo"]) ? $_POST["stock_minimo"] : 1, $stockFraccion);
 $precio_compra = decimalSeguro(isset($_POST["precio_compra"]) ? $_POST["precio_compra"] : 0, 2, 0);
 $precio_venta  = decimalSeguro(isset($_POST["precio_venta"]) ? $_POST["precio_venta"] : 0, 2, 0);
 $descripcion   = isset($_POST["descripcion"]) ? limpiarCadena($_POST["descripcion"]) : "";
@@ -29,6 +31,104 @@ if ($precio_compra < 0) {
 }
 if ($precio_venta < 0) {
 	$precio_venta = 0.0;
+}
+
+/**
+ * Lee y valida las presentaciones enviadas. Devuelve array(true, filas) o
+ * array(false, mensaje). Nombres y codigos unicos, factor distinto de 1.
+ */
+function leerPresentacionesPost($articulo, $idarticulo, $codigoBase) {
+	$ids      = isset($_POST['pres_id']) && is_array($_POST['pres_id']) ? $_POST['pres_id'] : array();
+	$nombres  = isset($_POST['pres_nombre']) && is_array($_POST['pres_nombre']) ? $_POST['pres_nombre'] : array();
+	$factores = isset($_POST['pres_factor']) && is_array($_POST['pres_factor']) ? $_POST['pres_factor'] : array();
+	$pventa   = isset($_POST['pres_precio_venta']) && is_array($_POST['pres_precio_venta']) ? $_POST['pres_precio_venta'] : array();
+	$pcompra  = isset($_POST['pres_precio_compra']) && is_array($_POST['pres_precio_compra']) ? $_POST['pres_precio_compra'] : array();
+	$codigos  = isset($_POST['pres_codigo']) && is_array($_POST['pres_codigo']) ? $_POST['pres_codigo'] : array();
+
+	$filas = array();
+	$vistosNombre = array();
+	$vistosCodigo = array();
+	foreach ($nombres as $i => $nombreRaw) {
+		$nombre = limpiarCadena($nombreRaw);
+		$factor = round(decimalSeguro(isset($factores[$i]) ? $factores[$i] : 0, 3, 0), 3);
+		$codigo = limpiarCadena(isset($codigos[$i]) ? $codigos[$i] : '');
+		if ($nombre === '' && $factor <= 0 && $codigo === '') {
+			continue; // fila vacia
+		}
+		if ($nombre === '' || mb_strlen($nombre) > 60) {
+			return array(false, 'Cada presentación necesita un nombre de hasta 60 caracteres (ej. Caja x100)');
+		}
+		$clave = mb_strtolower($nombre);
+		if (isset($vistosNombre[$clave])) {
+			return array(false, 'La presentación "' . $nombre . '" está repetida');
+		}
+		$vistosNombre[$clave] = true;
+		if ($factor <= 0) {
+			return array(false, 'Indica cuántas unidades contiene la presentación "' . $nombre . '"');
+		}
+		if (abs($factor - 1) < 0.0005) {
+			return array(false, 'La presentación "' . $nombre . '" contiene 1 unidad: es igual a la unidad base, no hace falta crearla');
+		}
+		$precioVenta = decimalSeguro(isset($pventa[$i]) ? $pventa[$i] : 0, 2, 0);
+		$precioCompra = decimalSeguro(isset($pcompra[$i]) ? $pcompra[$i] : 0, 2, 0);
+		if ($precioVenta < 0 || $precioCompra < 0) {
+			return array(false, 'Los precios de la presentación "' . $nombre . '" no pueden ser negativos');
+		}
+		if ($codigo !== '') {
+			if (mb_strlen($codigo) > 50) {
+				return array(false, 'El código de la presentación "' . $nombre . '" supera 50 caracteres');
+			}
+			if ($codigo === $codigoBase || isset($vistosCodigo[$codigo])) {
+				return array(false, 'El código ' . $codigo . ' se repite dentro del artículo');
+			}
+			if ($articulo->codigoEnUso($codigo, $idarticulo)) {
+				return array(false, 'El código ' . $codigo . ' ya lo usa otro artículo');
+			}
+			$vistosCodigo[$codigo] = true;
+		}
+		$filas[] = array(
+			'idpresentacion' => enteroSeguro(isset($ids[$i]) ? $ids[$i] : 0),
+			'nombre' => $nombre,
+			'factor' => $factor,
+			'precio_venta' => $precioVenta,
+			'precio_compra' => $precioCompra,
+			'codigo' => $codigo
+		);
+	}
+	return array(true, $filas);
+}
+
+/**
+ * Lee y valida las escalas de precio por mayor. Devuelve array(true, filas)
+ * o array(false, mensaje).
+ */
+function leerEscalasPost($permiteFraccion) {
+	$cantidades = isset($_POST['escala_cantidad']) && is_array($_POST['escala_cantidad']) ? $_POST['escala_cantidad'] : array();
+	$precios = isset($_POST['escala_precio']) && is_array($_POST['escala_precio']) ? $_POST['escala_precio'] : array();
+	$filas = array();
+	$vistas = array();
+	foreach ($cantidades as $i => $cantRaw) {
+		$precioRaw = isset($precios[$i]) ? trim((string)$precios[$i]) : '';
+		if (trim((string)$cantRaw) === '' && $precioRaw === '') {
+			continue;
+		}
+		$cantidad = cantidadSegura($cantRaw, $permiteFraccion);
+		$precio = decimalSeguro($precioRaw, 2, -1);
+		if ($cantidad <= 0) {
+			return array(false, 'La cantidad mínima de cada precio por mayor debe ser mayor que cero');
+		}
+		if ($precio <= 0) {
+			return array(false, 'Indica el precio por mayor desde ' . formatearCantidad($cantidad) . ' unidades');
+		}
+		$clave = (string)$cantidad;
+		if (isset($vistas[$clave])) {
+			return array(false, 'Hay dos precios por mayor desde la misma cantidad (' . formatearCantidad($cantidad) . ')');
+		}
+		$vistas[$clave] = true;
+		$filas[] = array('cantidad_minima' => $cantidad, 'precio' => $precio);
+	}
+	usort($filas, function ($a, $b) { return $a['cantidad_minima'] <=> $b['cantidad_minima']; });
+	return array(true, $filas);
 }
 
 $op = isset($_GET["op"]) ? $_GET["op"] : '';
@@ -58,8 +158,8 @@ switch ($op) {
 			echo "El código no puede superar 50 caracteres";
 			break;
 		}
-		if ($codigo !== '' && $articulo->existeCodigo($codigo, $idarticulo)) {
-			echo "El código ya está registrado en otro artículo";
+		if ($codigo !== '' && $articulo->codigoEnUso($codigo, $idarticulo)) {
+			echo "El código ya está registrado en otro artículo o presentación";
 			break;
 		}
 		if ($articulo->existeNombre($nombre, $idarticulo)) {
@@ -82,18 +182,60 @@ switch ($op) {
 			$imagen = nombreArchivoSeguro(isset($_POST["imagenactual"]) ? $_POST["imagenactual"] : '');
 		}
 
-		if ($idarticulo <= 0) {
-			$rspta = $articulo->insertar($idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen);
-			if ($rspta) {
-				registrarAuditoria('almacen', 'crear_articulo', 'Articulo creado: ' . $nombre . ($codigo !== '' ? ' (' . $codigo . ')' : ''));
+		// Presentaciones y precio por mayor: solo si el rubro los usa. Si no, se dejan intactos.
+		$usaPresentaciones = negocioTiene('equivalencias') && isset($_POST['pres_enviadas']);
+		$usaEscalas = negocioTiene('precio_mayor') && isset($_POST['escalas_enviadas']);
+		$presentaciones = array();
+		$escalas = array();
+		if ($usaPresentaciones) {
+			list($okPres, $resPres) = leerPresentacionesPost($articulo, $idarticulo, $codigo);
+			if (!$okPres) { echo $resPres; break; }
+			$presentaciones = $resPres;
+		}
+		if ($usaEscalas) {
+			list($okEsc, $resEsc) = leerEscalasPost($stockFraccion);
+			if (!$okEsc) { echo $resEsc; break; }
+			$escalas = $resEsc;
+		}
+
+		$esNuevo = $idarticulo <= 0;
+		$errorGuardado = '';
+		$idGuardado = dbTransaccion(function () use ($articulo, $esNuevo, $idarticulo, $idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen, $usaPresentaciones, $presentaciones, $usaEscalas, $escalas, &$errorGuardado) {
+			if ($esNuevo) {
+				$id = $articulo->insertarId($idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen);
+				if ($id <= 0) { $errorGuardado = "No se pudo registrar los datos"; return false; }
+			} else {
+				$id = $idarticulo;
+				if (!$articulo->editar($id, $idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen)) {
+					$errorGuardado = "No se pudo actualizar los datos"; return false;
+				}
+				// Stock editado a mano: los lotes no pueden quedar por encima
+				if (!Lote::ajustarAlStock($id)) {
+					$errorGuardado = "No se pudo actualizar los lotes del artículo"; return false;
+				}
 			}
-			echo $rspta ? "Datos registrados correctamente" : "No se pudo registrar los datos";
+			if ($usaPresentaciones && !$articulo->guardarPresentaciones($id, $presentaciones)) {
+				$errorGuardado = "No se pudieron guardar las presentaciones (revisa que los nombres no se repitan)"; return false;
+			}
+			if ($usaEscalas && !$articulo->guardarEscalas($id, $escalas)) {
+				$errorGuardado = "No se pudieron guardar los precios por mayor"; return false;
+			}
+			return $id;
+		});
+
+		if (!$idGuardado) {
+			echo $errorGuardado !== '' ? $errorGuardado : "No se pudo guardar el artículo";
+			break;
+		}
+		$extra = '';
+		if ($usaPresentaciones) { $extra .= ' · ' . count($presentaciones) . ' presentación(es)'; }
+		if ($usaEscalas) { $extra .= ' · ' . count($escalas) . ' precio(s) por mayor'; }
+		if ($esNuevo) {
+			registrarAuditoria('almacen', 'crear_articulo', 'Articulo creado: ' . $nombre . ($codigo !== '' ? ' (' . $codigo . ')' : '') . $extra);
+			echo "Datos registrados correctamente";
 		} else {
-			$rspta = $articulo->editar($idarticulo, $idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen);
-			if ($rspta) {
-				registrarAuditoria('almacen', 'editar_articulo', 'Articulo #' . $idarticulo . ' editado: ' . $nombre);
-			}
-			echo $rspta ? "Datos actualizados correctamente" : "No se pudo actualizar los datos";
+			registrarAuditoria('almacen', 'editar_articulo', 'Articulo #' . $idarticulo . ' editado: ' . $nombre . $extra);
+			echo "Datos actualizados correctamente";
 		}
 		break;
 
@@ -118,8 +260,12 @@ switch ($op) {
 	case 'mostrar':
 		$rspta = $articulo->mostrar($idarticulo);
 		if (is_array($rspta)) {
-			$rspta["stock"] = (int)round((float)$rspta["stock"]);
-			$rspta["stock_minimo"] = (int)round((float)$rspta["stock_minimo"]);
+			$rspta["permite_fraccion"] = negocioTiene('fracciones') && $articulo->unidadPermiteFraccion($rspta["idunidad"]);
+			$rspta["stock"] = round((float)$rspta["stock"], 3);
+			$rspta["stock_minimo"] = round((float)$rspta["stock_minimo"], 3);
+			$rspta["presentaciones"] = negocioTiene('equivalencias') ? $articulo->presentaciones($rspta["idarticulo"]) : array();
+			$rspta["escalas"] = negocioTiene('precio_mayor') ? $articulo->escalas($rspta["idarticulo"]) : array();
+			$rspta["lotes"] = Lote::activo() ? Lote::deArticulo($rspta["idarticulo"]) : array();
 			$rspta["precio_compra"] = number_format((float)$rspta["precio_compra"], 2, '.', '');
 			$rspta["precio_venta"] = number_format((float)$rspta["precio_venta"], 2, '.', '');
 		}
@@ -138,8 +284,8 @@ switch ($op) {
 					'categoria' => html_entity_decode((string)$reg->categoria, ENT_QUOTES, 'UTF-8'),
 					'codigo' => (string)$reg->codigo,
 					'precio_venta' => round((float)$reg->precio_venta, 2),
-					'stock' => (int)round((float)$reg->stock),
-					'stock_minimo' => (int)round((float)$reg->stock_minimo)
+					'stock' => round((float)$reg->stock, 3),
+					'stock_minimo' => round((float)$reg->stock_minimo, 3)
 				);
 			}
 		}
@@ -153,28 +299,28 @@ switch ($op) {
 		if ($rspta instanceof mysqli_result) {
 			while ($reg = $rspta->fetch_object()) {
 				$id = (int)$reg->idarticulo;
-				$stockVal = (int)round((float)$reg->stock);
-				$stockMin = (int)round((float)$reg->stock_minimo);
+				$stockVal = round((float)$reg->stock, 3);
+				$stockMin = round((float)$reg->stock_minimo, 3);
 				if ($stockVal <= 0) {
-					$stockHtml = '<span class="stock-pill stock-empty">' . $stockVal . '</span>';
+					$stockHtml = '<span class="stock-pill stock-empty">' . formatearCantidad($stockVal) . '</span>';
 				} elseif ($stockVal <= $stockMin) {
-					$stockHtml = '<span class="stock-pill stock-low">' . $stockVal . '</span>';
+					$stockHtml = '<span class="stock-pill stock-low">' . formatearCantidad($stockVal) . '</span>';
 				} else {
-					$stockHtml = '<span class="stock-pill stock-ok">' . $stockVal . '</span>';
+					$stockHtml = '<span class="stock-pill stock-ok">' . formatearCantidad($stockVal) . '</span>';
 				}
 				$img = nombreArchivoSeguro($reg->imagen);
 				$srcImg = ($img !== '' ) ? '../files/articulos/' . e($img) : '../public/img/default-50x50.gif';
 
 				$data[] = array(
 					"0" => ($reg->condicion)
-						? '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-danger btn-xs" onclick="desactivar(' . $id . ')"><i class="fa fa-close"></i></button>'
-						: '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-primary btn-xs" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>',
+						? '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-danger btn-xs" title="Desactivar" onclick="desactivar(' . $id . ')"><i class="fa fa-ban"></i></button>'
+						: '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-success btn-xs" title="Activar" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>',
 					"1" => e($reg->nombre),
 					"2" => e($reg->categoria),
 					"3" => e($reg->abreviatura),
 					"4" => e($reg->codigo),
 					"5" => $stockHtml,
-					"6" => $stockMin,
+					"6" => formatearCantidad($stockMin),
 					"7" => formatearMoneda($reg->precio_compra),
 					"8" => formatearMoneda($reg->precio_venta),
 					"9" => "<img src='" . $srcImg . "' height='50px' width='50px'>",
@@ -199,7 +345,7 @@ switch ($op) {
 		$rspta = $unidad->select();
 		if ($rspta instanceof mysqli_result) {
 			while ($reg = $rspta->fetch_object()) {
-				echo '<option value="' . (int)$reg->idunidad . '">' . e($reg->nombre) . ' (' . e($reg->abreviatura) . ')</option>';
+				echo '<option value="' . (int)$reg->idunidad . '" data-fraccion="' . ((int)$reg->permite_fraccion === 1 ? '1' : '0') . '" data-abrev="' . e($reg->abreviatura) . '">' . e($reg->nombre) . ' (' . e($reg->abreviatura) . ')</option>';
 			}
 		}
 		break;

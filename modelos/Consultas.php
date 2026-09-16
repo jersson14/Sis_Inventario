@@ -16,6 +16,7 @@
  *    articulo.precio_compra.
  */
 require_once "../config/Conexion.php";
+require_once "../modelos/Lote.php";
 
 class Consultas
 {
@@ -125,7 +126,7 @@ class Consultas
 	{
 		$limit = $this->limite($limit, 7);
 		$sql = "SELECT a.nombre AS producto,
-			IFNULL(SUM(dv.cantidad),0) AS cantidad,
+			IFNULL(SUM(dv.cantidad*dv.factor),0) AS cantidad,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
 			FROM detalle_venta dv
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
@@ -188,16 +189,16 @@ class Consultas
 			a.codigo,
 			a.nombre AS articulo,
 			IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
-			IFNULL(SUM(dv.cantidad),0) AS cantidad_vendida,
+			IFNULL(SUM(dv.cantidad*dv.factor),0) AS cantidad_vendida,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS venta_total,
-			IFNULL(SUM(dv.cantidad*IFNULL(cp.costo_unitario, a.precio_compra)),0) AS costo_estimado
+			IFNULL(SUM(dv.cantidad*dv.factor*IFNULL(cp.costo_unitario, a.precio_compra)),0) AS costo_estimado
 			FROM detalle_venta dv
 			INNER JOIN venta v ON v.idventa=dv.idventa
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
 			LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
 			LEFT JOIN (
 				SELECT di.idarticulo,
-				CASE WHEN SUM(di.cantidad)>0 THEN SUM(di.cantidad*di.precio_compra)/SUM(di.cantidad) ELSE NULL END AS costo_unitario
+				CASE WHEN SUM(di.cantidad*di.factor)>0 THEN SUM(di.cantidad*di.precio_compra)/SUM(di.cantidad*di.factor) ELSE NULL END AS costo_unitario
 				FROM detalle_ingreso di
 				INNER JOIN ingreso i ON i.idingreso=di.idingreso
 				WHERE DATE(i.fecha_hora)>=? AND DATE(i.fecha_hora)<=? AND i.estado='Aceptado'
@@ -219,7 +220,7 @@ class Consultas
 			a.nombre AS articulo,
 			IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
 			IFNULL(u.abreviatura,'und') AS unidad,
-			IFNULL(SUM(CASE WHEN v.idventa IS NOT NULL THEN dv.cantidad ELSE 0 END),0) AS cantidad,
+			IFNULL(SUM(CASE WHEN v.idventa IS NOT NULL THEN dv.cantidad*dv.factor ELSE 0 END),0) AS cantidad,
 			IFNULL(SUM(CASE WHEN v.idventa IS NOT NULL THEN ((dv.cantidad*dv.precio_venta)-dv.descuento) ELSE 0 END),0) AS total
 			FROM articulo a
 			LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
@@ -310,15 +311,15 @@ class Consultas
 			LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
 			LEFT JOIN (
 				SELECT di.idarticulo,
-				IFNULL(SUM(di.cantidad),0) AS entrada,
-				CASE WHEN SUM(di.cantidad)>0 THEN SUM(di.cantidad*di.precio_compra)/SUM(di.cantidad) ELSE NULL END AS costo_promedio
+				IFNULL(SUM(di.cantidad*di.factor),0) AS entrada,
+				CASE WHEN SUM(di.cantidad*di.factor)>0 THEN SUM(di.cantidad*di.precio_compra)/SUM(di.cantidad*di.factor) ELSE NULL END AS costo_promedio
 				FROM detalle_ingreso di
 				INNER JOIN ingreso i ON i.idingreso=di.idingreso
 				WHERE DATE(i.fecha_hora)>=? AND DATE(i.fecha_hora)<=? AND i.estado='Aceptado'
 				GROUP BY di.idarticulo
 			) ent ON ent.idarticulo=a.idarticulo
 			LEFT JOIN (
-				SELECT dv.idarticulo, IFNULL(SUM(dv.cantidad),0) AS salida
+				SELECT dv.idarticulo, IFNULL(SUM(dv.cantidad*dv.factor),0) AS salida
 				FROM detalle_venta dv
 				INNER JOIN venta v ON v.idventa=dv.idventa
 				WHERE DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=? AND v.estado='Aceptado'
@@ -476,7 +477,7 @@ class Consultas
 	{
 		$limit = $this->limite($limit, 7);
 		$sql = "SELECT a.nombre AS producto,
-			IFNULL(SUM(dv.cantidad),0) AS cantidad,
+			IFNULL(SUM(dv.cantidad*dv.factor),0) AS cantidad,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
 			FROM detalle_venta dv
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
@@ -552,6 +553,21 @@ class Consultas
 		foreach (array('cxc_vencidas_monto', 'cxc_pendiente_monto', 'cxp_vencidas_monto', 'cxp_pendiente_monto', 'ventas_hoy_monto', 'compras_hoy_monto') as $k) {
 			$row[$k] = round((float)$row[$k], 2);
 		}
+		// Vencimientos (rubros con lotes)
+		$row['usa_vencimientos'] = Lote::activo() ? 1 : 0;
+		$row['lotes_vencidos'] = 0;
+		$row['lotes_vencidos_valor'] = 0;
+		$row['lotes_por_vencer'] = 0;
+		$row['lotes_por_vencer_valor'] = 0;
+		$row['dias_alerta_vencimiento'] = 0;
+		if ($row['usa_vencimientos']) {
+			$lr = Lote::resumen(Lote::diasAlerta());
+			$row['lotes_vencidos'] = $lr['vencidos'];
+			$row['lotes_vencidos_valor'] = $lr['vencidos_valor'];
+			$row['lotes_por_vencer'] = $lr['por_vencer'];
+			$row['lotes_por_vencer_valor'] = $lr['por_vencer_valor'];
+			$row['dias_alerta_vencimiento'] = $lr['dias'];
+		}
 		return $row;
 	}
 
@@ -570,8 +586,8 @@ class Consultas
 			FROM (
 				SELECT
 					(dv.cantidad*dv.precio_venta)-dv.descuento AS venta,
-					dv.cantidad*IFNULL((
-						SELECT di2.precio_compra
+					dv.cantidad*dv.factor*IFNULL((
+						SELECT di2.precio_compra/di2.factor
 						FROM detalle_ingreso di2
 						INNER JOIN ingreso i2 ON i2.idingreso=di2.idingreso
 						WHERE di2.idarticulo=dv.idarticulo AND i2.estado='Aceptado' AND i2.fecha_hora<=v.fecha_hora

@@ -29,11 +29,12 @@ switch ($op) {
 			$arrCantidad    = (isset($_POST["cantidad"]) && is_array($_POST["cantidad"])) ? $_POST["cantidad"] : array();
 			$arrPrecioVenta = (isset($_POST["precio_venta"]) && is_array($_POST["precio_venta"])) ? $_POST["precio_venta"] : array();
 			$arrDescuento   = (isset($_POST["descuento"]) && is_array($_POST["descuento"])) ? $_POST["descuento"] : array();
+			$arrPresentacion = (isset($_POST["idpresentacion"]) && is_array($_POST["idpresentacion"])) ? $_POST["idpresentacion"] : array();
 
 			$rspta = $venta->insertar(
 				$idcliente, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
-				$arrIdArticulo, $arrCantidad, $arrPrecioVenta, $arrDescuento
+				$arrIdArticulo, $arrCantidad, $arrPrecioVenta, $arrDescuento, $arrPresentacion
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('ventas', 'crear', "Venta " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));
@@ -85,6 +86,19 @@ switch ($op) {
 		echo isset($rspta["message"]) ? $rspta["message"] : "No se pudo anular la venta";
 		break;
 
+	// Borrado definitivo: reservado al administrador porque no deja rastro.
+	case 'eliminar':
+		if (!usuarioTienePermiso('acceso')) {
+			echo "Solo un administrador puede eliminar ventas";
+			break;
+		}
+		$rspta = $venta->eliminar($idventa, $idusuario);
+		if (!empty($rspta["ok"])) {
+			registrarAuditoria('ventas', 'eliminar', "Venta id " . $idventa . " (" . (isset($rspta["documento"]) ? $rspta["documento"] : "") . ") eliminada definitivamente");
+		}
+		echo isset($rspta["message"]) ? $rspta["message"] : "No se pudo eliminar la venta";
+		break;
+
 	case 'mostrar':
 		$rspta = $venta->mostrar($idventa);
 		echo json_encode($rspta, JSON_UNESCAPED_UNICODE);
@@ -97,7 +111,7 @@ switch ($op) {
 		echo '<thead><tr><th>Artículo</th><th>Unidad</th><th class="text-right">Cantidad</th><th class="text-right">Precio</th><th class="text-right">Dscto.</th><th class="text-right">Subtotal</th></tr></thead><tbody>';
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
-				echo '<tr><td>' . e($reg->nombre) . '</td><td>' . e($reg->unidad) . '</td><td class="text-right">' . number_format((float)$reg->cantidad, 0) . '</td><td class="text-right">' . number_format((float)$reg->precio_venta, 2) . '</td><td class="text-right">' . number_format((float)$reg->descuento, 2) . '</td><td class="text-right">' . number_format((float)$reg->subtotal, 2) . '</td></tr>';
+				echo '<tr><td>' . e($reg->nombre) . '</td><td>' . e($reg->unidad) . '</td><td class="text-right">' . formatearCantidad($reg->cantidad) . '</td><td class="text-right">' . number_format((float)$reg->precio_venta, 2) . '</td><td class="text-right">' . number_format((float)$reg->descuento, 2) . '</td><td class="text-right">' . number_format((float)$reg->subtotal, 2) . '</td></tr>';
 				$total = $total + ((float)$reg->precio_venta * (float)$reg->cantidad - (float)$reg->descuento);
 			}
 		}
@@ -111,17 +125,21 @@ switch ($op) {
 		$f_tipo_pago  = isset($_GET["tipo_pago"]) ? limpiarCadena($_GET["tipo_pago"]) : '';
 		$rspta = $venta->listarPorFecha($fecha_inicio, $fecha_fin, $f_estado, $f_tipo_pago);
 		$data = array();
+		$puedeEliminar = usuarioTienePermiso('acceso');
 
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
 				$id = (int)$reg->idventa;
 				$url = ($reg->tipo_comprobante == 'Ticket') ? '../reportes/exTicket.php?id=' : '../reportes/exFactura.php?id=';
 
-				$botones = '<button class="btn btn-warning btn-xs" type="button" title="Ver detalle" onclick="mostrar(' . $id . ')"><i class="fa fa-eye"></i></button> ';
+				$botones = '<button class="btn btn-default btn-xs" type="button" title="Ver detalle" onclick="mostrar(' . $id . ')"><i class="fa fa-eye"></i></button> ';
 				if ($reg->estado == 'Aceptado') {
-					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="Anular venta" onclick="anular(' . $id . ')"><i class="fa fa-close"></i></button> ';
+					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="Anular venta" onclick="anular(' . $id . ')"><i class="fa fa-ban"></i></button> ';
 				}
-				$botones .= '<a target="_blank" href="' . $url . $id . '" title="Imprimir comprobante"><button class="btn btn-info btn-xs" type="button" title="Imprimir comprobante"><i class="fa fa-file"></i></button></a>';
+				$botones .= '<a class="btn btn-info btn-xs" target="_blank" href="' . $url . $id . '" title="Imprimir comprobante"><i class="fa fa-print"></i></a>';
+				if ($puedeEliminar) {
+					$botones .= ' <button class="btn btn-danger btn-xs" type="button" title="Eliminar definitivamente" onclick="eliminar(' . $id . ')"><i class="fa fa-trash"></i></button>';
+				}
 
 				$tipoPago = strtoupper((string)$reg->tipo_pago);
 				$clasePago = ($tipoPago === 'CREDITO') ? 'bg-yellow' : 'bg-aqua';
@@ -214,23 +232,21 @@ switch ($op) {
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
 				$idart = (int)$reg->idarticulo;
-				$nombrejs = addslashes((string)$reg->nombre);
-				$unidadjs = addslashes((string)$reg->abreviatura);
 				$precio = is_null($reg->precio_venta) ? 0 : (float)$reg->precio_venta;
 				$stock = (float)$reg->stock;
-				$stockVisible = $stock > 0 ? (int)round($stock) : 0;
-				$stockFmt = number_format($stockVisible, 0);
-				$stockMinimo = isset($reg->stock_minimo) ? (int)round((float)$reg->stock_minimo) : 0;
+				$stockVisible = $stock > 0 ? round($stock, 3) : 0;
+				$stockFmt = formatearCantidad($stockVisible);
+				$stockMinimo = isset($reg->stock_minimo) ? round((float)$reg->stock_minimo, 3) : 0;
 				$umbralBajo = max($stockMinimo, 5);
 
 				if ($stockVisible <= 0) {
 					$btnAgregar = '<button class="btn btn-add-item btn-add-disabled" type="button" disabled title="Sin stock"><i class="fa fa-ban"></i> Sin stock</button>';
 					$stockHtml = '<span class="stock-pill stock-empty">' . $stockFmt . '</span>';
 				} elseif ($stockVisible <= $umbralBajo) {
-					$btnAgregar = '<button class="btn btn-add-item" type="button" title="Agregar a la venta" onclick="agregarDetalle(' . $idart . ',\'' . $nombrejs . '\',' . $precio . ',\'' . $unidadjs . '\',' . $stockVisible . ')"><i class="fa fa-plus-circle"></i> Agregar</button>';
+					$btnAgregar = '<button class="btn btn-add-item" type="button" title="Agregar a la venta" onclick="agregarArticulo(' . $idart . ')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 					$stockHtml = '<span class="stock-pill stock-low">' . $stockFmt . '</span>';
 				} else {
-					$btnAgregar = '<button class="btn btn-add-item" type="button" title="Agregar a la venta" onclick="agregarDetalle(' . $idart . ',\'' . $nombrejs . '\',' . $precio . ',\'' . $unidadjs . '\',' . $stockVisible . ')"><i class="fa fa-plus-circle"></i> Agregar</button>';
+					$btnAgregar = '<button class="btn btn-add-item" type="button" title="Agregar a la venta" onclick="agregarArticulo(' . $idart . ')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 					$stockHtml = '<span class="stock-pill stock-ok">' . $stockFmt . '</span>';
 				}
 
@@ -260,27 +276,46 @@ switch ($op) {
 		echo json_encode($results, JSON_UNESCAPED_UNICODE);
 		break;
 
+	// Ficha completa para agregar un articulo al detalle (presentaciones, escalas, fraccion)
+	case 'infoArticulo':
+		require_once "../modelos/Articulo.php";
+		$articulo = new Articulo();
+		$ficha = $articulo->fichaOperacion(enteroSeguro(isset($_POST['idarticulo']) ? $_POST['idarticulo'] : 0), true);
+		if (!$ficha) {
+			echo json_encode(array("ok"=>false, "message"=>"El artículo no existe o está inactivo"), JSON_UNESCAPED_UNICODE);
+			break;
+		}
+		$ficha["ok"] = true;
+		$ficha["idpresentacion"] = 0;
+		echo json_encode($ficha, JSON_UNESCAPED_UNICODE);
+		break;
+
 	case 'buscarArticuloCodigo':
 		$codigo = isset($_POST['codigo']) ? limpiarCadena($_POST['codigo']) : '';
 		require_once "../modelos/Articulo.php";
 		$articulo = new Articulo();
-		$reg = ($codigo !== '') ? $articulo->buscarActivoPorCodigo($codigo) : null;
-		if (!$reg) {
-			echo json_encode(array("ok"=>false, "message"=>"No se encontro un articulo con ese codigo"), JSON_UNESCAPED_UNICODE);
+		// Primero el codigo exacto de una presentacion (Caja x100 tiene su propio codigo de barras)
+		$pres = $articulo->buscarPresentacionPorCodigo($codigo);
+		$idPresentacion = 0;
+		if ($pres) {
+			$idArticulo = (int)$pres['idarticulo'];
+			$idPresentacion = (int)$pres['idpresentacion'];
+		} else {
+			$reg = ($codigo !== '') ? $articulo->buscarActivoPorCodigo($codigo) : null;
+			$idArticulo = $reg ? (int)$reg['idarticulo'] : 0;
+		}
+		$ficha = $idArticulo > 0 ? $articulo->fichaOperacion($idArticulo, true) : null;
+		if (!$ficha) {
+			echo json_encode(array("ok"=>false, "message"=>"No se encontró un artículo con ese código"), JSON_UNESCAPED_UNICODE);
 			break;
 		}
-		if ((float)$reg['stock'] <= 0) {
-			echo json_encode(array("ok"=>false, "message"=>"El articulo no tiene stock disponible"), JSON_UNESCAPED_UNICODE);
+		if ($ficha['stock'] <= 0) {
+			echo json_encode(array("ok"=>false, "message"=>$ficha['stock_vencido'] > 0 ? "El stock de " . $ficha['nombre'] . " está vencido: dale de baja en Vencimientos" : "El artículo no tiene stock disponible"), JSON_UNESCAPED_UNICODE);
 			break;
 		}
-		echo json_encode(array(
-			"ok"=>true,
-			"idarticulo"=>(int)$reg['idarticulo'],
-			"nombre"=>$reg['nombre'],
-			"precio_venta"=>(float)$reg['precio_venta'],
-			"unidad"=>$reg['abreviatura'],
-			"stock"=>(int)round((float)$reg['stock'])
-		), JSON_UNESCAPED_UNICODE);
+		$ficha["ok"] = true;
+		$ficha["idpresentacion"] = $idPresentacion;
+		echo json_encode($ficha, JSON_UNESCAPED_UNICODE);
 		break;
 
 	case 'resumenDia':

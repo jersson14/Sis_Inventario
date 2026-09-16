@@ -75,12 +75,12 @@ if (usuarioTienePermiso('almacen')) {
           <div class="form-section-title">Stock y precios</div>
           <div class="form-group col-lg-3 col-md-3 col-sm-6 col-xs-12">
             <label for="stock">Stock actual</label>
-            <input class="form-control" type="number" step="1" min="0" name="stock" id="stock" value="0" required>
+            <input class="form-control input-cantidad" type="number" step="1" min="0" name="stock" id="stock" value="0" required>
             <span class="help-block" id="stockAyuda">Al editar, usa <a href="inventario.php">Ajustes de inventario</a> para mover stock con trazabilidad.</span>
           </div>
           <div class="form-group col-lg-3 col-md-3 col-sm-6 col-xs-12">
             <label for="stock_minimo">Stock mínimo</label>
-            <input class="form-control" type="number" step="1" min="0" name="stock_minimo" id="stock_minimo" value="1" required>
+            <input class="form-control input-cantidad" type="number" step="1" min="0" name="stock_minimo" id="stock_minimo" value="1" required>
             <span class="help-block">Se alerta cuando el stock baja de aquí.</span>
           </div>
           <div class="form-group col-lg-3 col-md-3 col-sm-6 col-xs-12">
@@ -98,6 +98,48 @@ if (usuarioTienePermiso('almacen')) {
             </div>
             <span class="help-block" id="margenAyuda">Margen: —</span>
           </div>
+
+<?php if (negocioTiene('equivalencias')): ?>
+          <div class="form-section-title">Presentaciones y empaques</div>
+          <input type="hidden" name="pres_enviadas" value="1">
+          <div class="col-xs-12 bloque-editable">
+            <p class="text-soft" style="margin-top:0">Formas de vender o comprar este artículo además de la unidad base. Ej.: <strong>Caja x100</strong> contiene 100 <span class="unidad-base-txt">unidades</span>. El stock siempre se lleva en la unidad base.</p>
+            <div class="table-responsive">
+              <table class="table table-bordered tabla-editable" id="tblPresentaciones">
+                <thead><tr><th>Nombre</th><th style="width:130px">Contiene (<span class="unidad-base-txt">und</span>)</th><th style="width:130px">Precio venta</th><th style="width:130px">Precio compra</th><th style="width:170px">Código de barras</th><th style="width:48px"></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <button type="button" class="btn btn-default btn-sm" onclick="agregarPresentacion()" title="Agregar una presentación"><i class="fa fa-plus"></i> Agregar presentación</button>
+          </div>
+<?php endif; ?>
+<?php if (negocioTiene('vencimientos') || negocioTiene('lotes')): ?>
+          <div class="form-section-title" id="tituloLotes" style="display:none">Lotes en stock</div>
+          <div class="col-xs-12 bloque-editable" id="bloqueLotes" style="display:none">
+            <p class="text-soft" style="margin-top:0">Se crean al comprar o al registrar una entrada con fecha de vencimiento. Salen primero los que vencen antes. Para corregirlos usa <a href="vencimientos.php">Vencimientos</a> o <a href="inventario.php">Ajustes de inventario</a>.</p>
+            <div class="table-responsive">
+              <table class="table table-bordered table-condensed" id="tblLotesArticulo" style="max-width:720px">
+                <thead><tr><th>Lote</th><th>Vence</th><th>Estado</th><th class="text-right">Stock</th><th class="text-right">Ingresó</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <small class="text-soft" id="lotesSinLote"></small>
+          </div>
+<?php endif; ?>
+<?php if (negocioTiene('precio_mayor')): ?>
+          <div class="form-section-title">Precio por mayor</div>
+          <input type="hidden" name="escalas_enviadas" value="1">
+          <div class="col-xs-12 bloque-editable">
+            <p class="text-soft" style="margin-top:0">El punto de venta aplica el precio automáticamente cuando la cantidad llega al mínimo. Siempre en <span class="unidad-base-txt">unidades</span> base; las presentaciones usan su propio precio.</p>
+            <div class="table-responsive">
+              <table class="table table-bordered tabla-editable" id="tblEscalas" style="max-width:520px">
+                <thead><tr><th>Desde (<span class="unidad-base-txt">und</span>)</th><th>Precio unitario</th><th style="width:48px"></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <button type="button" class="btn btn-default btn-sm" onclick="agregarEscala()" title="Agregar un precio por mayor"><i class="fa fa-plus"></i> Agregar precio por mayor</button>
+          </div>
+<?php endif; ?>
 
           <div class="form-section-title">Código de barras e imagen</div>
           <div class="form-group col-lg-6 col-md-6 col-xs-12">

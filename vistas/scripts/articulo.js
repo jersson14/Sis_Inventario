@@ -14,7 +14,9 @@ function init(){
 	});
 	$.post("../ajax/articulo.php?op=selectUnidad", function(r){
 		$("#idunidad").html(r).selectpicker('refresh');
+		aplicarUnidadBase();
 	});
+	$("#idunidad").on("changed.bs.select change", aplicarUnidadBase);
 	$("#imagenmuestra").hide();
 
 	if (window.appQueryParam && window.appQueryParam("nuevo") === "1") {
@@ -34,7 +36,79 @@ function limpiar(){
 	$("#formTitulo").text("Nuevo artículo");
 	$("#stock").prop("readonly", false);
 	$("#stockAyuda").hide();
+	$("#tblPresentaciones tbody, #tblEscalas tbody, #tblLotesArticulo tbody").empty();
+	$("#tituloLotes, #bloqueLotes").hide();
+	aplicarUnidadBase();
 	calcularMargen();
+}
+
+// ---------- Unidad base: decimales y textos ----------
+
+function unidadSeleccionada(){
+	var $opt = $("#idunidad option:selected");
+	return {
+		fraccion: window.appNegocioTiene && window.appNegocioTiene("fracciones") && String($opt.data("fraccion")) === "1",
+		abrev: $opt.data("abrev") || "und"
+	};
+}
+
+// Con fraccion los campos de cantidad aceptan 3 decimales; si no, enteros.
+function aplicarUnidadBase(){
+	var u = unidadSeleccionada();
+	$(".unidad-base-txt").text(u.abrev);
+	$("#formulario .input-cantidad").attr("step", u.fraccion ? "0.001" : "1");
+}
+
+// ---------- Lotes (solo lectura) ----------
+
+function mostrarLotes(data){
+	var lotes = data.lotes || [];
+	if (!$("#tblLotesArticulo").length) { return; }
+	var enLotes = 0, html = "";
+	lotes.forEach(function(l){
+		enLotes += Number(l.stock);
+		var dias = l.dias === null ? null : Number(l.dias);
+		var estado = dias === null ? '<span class="label bg-gray">Sin fecha</span>'
+			: (dias < 0 ? '<span class="label bg-red">Vencido</span>' : (dias <= 30 ? '<span class="label bg-yellow">' + dias + ' día(s)</span>' : '<span class="label bg-green">Vigente</span>'));
+		html += '<tr><td>' + appEscapeHtml(l.codigo_lote || ("#" + l.idlote)) + '</td><td>' + (l.fecha_vencimiento ? l.fecha_vencimiento.split("-").reverse().join("/") : "—") + '</td><td>' + estado +
+			'</td><td class="text-right">' + window.appCantidad(l.stock) + '</td><td class="text-right">' + window.appCantidad(l.cantidad_inicial) + '</td></tr>';
+	});
+	if (!lotes.length) { html = '<tr><td colspan="5" class="text-soft">Sin lotes con stock.</td></tr>'; }
+	$("#tblLotesArticulo tbody").html(html);
+	var sinLote = Math.round((Number(data.stock) - enLotes) * 1000) / 1000;
+	$("#lotesSinLote").text(sinLote > 0 ? "Además hay " + window.appCantidad(sinLote) + " sin lote (stock anterior o comprado sin fecha)." : "");
+	$("#tituloLotes, #bloqueLotes").show();
+}
+
+// ---------- Presentaciones ----------
+
+function agregarPresentacion(datos){
+	datos = datos || {};
+	var fila = '<tr>' +
+		'<td><input type="hidden" name="pres_id[]" value="' + (parseInt(datos.idpresentacion, 10) || 0) + '">' +
+		'<input class="form-control" type="text" name="pres_nombre[]" maxlength="60" placeholder="Ej. Caja x100" value="' + appEscapeHtml(datos.nombre || "") + '"></td>' +
+		'<td><input class="form-control" type="number" step="0.001" min="0" name="pres_factor[]" placeholder="100" value="' + (datos.factor ? Number(datos.factor) : "") + '"></td>' +
+		'<td><input class="form-control" type="number" step="0.01" min="0" name="pres_precio_venta[]" value="' + Number(datos.precio_venta || 0).toFixed(2) + '"></td>' +
+		'<td><input class="form-control" type="number" step="0.01" min="0" name="pres_precio_compra[]" value="' + Number(datos.precio_compra || 0).toFixed(2) + '"></td>' +
+		'<td><input class="form-control" type="text" name="pres_codigo[]" maxlength="50" placeholder="Opcional" value="' + appEscapeHtml(datos.codigo || "") + '"></td>' +
+		'<td class="text-center"><button type="button" class="btn btn-danger btn-xs btn-icon" title="Quitar presentación" onclick="$(this).closest(\'tr\').remove()"><i class="fa fa-trash"></i></button></td>' +
+		'</tr>';
+	$("#tblPresentaciones tbody").append(fila);
+	if (!datos.nombre) { $("#tblPresentaciones tbody tr:last input[name='pres_nombre[]']").focus(); }
+}
+
+// ---------- Precio por mayor ----------
+
+function agregarEscala(datos){
+	datos = datos || {};
+	var u = unidadSeleccionada();
+	var fila = '<tr>' +
+		'<td><input class="form-control input-cantidad" type="number" step="' + (u.fraccion ? "0.001" : "1") + '" min="0" name="escala_cantidad[]" placeholder="12" value="' + (datos.cantidad_minima ? Number(datos.cantidad_minima) : "") + '"></td>' +
+		'<td><input class="form-control" type="number" step="0.01" min="0" name="escala_precio[]" placeholder="0.00" value="' + (datos.precio ? Number(datos.precio).toFixed(2) : "") + '"></td>' +
+		'<td class="text-center"><button type="button" class="btn btn-danger btn-xs btn-icon" title="Quitar precio por mayor" onclick="$(this).closest(\'tr\').remove()"><i class="fa fa-trash"></i></button></td>' +
+		'</tr>';
+	$("#tblEscalas tbody").append(fila);
+	if (!datos.precio) { $("#tblEscalas tbody tr:last input:first").focus(); }
 }
 
 function mostrarform(flag){
@@ -106,8 +180,9 @@ function guardaryeditar(e){
 	if (!$("#idcategoria").val()) { appNotify("warning", "Selecciona una categoría."); return; }
 	if (!$("#idunidad").val()) { appNotify("warning", "Selecciona una unidad de medida."); return; }
 	if (!$.trim($("#codigo").val())) { appNotify("warning", "Ingresa o genera un código."); $("#codigo").focus(); return; }
-	$("#stock").val(normalizarEnteroNoNegativo($("#stock").val(), 0));
-	$("#stock_minimo").val(normalizarEnteroNoNegativo($("#stock_minimo").val(), 1));
+	var fraccion = unidadSeleccionada().fraccion;
+	$("#stock").val(window.appNormalizarCantidad($("#stock").val(), fraccion, 0));
+	$("#stock_minimo").val(window.appNormalizarCantidad($("#stock_minimo").val(), fraccion, 0));
 	appSetLoading("#btnGuardar", true);
 	var formData = new FormData($("#formulario")[0]);
 
@@ -138,10 +213,14 @@ function mostrar(idarticulo){
 		$("#formTitulo").text("Editar artículo");
 		$("#idcategoria").val(data.idcategoria).selectpicker('refresh');
 		$("#idunidad").val(data.idunidad).selectpicker('refresh');
+		aplicarUnidadBase();
 		$("#codigo").val(data.codigo);
 		$("#nombre").val(data.nombre);
-		$("#stock").val(normalizarEnteroNoNegativo(data.stock, 0));
-		$("#stock_minimo").val(normalizarEnteroNoNegativo(data.stock_minimo, 1));
+		$("#stock").val(Number(data.stock || 0));
+		$("#stock_minimo").val(Number(data.stock_minimo || 0));
+		(data.presentaciones || []).forEach(function(p){ agregarPresentacion(p); });
+		(data.escalas || []).forEach(function(es){ agregarEscala(es); });
+		mostrarLotes(data);
 		$("#precio_compra").val(parseFloat(data.precio_compra || 0).toFixed(2));
 		$("#precio_venta").val(parseFloat(data.precio_venta || 0).toFixed(2));
 		$("#descripcion").val(data.descripcion);

@@ -40,6 +40,7 @@ Hallazgos críticos del código heredado:
 
 - ✅ Precios de compra/venta en el artículo (se actualizan con cada ingreso)
 - ✅ Anular venta devuelve stock; anular ingreso descuenta (bloquea si el stock ya se vendió)
+- ✅ **Eliminar** venta/compra definitivamente (solo permiso `acceso`): revierte stock si el documento seguía vigente, no lo toca dos veces si ya estaba anulado, y se bloquea si hay pagos aplicados o movimientos en una caja cerrada
 - ✅ Ventas/compras al **crédito** → generan automáticamente cuentas por cobrar/pagar
 - ✅ Ventas/compras al contado con caja abierta → movimiento automático de caja (por medio de pago: efectivo, tarjeta, transferencia, Yape, Plin)
 - ✅ Módulo **Ajustes de inventario** (entradas/salidas manuales: conteo, merma, vencimiento, devoluciones, uso interno) con motivo y costo; incluido en kardex
@@ -88,9 +89,22 @@ Hallazgos críticos del código heredado:
 
 ## Registro de avances
 
+## Fase 5 — Perfiles por rubro (en curso)
+
+Un solo sistema que se adapta al giro del cliente. El código pregunta por la **capacidad**, no por el rubro (`negocioTiene('lotes')`), para poder combinar rubros nuevos sin tocar los módulos.
+
+- ✅ **Perfil base**: columna `tipo_negocio`, `config/negocio.php` (capacidades y textos por rubro), selector en Configuración → Empresa, elección en el instalador, `window.appNegocio` / `appNegocioTiene()` en el frontend
+- ✅ **Abarrotes** (migración `20260917_abarrotes.sql`): lotes con código y vencimiento al comprar o por ajuste de entrada; salida FEFO en ventas y ajustes con trazabilidad por lote; lo vencido no se vende; anular/eliminar devuelve a los mismos lotes y bloquea compras con lotes consumidos; pantalla **Vencimientos** con baja de lotes; alertas en campana y escritorio con días configurables; lotes en la ficha del artículo
+- ✅ **Ferretería** (migración `20260916_ferreteria.sql`): cantidades con decimales según la unidad de medida (`permite_fraccion`); presentaciones con equivalencia, precio y código de barras propios (venta, compra, cotización, ticket/PDF, kardex y reportes en unidades base); precio por mayor por escalas aplicado automáticamente en venta y cotización; ajustes e importación con decimales
+- ⬜ **Ropa**: variantes talla/color con stock propio (afecta artículo, compra, venta, kardex, inventario, importación, etiquetas y reportes)
+
 | Fecha | Avance |
 |-------|--------|
 | 2026-09-11 | Diagnóstico completo; infraestructura de seguridad; migración v2 aplicada; refactor de backend (28 archivos) a consultas preparadas |
+| 2026-09-17 | Rubro abarrotes completo: lotes, vencimientos, FEFO, bajas y alertas; corrección de transacción en ajustes (un rechazo tras escribir ya no confirma el stock); smoke a 136 comprobaciones |
+| 2026-09-16 | Rubro ferretería completo: fracciones, presentaciones/equivalencias y precio por mayor en artículos, ventas, compras, cotizaciones, ajustes, importación, comprobantes y reportes; triggers con factor; smoke a 111 comprobaciones + banco de pruebas JS del detalle (18) |
+| 2026-09-15 (noche) | Responsive verificado en 360–1024 px (sin desbordes); **perfil de negocio**: migración `20260915_perfil_negocio.sql`, `config/negocio.php` con capacidades por rubro, selector en Configuración e instalador |
+| 2026-09-15 | Legibilidad de badges de estado; botones de acción de tablas rediseñados y semántica de color unificada; eliminación definitiva de ventas/compras con reversión de stock; interfaz de compra y venta ampliada; smoke a 87 comprobaciones |
 | 2026-09-13 (noche) | Cotizaciones e importación desde Excel/CSV; migración `20260913_cotizaciones.sql`; smoke ampliado a 72 comprobaciones |
 | 2026-09-13 (tarde) | Fase 4: instalador web, esquema base, datos demo, smoke automatizado, guía de despliegue, etiquetas masivas, CI |
 | 2026-09-13 | UI v2 completa (landing, login, layout, 21 vistas), módulos Ajustes de inventario y Auditoría, reportes saneados; pruebas de humo y flujo transaccional OK; README v2 |

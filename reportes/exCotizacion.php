@@ -147,7 +147,7 @@ $rs = $cot->detalles($idReporte);
 $i = 0;
 if ($rs) {
   while ($d = $rs->fetch_object()) {
-    $pdf->Row(array($pdf->u($d->codigo), $pdf->u($d->nombre), number_format((float)$d->cantidad, 0) . " " . $pdf->u($d->unidad), number_format((float)$d->precio, 2), number_format((float)$d->descuento, 2), number_format((float)$d->subtotal, 2)), ($i % 2) === 0);
+    $pdf->Row(array($pdf->u($d->codigo), $pdf->u($d->nombre), formatearCantidad($d->cantidad) . " " . $pdf->u($d->unidad), number_format((float)$d->precio, 2), number_format((float)$d->descuento, 2), number_format((float)$d->subtotal, 2)), ($i % 2) === 0);
     $i++;
   }
 }

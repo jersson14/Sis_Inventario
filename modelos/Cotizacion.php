@@ -3,6 +3,7 @@
  * Cotizaciones / proformas. No mueven stock; pueden convertirse en venta.
  */
 require_once "../config/Conexion.php";
+require_once "../config/negocio.php";   // fracciones y presentaciones
 
 class Cotizacion
 {
@@ -34,16 +35,25 @@ class Cotizacion
 	/**
 	 * Valida y normaliza items. Devuelve array(ok, items|mensaje, total).
 	 */
-	private function normalizarItems($idarticulo, $cantidad, $precio, $descuento)
+	private function normalizarItems($idarticulo, $cantidad, $precio, $descuento, $idpresentacion = array())
 	{
 		if (!is_array($idarticulo) || count($idarticulo) === 0) {
 			return array(false, 'Agrega al menos un artículo a la cotización.', 0);
 		}
+		if (!is_array($idpresentacion)) {
+			$idpresentacion = array();
+		}
 		$items = array();
 		$total = 0;
+		$fraccion = articulosPermitenFraccion($idarticulo);
 		for ($i = 0; $i < count($idarticulo); $i++) {
 			$id = (int)$idarticulo[$i];
-			$cant = (int)round((float)(isset($cantidad[$i]) ? $cantidad[$i] : 0));
+			$presentacion = resolverPresentacionDetalle($id, isset($idpresentacion[$i]) ? $idpresentacion[$i] : 0);
+			if ($presentacion === false) {
+				return array(false, 'Una de las presentaciones del detalle no es válida.', 0);
+			}
+			list($idPres, $factor) = $presentacion;
+			$cant = cantidadSegura(isset($cantidad[$i]) ? $cantidad[$i] : 0, $idPres === null && !empty($fraccion[$id]));
 			$pre = round((float)(isset($precio[$i]) ? $precio[$i] : 0), 2);
 			$des = round((float)(isset($descuento[$i]) ? $descuento[$i] : 0), 2);
 			if ($id <= 0 || $cant <= 0) {
@@ -56,13 +66,13 @@ class Cotizacion
 			if (!$existe) {
 				return array(false, 'Uno de los artículos no existe o está desactivado.', 0);
 			}
-			$items[] = array('idarticulo' => $id, 'cantidad' => $cant, 'precio' => $pre, 'descuento' => $des);
-			$total += $cant * $pre - $des;
+			$items[] = array('idarticulo' => $id, 'idpresentacion' => $idPres, 'factor' => $factor, 'cantidad' => $cant, 'precio' => $pre, 'descuento' => $des);
+			$total += round($cant * $pre, 2) - $des;
 		}
 		return array(true, $items, round($total, 2));
 	}
 
-	public function guardar($idcotizacion, $idcliente, $idusuario, $fecha_hora, $fecha_validez, $impuesto, $observacion, $condiciones, $idarticulo, $cantidad, $precio, $descuento)
+	public function guardar($idcotizacion, $idcliente, $idusuario, $fecha_hora, $fecha_validez, $impuesto, $observacion, $condiciones, $idarticulo, $cantidad, $precio, $descuento, $idpresentacion = array())
 	{
 		$idcotizacion = (int)$idcotizacion;
 		$idcliente = (int)$idcliente;
@@ -79,7 +89,7 @@ class Cotizacion
 		$fecha_validez = fechaSegura($fecha_validez, date('Y-m-d', strtotime($fecha_hora . ' +15 days')));
 		$impuesto = round((float)$impuesto, 2);
 		if ($impuesto < 0 || $impuesto > 100) $impuesto = 0;
-		list($ok, $items, $total) = $this->normalizarItems($idarticulo, $cantidad, $precio, $descuento);
+		list($ok, $items, $total) = $this->normalizarItems($idarticulo, $cantidad, $precio, $descuento, $idpresentacion);
 		if (!$ok) {
 			return array('ok' => false, 'message' => $items);
 		}
@@ -103,8 +113,8 @@ class Cotizacion
 				if ($id <= 0) { return false; }
 			}
 			foreach ($items as $it) {
-				if (dbInsert("INSERT INTO detalle_cotizacion(idcotizacion, idarticulo, cantidad, precio, descuento) VALUES(?,?,?,?,?)",
-					array($id, $it['idarticulo'], (float)$it['cantidad'], $it['precio'], $it['descuento'])) <= 0) { return false; }
+				if (dbInsert("INSERT INTO detalle_cotizacion(idcotizacion, idarticulo, idpresentacion, cantidad, factor, precio, descuento) VALUES(?,?,?,?,?,?,?)",
+					array($id, $it['idarticulo'], $it['idpresentacion'], (float)$it['cantidad'], $it['factor'], $it['precio'], $it['descuento'])) <= 0) { return false; }
 			}
 			return array('ok' => true, 'idcotizacion' => $id, 'numero' => $numero, 'total' => $total, 'message' => ($idcotizacion > 0 ? 'Cotización actualizada' : 'Cotización ' . $numero . ' registrada'));
 		});
@@ -122,10 +132,11 @@ class Cotizacion
 
 	public function detalles($id)
 	{
-		return dbQuery("SELECT d.*, a.nombre, a.codigo, a.stock, IFNULL(u.abreviatura,'und') AS unidad, (d.cantidad*d.precio-d.descuento) AS subtotal
+		return dbQuery("SELECT d.*, a.nombre, IFNULL(ap.codigo, a.codigo) AS codigo, a.stock, IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad, (d.cantidad*d.precio-d.descuento) AS subtotal
 			FROM detalle_cotizacion d
 			INNER JOIN articulo a ON a.idarticulo=d.idarticulo
 			LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
+			LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=d.idpresentacion
 			WHERE d.idcotizacion=? ORDER BY d.iddetalle_cotizacion ASC", array((int)$id));
 	}
 
@@ -180,8 +191,9 @@ class Cotizacion
 					'idarticulo' => (int)$d['idarticulo'],
 					'nombre' => html_entity_decode((string)$d['nombre'], ENT_QUOTES, 'UTF-8'),
 					'unidad' => $d['unidad'],
-					'stock' => (int)round((float)$d['stock']),
-					'cantidad' => (int)round((float)$d['cantidad']),
+					'idpresentacion' => (int)$d['idpresentacion'],
+					'stock' => round((float)$d['stock'], 3),
+					'cantidad' => round((float)$d['cantidad'], 3),
 					'precio' => round((float)$d['precio'], 2),
 					'descuento' => round((float)$d['descuento'], 2)
 				);

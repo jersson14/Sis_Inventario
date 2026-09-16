@@ -22,7 +22,7 @@ if (usuarioTienePermiso('almacen')) {
     <div class="box" id="listadoregistros">
       <div class="box-body table-responsive">
         <table id="tbllistado" class="table table-striped table-bordered table-hover" style="width:100%">
-          <thead><tr><th>Opciones</th><th>Nombre</th><th>Abreviatura</th><th>Descripción</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Opciones</th><th>Nombre</th><th>Abreviatura</th><th>Descripción</th><th>Decimales</th><th>Estado</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -47,6 +47,13 @@ if (usuarioTienePermiso('almacen')) {
           <div class="form-group col-lg-6 col-md-4 col-xs-12">
             <label for="descripcion">Descripción</label>
             <input class="form-control" type="text" name="descripcion" id="descripcion" maxlength="120" placeholder="Opcional">
+          </div>
+          <div class="form-group col-xs-12">
+            <label class="checkbox-inline" style="font-weight:600">
+              <input type="checkbox" name="permite_fraccion" id="permite_fraccion" value="1">
+              Permite cantidades con decimales
+            </label>
+            <p class="help-block" style="margin:4px 0 0">Márcalo para unidades que se venden fraccionadas: metros, kilos, litros (1.5 m, 0.75 kg). Déjalo sin marcar para unidades, cajas o paquetes.<?php if (!negocioTiene('fracciones')): ?> <strong>Tu tipo de negocio actual no usa fracciones</strong>; este ajuste se aplicará si cambias a un rubro que las use.<?php endif; ?></p>
           </div>
           <div class="form-group col-xs-12 form-actions-row">
             <button class="btn btn-primary" type="submit" id="btnGuardar"><i class="fa fa-save"></i> Guardar</button>

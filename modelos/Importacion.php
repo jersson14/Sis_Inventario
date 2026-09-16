@@ -4,6 +4,8 @@
  * Sin librerias externas: el .xlsx se lee con ZipArchive + SimpleXML.
  */
 require_once "../config/Conexion.php";
+require_once "../config/negocio.php";
+require_once "../modelos/Lote.php";
 
 class Importacion
 {
@@ -211,7 +213,9 @@ class Importacion
 	public function validarArticulos(array $filas)
 	{
 		$cats = array(); foreach (dbAll("SELECT idcategoria, nombre FROM categoria") as $c) { $cats[self::normalizarValor($c['nombre'])] = (int)$c['idcategoria']; }
-		$unis = array(); foreach (dbAll("SELECT idunidad, nombre, abreviatura FROM unidad_medida WHERE condicion=1") as $u) { $unis[self::normalizarValor($u['abreviatura'])] = (int)$u['idunidad']; $unis[self::normalizarValor($u['nombre'])] = (int)$u['idunidad']; }
+		$unis = array(); $fraccionUnidad = array();
+		foreach (dbAll("SELECT idunidad, nombre, abreviatura, permite_fraccion FROM unidad_medida WHERE condicion=1") as $u) { $unis[self::normalizarValor($u['abreviatura'])] = (int)$u['idunidad']; $unis[self::normalizarValor($u['nombre'])] = (int)$u['idunidad']; $fraccionUnidad[(int)$u['idunidad']] = (int)$u['permite_fraccion'] === 1; }
+		$usaFracciones = function_exists('negocioTiene') && negocioTiene('fracciones');
 		$porCodigo = array(); $porNombre = array();
 		foreach (dbAll("SELECT idarticulo, codigo, nombre, stock FROM articulo") as $a) {
 			if ($a['codigo'] !== null && trim($a['codigo']) !== '') $porCodigo[mb_strtolower(trim($a['codigo']))] = $a;
@@ -257,9 +261,9 @@ class Importacion
 				'fila' => (int)$f['_fila'], 'accion' => $accion, 'errores' => $errores,
 				'nombre' => $nombre, 'codigo' => $codigo, 'categoria' => $categoria, 'categoria_nueva' => $catNueva, 'idcategoria' => $idcat,
 				'unidad' => $unidad === '' ? 'und' : $unidad, 'idunidad' => $idunidad,
-				'stock' => (int)round($stock), 'stock_minimo' => (int)round($stockMin), 'precio_compra' => round($pc, 2), 'precio_venta' => round($pv, 2),
+				'stock' => cantidadSegura($stock, $usaFracciones && !empty($fraccionUnidad[$idunidad])), 'stock_minimo' => cantidadSegura($stockMin, $usaFracciones && !empty($fraccionUnidad[$idunidad])), 'precio_compra' => round($pc, 2), 'precio_venta' => round($pv, 2),
 				'descripcion' => isset($f['descripcion']) ? mb_substr(trim($f['descripcion']), 0, 256) : '',
-				'idexistente' => $existente ? (int)$existente['idarticulo'] : 0, 'stock_actual' => $existente ? (int)round((float)$existente['stock']) : null
+				'idexistente' => $existente ? (int)$existente['idarticulo'] : 0, 'stock_actual' => $existente ? round((float)$existente['stock'], 3) : null
 			);
 		}
 		$res['categorias_nuevas'] = array_values($res['categorias_nuevas']);
@@ -355,6 +359,8 @@ class Importacion
 							dbInsert("INSERT INTO ajuste_inventario(idarticulo, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,?,'CONTEO',?,?,?,?,'Conteo por importación')",
 								array($idart, (int)$idusuario, $nuevo > $anterior ? 'ENTRADA' : 'SALIDA', abs($nuevo - $anterior), $anterior, $nuevo, (float)$r['precio_compra']));
 							dbExec("UPDATE articulo SET stock=? WHERE idarticulo=?", array($nuevo, $idart));
+							// Si el conteo baja el stock, los lotes se recortan (primero lo que vence antes)
+							if (!Lote::ajustarAlStock($idart)) return false;
 							$res['ajustes']++;
 						}
 					}

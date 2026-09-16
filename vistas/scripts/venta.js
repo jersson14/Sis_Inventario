@@ -14,18 +14,6 @@ var enFormulario = false;
 
 function money(v){ return window.appMoney ? window.appMoney(v, 2) : ((window.appCurrencySymbol || "S/") + " " + Number(v || 0).toFixed(2)); }
 
-function normalizarEnteroNoNegativo(valor){
-	var num = parseFloat(valor);
-	if (!isFinite(num)) { return 0; }
-	num = Math.round(num);
-	return num < 0 ? 0 : num;
-}
-
-function normalizarCantidadEntera(valor, minimo){
-	var num = normalizarEnteroNoNegativo(valor);
-	return num < minimo ? minimo : num;
-}
-
 function fechaHoraActualInput(){
 	var now = new Date();
 	return now.getFullYear() + "-" + ("0" + (now.getMonth() + 1)).slice(-2) + "-" + ("0" + now.getDate()).slice(-2) + "T" + ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2);
@@ -112,16 +100,19 @@ function cargarDesdeCotizacion(id){
 		var fijarCliente = function(){ $("#idcliente").val(String(r.idcliente)).selectpicker("refresh"); };
 		if (clientesCargados) { fijarCliente(); } else { setTimeout(fijarCliente, 700); }
 		var sinStock = [];
+		// Se agregan en orden, uno tras otro, respetando la presentacion y el precio cotizados
+		var cadena = $.Deferred().resolve();
 		(r.items || []).forEach(function(it){
-			if (it.stock <= 0) { sinStock.push(it.nombre); return; }
-			agregarDetalle(it.idarticulo, it.nombre, it.precio, it.unidad, it.stock);
-			var cants = document.getElementsByName("cantidad[]"), descs = document.getElementsByName("descuento[]");
-			var i = cants.length - 1;
-			if (i >= 0) { cants[i].value = Math.min(it.cantidad, it.stock); descs[i].value = Number(it.descuento).toFixed(2); }
+			cadena = cadena.then(function(){
+				if (it.stock <= 0) { sinStock.push(it.nombre); return; }
+				return agregarArticulo(it.idarticulo, it.idpresentacion || 0, { cantidad: it.cantidad, precio: Number(it.precio), descuento: it.descuento, silencioso: true });
+			});
 		});
-		modificarSubtotales();
-		appNotify("info", "Cotización " + r.numero + " cargada. Revisa cantidades y registra la venta.", 5000);
-		if (sinStock.length) { appNotify("warning", "Sin stock, no se agregaron: " + sinStock.join(", "), 8000); }
+		cadena.then(function(){
+			modificarSubtotales();
+			appNotify("info", "Cotización " + r.numero + " cargada. Revisa cantidades y registra la venta.", 5000);
+			if (sinStock.length) { appNotify("warning", "Sin stock, no se agregaron: " + sinStock.join(", "), 8000); }
+		});
 	});
 }
 
@@ -295,7 +286,7 @@ function guardaryeditar(e){
 			if (!r.ok) { appNotify("error", r.message || "No se pudo registrar la venta."); return; }
 			appNotify("success", r.message || "Venta registrada correctamente");
 			if (r.alertas && r.alertas.length > 0) {
-				appNotify("warning", "Stock bajo: " + r.alertas.map(function(a){ return (a.nombre || "Artículo") + " (" + normalizarEnteroNoNegativo(a.stock) + ")"; }).join(", "), 7000);
+				appNotify("warning", "Stock bajo: " + r.alertas.map(function(a){ return (a.nombre || "Artículo") + " (" + window.appCantidad(a.stock) + ")"; }).join(", "), 7000);
 			}
 			mostrarDialogoPostVenta(r);
 			mostrarform(false);
@@ -355,6 +346,19 @@ function anular(idventa){
 	}, { titulo: "Anular venta", ok: "Sí, anular", tipo: "danger" });
 }
 
+// Borrado definitivo (solo administrador). Si la venta seguía vigente el
+// servidor devuelve el stock antes de borrarla; si ya estaba anulada no lo
+// vuelve a tocar, porque la anulación ya lo repuso.
+function eliminar(idventa){
+	appConfirm("Se eliminará la venta de forma PERMANENTE, junto con su detalle, su cuenta por cobrar y sus movimientos de caja. Si la venta estaba vigente, el stock volverá al inventario. Esta acción no se puede deshacer. ¿Continuar?", function(){
+		$.post("../ajax/venta.php?op=eliminar", { idventa: idventa }, function(e){
+			appNotifyFromResponse(e);
+			tabla.ajax.reload(null, false);
+			cargarResumenDia();
+		});
+	}, { titulo: "Eliminar venta", ok: "Sí, eliminar", tipo: "danger" });
+}
+
 function aplicarSerieImpuesto(){
 	var tipo = $("#tipo_comprobante").val();
 	if (tipo === 'Factura') {
@@ -388,48 +392,159 @@ function cargarCorrelativoComprobante(){
 	});
 }
 
-function agregarDetalle(idarticulo, articulo, precio_venta, unidad, stockDisponible){
-	var unidadTexto = unidad || "und";
-	var stockDisponibleNum = normalizarEnteroNoNegativo(stockDisponible || 0);
-	var articulos = document.getElementsByName("idarticulo[]");
-	var cantidades = document.getElementsByName("cantidad[]");
-	var stocksDisponibles = document.getElementsByName("stock_disponible[]");
-	if (stockDisponibleNum <= 0) { appNotify("warning", "Este artículo no tiene stock disponible."); return; }
-	if (!idarticulo) { appNotify("warning", "No se pudo agregar el artículo."); return; }
+// ---------------------------------------------------------------------
+// Detalle de la venta
+//
+// Cada fila guarda en data-* la ficha del articulo (factor de la
+// presentacion elegida, si admite decimales, precio base, escalas de precio
+// por mayor). La cantidad se escribe en la presentacion elegida (2 cajas) y
+// el stock se controla en unidades base (2 x 12 = 24 und), sumando todas las
+// filas del mismo articulo.
+// ---------------------------------------------------------------------
 
-	for (var i = 0; i < articulos.length; i++) {
-		if (parseInt(articulos[i].value, 10) === parseInt(idarticulo, 10)) {
-			var stockFila = normalizarEnteroNoNegativo((stocksDisponibles[i] && stocksDisponibles[i].value) ? stocksDisponibles[i].value : stockDisponibleNum);
-			var nueva = normalizarCantidadEntera(parseFloat(cantidades[i].value || 0) + 1, 1);
-			if (nueva > stockFila) { appNotify("warning", "No puedes vender más de " + stockFila + " " + unidadTexto + " de este artículo."); return; }
-			cantidades[i].value = nueva;
-			modificarSubtotales();
-			$('#myModal').modal('hide');
-			appNotify("info", articulo + ": cantidad " + nueva);
-			resaltarFila($(cantidades[i]).closest("tr"));
-			return;
-		}
+// Agrega un articulo pidiendo su ficha al servidor (catalogo, cotizacion).
+function agregarArticulo(idarticulo, idpresentacion, opciones){
+	return $.post("../ajax/venta.php?op=infoArticulo", { idarticulo: idarticulo }, function(resp){
+		var f = appParseJson(resp, null);
+		if (!f || !f.ok) { appNotify("warning", (f && f.message) || "No se pudo agregar el artículo."); return; }
+		agregarFicha(f, idpresentacion || 0, opciones);
+	});
+}
+
+function presentacionDeFicha(f, idpresentacion){
+	var id = parseInt(idpresentacion, 10) || 0;
+	for (var i = 0; i < (f.presentaciones || []).length; i++) {
+		if (f.presentaciones[i].idpresentacion === id) { return f.presentaciones[i]; }
 	}
-	var precio = parseFloat(precio_venta) || 0;
-	var fila = '<tr class="filas" id="fila' + cont + '">' +
+	return null;
+}
+
+function agregarFicha(f, idpresentacion, opciones){
+	opciones = opciones || {};
+	var pres = presentacionDeFicha(f, idpresentacion);
+	var idPres = pres ? pres.idpresentacion : 0;
+	if (f.stock <= 0) { appNotify("warning", f.stock_vencido > 0 ? "El stock de " + f.nombre + " está vencido: dale de baja en Vencimientos." : "Este artículo no tiene stock disponible."); return; }
+
+	// Si ya esta en la venta con la misma presentacion, se suma a esa fila
+	var $existente = $("#detalles tbody tr.filas").filter(function(){
+		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres;
+	}).first();
+	if ($existente.length) {
+		var $cant = $existente.find("[name='cantidad[]']");
+		$cant.val((parseFloat($cant.val()) || 0) + (opciones.cantidad || 1));
+		modificarSubtotales();
+		$('#myModal').modal('hide');
+		appNotify("info", f.nombre + ": cantidad " + window.appCantidad($cant.val()));
+		resaltarFila($existente);
+		return;
+	}
+
+	var opcionesPres = "";
+	if (f.presentaciones && f.presentaciones.length) {
+		opcionesPres = '<select class="form-control input-sm sel-presentacion" onchange="cambiarPresentacion(this)">' +
+			'<option value="0">' + appEscapeHtml(f.unidad) + '</option>' +
+			f.presentaciones.map(function(p){
+				return '<option value="' + p.idpresentacion + '"' + (p.idpresentacion === idPres ? " selected" : "") + '>' + appEscapeHtml(p.nombre) + ' (' + window.appCantidad(p.factor) + ' ' + appEscapeHtml(f.unidad) + ')</option>';
+			}).join("") + '</select>';
+	}
+
+	var fila = $('<tr class="filas" id="fila' + cont + '"></tr>');
+	fila.attr({
+		"data-idarticulo": f.idarticulo,
+		"data-stock": f.stock,
+		"data-fraccion": f.permite_fraccion ? "1" : "0",
+		"data-unidad": f.unidad,
+		"data-precio-base": f.precio_venta
+	});
+	fila.data("ficha", f);
+	fila.html(
 		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
-		'<td><input type="hidden" name="idarticulo[]" value="' + parseInt(idarticulo, 10) + '"><input type="hidden" name="stock_disponible[]" value="' + stockDisponibleNum + '"><strong>' + appEscapeHtml(articulo) + '</strong><br><small class="text-soft">Stock: ' + stockDisponibleNum + '</small></td>' +
-		'<td>' + appEscapeHtml(unidadTexto) + '</td>' +
-		'<td><input type="number" step="1" min="1" max="' + stockDisponibleNum + '" name="cantidad[]" value="1" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="precio_venta[]" value="' + precio.toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="descuento[]" value="0" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td class="text-right"><span class="money" name="subtotal">' + precio.toFixed(2) + '</span></td>' +
-		'<td></td>' +
-		'</tr>';
+		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '">' +
+			'<strong>' + appEscapeHtml(f.nombre) + '</strong>' + opcionesPres + '<small class="text-soft d-block">Stock: ' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) +
+			(f.escalas && f.escalas.length ? ' · <span class="text-success" title="Tiene precio por mayor"><i class="fa fa-tags"></i> por mayor</span>' : '') +
+			textoVencimiento(f) + '</small></td>' +
+		'<td><span class="unidad-fila"></span></td>' +
+		'<td><input type="number" min="0" name="cantidad[]" value="' + (opciones.cantidad || 1) + '" oninput="modificarSubtotales()" onblur="modificarSubtotales()" onfocus="this.select()"></td>' +
+		'<td><input type="number" step="0.01" min="0" name="precio_venta[]" value="0.00" oninput="marcarPrecioManual(this)" onfocus="this.select()"></td>' +
+		'<td><input type="number" step="0.01" min="0" name="descuento[]" value="' + Number(opciones.descuento || 0).toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
+		'<td class="text-right"><span class="money" name="subtotal">0.00</span></td>'
+	);
 	cont++;
 	detalles++;
 	$('#detalles tbody').append(fila);
+	if (typeof opciones.precio === "number") {
+		fila.find("[name='precio_venta[]']").val(opciones.precio.toFixed(2)).attr("data-manual", "1");
+	}
+	ajustarPasoCantidad(fila);
+	etiquetaUnidadFila(fila);
 	modificarSubtotales();
 	$('#myModal').modal('hide');
-	resaltarFila($("#fila" + (cont - 1)));
-	if (precio <= 0) { appNotify("warning", "El artículo no tiene precio de venta: ingrésalo en la fila.", 5000); }
-	setTimeout(function(){ $("#codigo_rapido").focus(); }, 50);
+	resaltarFila(fila);
+	if (precioAutomatico(fila) <= 0 && typeof opciones.precio !== "number") { appNotify("warning", "El artículo no tiene precio de venta: ingrésalo en la fila.", 5000); }
+	if (!opciones.silencioso) { setTimeout(function(){ $("#codigo_rapido").focus(); }, 50); }
 }
+
+// Aviso de vencimiento bajo el nombre: proximo lote y stock vencido que no se puede vender
+function textoVencimiento(f){
+	var html = "";
+	if (f.proximo_vencimiento && f.proximo_vencimiento.fecha) {
+		var dias = Math.round((new Date(f.proximo_vencimiento.fecha + "T00:00:00") - new Date(new Date().toDateString())) / 86400000);
+		var clase = dias <= 7 ? "text-danger" : (dias <= 30 ? "text-warning" : "text-soft");
+		html += ' · <span class="' + clase + '" title="Lote que sale primero"><i class="fa fa-calendar-times-o"></i> vence ' + f.proximo_vencimiento.fecha.split("-").reverse().join("/") + '</span>';
+	}
+	if (f.stock_vencido > 0) {
+		html += ' · <span class="text-danger" title="No se puede vender"><i class="fa fa-ban"></i> ' + window.appCantidad(f.stock_vencido) + ' vencido</span>';
+	}
+	return html;
+}
+
+function filaFactor($tr){
+	var pres = presentacionDeFicha($tr.data("ficha") || {}, $tr.find("[name='idpresentacion[]']").val());
+	return pres ? pres.factor : 1;
+}
+
+// Solo la unidad base admite decimales; cajas y paquetes van enteros
+function filaPermiteFraccion($tr){
+	return $tr.attr("data-fraccion") === "1" && (parseInt($tr.find("[name='idpresentacion[]']").val(), 10) || 0) === 0;
+}
+
+function ajustarPasoCantidad($tr){
+	$tr.find("[name='cantidad[]']").attr("step", filaPermiteFraccion($tr) ? "0.001" : "1");
+}
+
+// Precio que corresponde a la fila: el de la presentacion, o el precio por
+// mayor segun la cantidad, o el precio base.
+function precioAutomatico($tr){
+	var f = $tr.data("ficha") || {};
+	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
+	if (pres) { return pres.precio_venta > 0 ? pres.precio_venta : (f.precio_venta || 0) * pres.factor; }
+	var cantidad = parseFloat($tr.find("[name='cantidad[]']").val()) || 0;
+	var precio = f.precio_venta || 0;
+	(f.escalas || []).forEach(function(es){ if (cantidad + 0.0005 >= es.cantidad_minima) { precio = es.precio; } });
+	return precio;
+}
+
+function marcarPrecioManual(input){
+	$(input).attr("data-manual", "1");
+	modificarSubtotales();
+}
+
+function cambiarPresentacion(select){
+	var $tr = $(select).closest("tr");
+	$tr.find("[name='idpresentacion[]']").val($(select).val());
+	$tr.find("[name='precio_venta[]']").removeAttr("data-manual");
+	ajustarPasoCantidad($tr);
+	etiquetaUnidadFila($tr);
+	modificarSubtotales();
+}
+
+// Texto corto de la unidad de la fila: la abreviatura base o el nombre de la presentacion
+function etiquetaUnidadFila($tr){
+	var f = $tr.data("ficha") || {};
+	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
+	$tr.find(".unidad-fila").text(pres ? pres.nombre : (f.unidad || "und"));
+}
+
 
 function resaltarFila($tr){
 	$tr.css("background", "#ecfeff");
@@ -437,55 +552,72 @@ function resaltarFila($tr){
 }
 
 function modificarSubtotales(){
-	var cant = document.getElementsByName("cantidad[]");
-	var prev = document.getElementsByName("precio_venta[]");
-	var desc = document.getElementsByName("descuento[]");
-	var sub = document.getElementsByName("subtotal");
-	var stockDisp = document.getElementsByName("stock_disponible[]");
+	var usadoPorArticulo = {};
 	var huboAjusteStock = false;
-	for (var i = 0; i < cant.length; i++) {
-		var maxStock = normalizarEnteroNoNegativo((stockDisp[i] && stockDisp[i].value) ? stockDisp[i].value : 0);
-		var cantidadActual = normalizarCantidadEntera(cant[i].value, 1);
-		if (maxStock > 0 && cantidadActual > maxStock) { cantidadActual = maxStock; huboAjusteStock = true; }
-		cant[i].value = cantidadActual;
-		var precio = parseFloat(prev[i].value || 0);
-		var descuento = parseFloat(desc[i].value || 0);
-		if (descuento < 0) { descuento = 0; desc[i].value = "0"; }
-		var bruto = cantidadActual * precio;
-		if (descuento > bruto) { descuento = bruto; desc[i].value = bruto.toFixed(2); }
+	$("#detalles tbody tr.filas").each(function(){
+		var $tr = $(this);
+		var $cant = $tr.find("[name='cantidad[]']");
+		var $precio = $tr.find("[name='precio_venta[]']");
+		var $desc = $tr.find("[name='descuento[]']");
+		var fraccion = filaPermiteFraccion($tr);
+		var factor = filaFactor($tr);
+		var idArt = $tr.attr("data-idarticulo");
+		var stock = parseFloat($tr.attr("data-stock")) || 0;
+
+		var cantidad = window.appNormalizarCantidad($cant.val(), fraccion, fraccion ? 0.001 : 1);
+		// Stock restante para esta fila, descontando lo que ya usan las filas anteriores del mismo articulo
+		var usado = usadoPorArticulo[idArt] || 0;
+		var maxFila = (stock - usado) / factor;
+		maxFila = fraccion ? Math.floor(maxFila * 1000 + 0.0005) / 1000 : Math.floor(maxFila + 0.0005);
+		if (cantidad > maxFila) { cantidad = Math.max(maxFila, 0); huboAjusteStock = true; }
+		// Mientras se escribe ("1." camino a "1.5") no se toca el campo; se corrige al salir de el
+		var escribiendo = document.activeElement === $cant[0];
+		if (!escribiendo || cantidad < (parseFloat($cant.val()) || 0)) {
+			if (parseFloat($cant.val()) !== cantidad) { $cant.val(cantidad); }
+		}
+		usadoPorArticulo[idArt] = usado + cantidad * factor;
+
+		if ($precio.attr("data-manual") !== "1") { $precio.val(Number(precioAutomatico($tr)).toFixed(2)); }
+		var precio = parseFloat($precio.val() || 0);
+		var descuento = parseFloat($desc.val() || 0);
+		if (descuento < 0) { descuento = 0; $desc.val("0"); }
+		var bruto = Math.round(cantidad * precio * 100) / 100;
+		if (descuento > bruto) { descuento = bruto; $desc.val(bruto.toFixed(2)); }
 		var s = bruto - descuento;
-		sub[i].textContent = s.toFixed(2);
-		sub[i].setAttribute("data-value", s.toFixed(2));
-	}
+		var $sub = $tr.find("[name='subtotal']");
+		$sub.text(s.toFixed(2)).attr("data-value", s.toFixed(2));
+	});
 	if (huboAjusteStock) { appNotify("warning", "Se ajustó la cantidad al stock disponible."); }
 	calcularTotales();
 }
 
 function validarStockDetalleAntesGuardar(){
-	var cant = document.getElementsByName("cantidad[]");
-	var stockDisp = document.getElementsByName("stock_disponible[]");
-	var precios = document.getElementsByName("precio_venta[]");
-	for (var i = 0; i < cant.length; i++) {
-		var cantidad = normalizarCantidadEntera(cant[i].value, 1);
-		var stock = normalizarEnteroNoNegativo((stockDisp[i] && stockDisp[i].value) ? stockDisp[i].value : 0);
-		cant[i].value = cantidad;
-		if (cantidad <= 0) { appNotify("warning", "Hay un artículo con cantidad inválida."); return false; }
-		if (cantidad > stock) { appNotify("warning", "Hay un artículo con cantidad mayor al stock disponible."); return false; }
-		if (parseFloat(precios[i].value || 0) < 0) { appNotify("warning", "Hay un precio negativo."); return false; }
-	}
-	return true;
+	var usado = {}, ok = true;
+	$("#detalles tbody tr.filas").each(function(){
+		var $tr = $(this);
+		var cantidad = parseFloat($tr.find("[name='cantidad[]']").val()) || 0;
+		var idArt = $tr.attr("data-idarticulo");
+		if (cantidad <= 0) { appNotify("warning", "Hay un artículo con cantidad inválida."); ok = false; return false; }
+		if (parseFloat($tr.find("[name='precio_venta[]']").val() || 0) < 0) { appNotify("warning", "Hay un precio negativo."); ok = false; return false; }
+		usado[idArt] = (usado[idArt] || 0) + cantidad * filaFactor($tr);
+		if (usado[idArt] > (parseFloat($tr.attr("data-stock")) || 0) + 0.0005) {
+			appNotify("warning", "Hay un artículo con cantidad mayor al stock disponible."); ok = false; return false;
+		}
+	});
+	return ok;
 }
 
 function calcularTotales(){
-	var sub = document.getElementsByName("subtotal");
-	var cant = document.getElementsByName("cantidad[]");
-	var desc = document.getElementsByName("descuento[]");
 	var total = 0, unidades = 0, descuentos = 0;
-	for (var i = 0; i < sub.length; i++) { total += parseFloat(sub[i].getAttribute("data-value") || sub[i].textContent || 0); }
-	for (var j = 0; j < cant.length; j++) { unidades += parseInt(cant[j].value || 0, 10); descuentos += parseFloat(desc[j].value || 0); }
+	$("#detalles tbody tr.filas").each(function(){
+		var $tr = $(this);
+		total += parseFloat($tr.find("[name='subtotal']").attr("data-value") || 0);
+		unidades += (parseFloat($tr.find("[name='cantidad[]']").val()) || 0) * filaFactor($tr);
+		descuentos += parseFloat($tr.find("[name='descuento[]']").val() || 0);
+	});
 	$("#total").html(money(total));
 	$("#posTotal").text(money(total));
-	$("#posUnidades").text(unidades);
+	$("#posUnidades").text(window.appCantidad(unidades));
 	$("#posDescuentos").text(money(descuentos));
 	$("#total_venta").val(total.toFixed(2));
 	actualizarContadorItems();
@@ -535,7 +667,7 @@ function buscarCodigoRapido(codigo, callback){
 		var r = appParseJson(resp, null);
 		if (!r) { appNotify("error", "No se pudo buscar el artículo."); }
 		else if (!r.ok) { appNotify("warning", r.message || "No se encontró el artículo"); }
-		else { agregarDetalle(r.idarticulo, r.nombre, r.precio_venta || 0, r.unidad || "und", r.stock || 0); }
+		else { agregarFicha(r, r.idpresentacion || 0); }
 		$("#codigo_rapido").focus();
 		if (typeof callback === "function") { callback(); }
 	}).fail(function(){ if (typeof callback === "function") { callback(); } });

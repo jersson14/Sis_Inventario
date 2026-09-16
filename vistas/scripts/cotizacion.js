@@ -99,53 +99,133 @@ function cancelarform(){
 	limpiar(); mostrarform(false);
 }
 
-function agregarDetalle(idarticulo, nombre, precio, unidad, stock, cantidadInicial, descuentoInicial){
-	if (!idarticulo) { return; }
-	var arts = document.getElementsByName("idarticulo[]");
-	var cants = document.getElementsByName("cantidad[]");
-	for (var i = 0; i < arts.length; i++) {
-		if (parseInt(arts[i].value, 10) === parseInt(idarticulo, 10)) {
-			cants[i].value = parseInt(cants[i].value || 0, 10) + 1;
-			modificarSubtotales(); $("#myModal").modal("hide");
-			appNotify("info", nombre + ": cantidad " + cants[i].value); return;
-		}
-	}
-	var p = parseFloat(precio) || 0;
-	var fila = '<tr class="filas" id="fila' + cont + '">' +
-		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
-		'<td><input type="hidden" name="idarticulo[]" value="' + parseInt(idarticulo, 10) + '"><strong>' + appEscapeHtml(nombre) + '</strong><br><small class="text-soft">Stock: ' + (stock || 0) + '</small></td>' +
-		'<td>' + appEscapeHtml(unidad || "und") + '</td>' +
-		'<td><input type="number" step="1" min="1" name="cantidad[]" value="' + (parseInt(cantidadInicial, 10) || 1) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="precio[]" value="' + p.toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="descuento[]" value="' + (parseFloat(descuentoInicial) || 0).toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td class="text-right"><span class="money" name="subtotal" data-value="0">0.00</span></td></tr>';
-	cont++; detalles++;
-	$("#detalles tbody").append(fila);
-	modificarSubtotales();
-	$("#myModal").modal("hide");
-	setTimeout(function(){ $("#codigo_rapido").focus(); }, 50);
+// Detalle de la cotizacion: mismas reglas que el punto de venta (presentaciones,
+// decimales y precio por mayor), pero sin tope de stock porque no lo mueve.
+
+function agregarArticulo(idarticulo, idpresentacion, opciones){
+	return $.post("../ajax/cotizacion.php?op=infoArticulo", { idarticulo: idarticulo }, function(resp){
+		var f = appParseJson(resp, null);
+		if (!f || !f.ok) { appNotify("warning", (f && f.message) || "No se pudo agregar el artículo."); return; }
+		agregarFicha(f, idpresentacion || 0, opciones);
+	});
 }
 
-function modificarSubtotales(){
-	var c = document.getElementsByName("cantidad[]"), p = document.getElementsByName("precio[]"), d = document.getElementsByName("descuento[]"), s = document.getElementsByName("subtotal");
-	for (var i = 0; i < c.length; i++) {
-		var cant = Math.max(1, parseInt(c[i].value || 1, 10)); c[i].value = cant;
-		var bruto = cant * (parseFloat(p[i].value) || 0);
-		var des = Math.max(0, parseFloat(d[i].value) || 0);
-		if (des > bruto) { des = bruto; d[i].value = bruto.toFixed(2); }
-		var sub = bruto - des;
-		s[i].textContent = sub.toFixed(2); s[i].setAttribute("data-value", sub.toFixed(2));
+function presentacionDeFicha(f, idpresentacion){
+	var id = parseInt(idpresentacion, 10) || 0;
+	for (var i = 0; i < (f.presentaciones || []).length; i++) {
+		if (f.presentaciones[i].idpresentacion === id) { return f.presentaciones[i]; }
 	}
+	return null;
+}
+
+function agregarFicha(f, idpresentacion, opciones){
+	opciones = opciones || {};
+	var pres = presentacionDeFicha(f, idpresentacion);
+	var idPres = pres ? pres.idpresentacion : 0;
+	var $existente = $("#detalles tbody tr.filas").filter(function(){
+		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres;
+	}).first();
+	if ($existente.length && !opciones.cantidad) {
+		var $c = $existente.find("[name='cantidad[]']");
+		$c.val((parseFloat($c.val()) || 0) + 1);
+		modificarSubtotales(); $("#myModal").modal("hide");
+		appNotify("info", f.nombre + ": cantidad " + window.appCantidad($c.val()));
+		return;
+	}
+	var selector = "";
+	if (f.presentaciones && f.presentaciones.length) {
+		selector = '<select class="form-control input-sm sel-presentacion" onchange="cambiarPresentacion(this)"><option value="0">' + appEscapeHtml(f.unidad) + '</option>' +
+			f.presentaciones.map(function(p){
+				return '<option value="' + p.idpresentacion + '"' + (p.idpresentacion === idPres ? " selected" : "") + '>' + appEscapeHtml(p.nombre) + ' (' + window.appCantidad(p.factor) + ' ' + appEscapeHtml(f.unidad) + ')</option>';
+			}).join("") + '</select>';
+	}
+	var fila = $('<tr class="filas" id="fila' + cont + '"></tr>');
+	fila.attr({ "data-idarticulo": f.idarticulo, "data-fraccion": f.permite_fraccion ? "1" : "0" });
+	fila.data("ficha", f);
+	fila.html(
+		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
+		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><strong>' + appEscapeHtml(f.nombre) + '</strong>' + selector + '<small class="text-soft d-block">Stock: ' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) +
+			(f.escalas && f.escalas.length ? ' · <span class="text-success"><i class="fa fa-tags"></i> por mayor</span>' : '') + '</small></td>' +
+		'<td><span class="unidad-fila"></span></td>' +
+		'<td><input type="number" min="0" name="cantidad[]" value="' + (opciones.cantidad || 1) + '" oninput="modificarSubtotales()" onblur="modificarSubtotales()" onfocus="this.select()"></td>' +
+		'<td><input type="number" step="0.01" min="0" name="precio[]" value="0.00" oninput="$(this).attr(\'data-manual\',\'1\');modificarSubtotales()" onfocus="this.select()"></td>' +
+		'<td><input type="number" step="0.01" min="0" name="descuento[]" value="' + (parseFloat(opciones.descuento) || 0).toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
+		'<td class="text-right"><span class="money" name="subtotal" data-value="0">0.00</span></td>'
+	);
+	cont++; detalles++;
+	$("#detalles tbody").append(fila);
+	if (typeof opciones.precio === "number") { fila.find("[name='precio[]']").val(opciones.precio.toFixed(2)).attr("data-manual", "1"); }
+	fila.find("[name='cantidad[]']").attr("step", filaPermiteFraccion(fila) ? "0.001" : "1");
+	etiquetaUnidadFila(fila);
+	modificarSubtotales();
+	$("#myModal").modal("hide");
+	if (!opciones.silencioso) { setTimeout(function(){ $("#codigo_rapido").focus(); }, 50); }
+}
+
+function filaFactor($tr){
+	var pres = presentacionDeFicha($tr.data("ficha") || {}, $tr.find("[name='idpresentacion[]']").val());
+	return pres ? pres.factor : 1;
+}
+
+function filaPermiteFraccion($tr){
+	return $tr.attr("data-fraccion") === "1" && (parseInt($tr.find("[name='idpresentacion[]']").val(), 10) || 0) === 0;
+}
+
+function precioAutomatico($tr){
+	var f = $tr.data("ficha") || {};
+	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
+	if (pres) { return pres.precio_venta > 0 ? pres.precio_venta : (f.precio_venta || 0) * pres.factor; }
+	var cantidad = parseFloat($tr.find("[name='cantidad[]']").val()) || 0;
+	var precio = f.precio_venta || 0;
+	(f.escalas || []).forEach(function(es){ if (cantidad + 0.0005 >= es.cantidad_minima) { precio = es.precio; } });
+	return precio;
+}
+
+function cambiarPresentacion(select){
+	var $tr = $(select).closest("tr");
+	$tr.find("[name='idpresentacion[]']").val($(select).val());
+	$tr.find("[name='precio[]']").removeAttr("data-manual");
+	$tr.find("[name='cantidad[]']").attr("step", filaPermiteFraccion($tr) ? "0.001" : "1");
+	etiquetaUnidadFila($tr);
+	modificarSubtotales();
+}
+
+// Texto corto de la unidad de la fila: la abreviatura base o el nombre de la presentacion
+function etiquetaUnidadFila($tr){
+	var f = $tr.data("ficha") || {};
+	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
+	$tr.find(".unidad-fila").text(pres ? pres.nombre : (f.unidad || "und"));
+}
+
+
+function modificarSubtotales(){
+	$("#detalles tbody tr.filas").each(function(){
+		var $tr = $(this);
+		var $c = $tr.find("[name='cantidad[]']"), $p = $tr.find("[name='precio[]']"), $d = $tr.find("[name='descuento[]']");
+		var fraccion = filaPermiteFraccion($tr);
+		var cant = window.appNormalizarCantidad($c.val(), fraccion, fraccion ? 0.001 : 1);
+		if (document.activeElement !== $c[0] && parseFloat($c.val()) !== cant) { $c.val(cant); }
+		if ($p.attr("data-manual") !== "1") { $p.val(Number(precioAutomatico($tr)).toFixed(2)); }
+		var bruto = Math.round(cant * (parseFloat($p.val()) || 0) * 100) / 100;
+		var des = Math.max(0, parseFloat($d.val()) || 0);
+		if (des > bruto) { des = bruto; $d.val(bruto.toFixed(2)); }
+		var sub = bruto - des;
+		$tr.find("[name='subtotal']").text(sub.toFixed(2)).attr("data-value", sub.toFixed(2));
+	});
 	calcularTotales();
 }
 
 function calcularTotales(){
-	var s = document.getElementsByName("subtotal"), c = document.getElementsByName("cantidad[]"), d = document.getElementsByName("descuento[]");
-	var total = 0, uni = 0, desc = 0;
-	for (var i = 0; i < s.length; i++) { total += parseFloat(s[i].getAttribute("data-value") || 0); }
-	for (var j = 0; j < c.length; j++) { uni += parseInt(c[j].value || 0, 10); desc += parseFloat(d[j].value || 0); }
+	var total = 0, uni = 0, desc = 0, filas = 0;
+	$("#detalles tbody tr.filas").each(function(){
+		var $tr = $(this);
+		filas++;
+		total += parseFloat($tr.find("[name='subtotal']").attr("data-value") || 0);
+		uni += (parseFloat($tr.find("[name='cantidad[]']").val()) || 0) * filaFactor($tr);
+		desc += parseFloat($tr.find("[name='descuento[]']").val() || 0);
+	});
 	$("#total").html(money(total)); $("#posTotal").text(money(total));
-	$("#posItems").text(c.length); $("#posUnidades").text(uni); $("#posDescuentos").text(money(desc));
+	$("#posItems").text(filas); $("#posUnidades").text(window.appCantidad(uni)); $("#posDescuentos").text(money(desc));
 	if (detalles > 0) { $("#btnGuardar").prop("disabled", false); $("#detalleVacio").hide(); } else { $("#btnGuardar").prop("disabled", true); $("#detalleVacio").show(); cont = 0; }
 }
 
@@ -158,7 +238,7 @@ function buscarCodigo(codigo){
 	$.post("../ajax/cotizacion.php?op=buscarArticuloCodigo", { codigo: codigo }, function(resp){
 		var r = appParseJson(resp, null);
 		if (!r || !r.ok) { appNotify("warning", (r && r.message) || "No se encontró el artículo"); return; }
-		agregarDetalle(r.idarticulo, r.nombre, r.precio_venta, r.unidad, r.stock);
+		agregarFicha(r, r.idpresentacion || 0);
 	});
 }
 
@@ -196,7 +276,7 @@ function mostrar(id){
 		$("#detVender").attr("href", "venta.php?cotizacion=" + id).toggle(c.estado === "PENDIENTE" || c.estado === "ACEPTADA");
 		$("#detCabecera").html('<div class="col-sm-6"><p><strong>Cliente:</strong> ' + appEscapeHtml(c.cliente) + '</p><p><strong>Vendedor:</strong> ' + appEscapeHtml(c.usuario) + '</p><p><strong>Fecha:</strong> ' + appEscapeHtml(c.fecha) + '</p></div><div class="col-sm-6"><p><strong>Estado:</strong> ' + appEscapeHtml(c.estado) + '</p><p><strong>Válida hasta:</strong> ' + appEscapeHtml(c.fecha_validez) + '</p><p><strong>Total:</strong> <span class="money">' + money(c.total) + '</span> (impuesto ' + appEscapeHtml(c.impuesto) + ' %)</p>' + (c.observacion ? '<p><strong>Obs.:</strong> ' + appEscapeHtml(c.observacion) + '</p>' : '') + (c.condiciones ? '<p><strong>Condiciones:</strong> ' + appEscapeHtml(c.condiciones) + '</p>' : '') + '</div>');
 		var html = '<thead><tr><th>Artículo</th><th>Unidad</th><th class="text-right">Cant.</th><th class="text-right">Precio</th><th class="text-right">Dscto.</th><th class="text-right">Subtotal</th></tr></thead><tbody>';
-		(c.items || []).forEach(function(it){ html += '<tr><td>' + appEscapeHtml(it.nombre) + '</td><td>' + appEscapeHtml(it.unidad) + '</td><td class="text-right">' + it.cantidad + '</td><td class="text-right">' + Number(it.precio).toFixed(2) + '</td><td class="text-right">' + Number(it.descuento).toFixed(2) + '</td><td class="text-right">' + Number(it.subtotal).toFixed(2) + '</td></tr>'; });
+		(c.items || []).forEach(function(it){ html += '<tr><td>' + appEscapeHtml(it.nombre) + '</td><td>' + appEscapeHtml(it.unidad) + '</td><td class="text-right">' + window.appCantidad(it.cantidad) + '</td><td class="text-right">' + Number(it.precio).toFixed(2) + '</td><td class="text-right">' + Number(it.descuento).toFixed(2) + '</td><td class="text-right">' + Number(it.subtotal).toFixed(2) + '</td></tr>'; });
 		html += '</tbody>';
 		$("#detTabla").html(html);
 		$("#modalDetalle").modal("show");
@@ -217,7 +297,10 @@ function editar(id){
 		$("#impuesto").val(c.impuesto); $("#observacion").val($("<textarea/>").html(c.observacion || "").text()); $("#condiciones").val($("<textarea/>").html(c.condiciones || "").text());
 		var fijarCliente = function(){ $("#idcliente").val(String(c.idcliente)).selectpicker("refresh"); };
 		if (clientesCargados) { fijarCliente(); } else { setTimeout(fijarCliente, 600); }
-		(c.items || []).forEach(function(it){ agregarDetalle(it.idarticulo, it.nombre, it.precio, it.unidad, it.stock, it.cantidad, it.descuento); });
+		var cadena = $.Deferred().resolve();
+		(c.items || []).forEach(function(it){
+			cadena = cadena.then(function(){ return agregarArticulo(it.idarticulo, it.idpresentacion || 0, { cantidad: it.cantidad, precio: Number(it.precio), descuento: it.descuento, silencioso: true }); });
+		});
 	});
 }
 

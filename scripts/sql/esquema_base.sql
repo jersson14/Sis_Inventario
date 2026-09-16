@@ -153,6 +153,8 @@ CREATE TABLE `configuracion_empresa` (
   `serie_cotizacion` varchar(10) NOT NULL DEFAULT 'COT',
   `impuesto_default` decimal(5,2) NOT NULL DEFAULT 18.00,
   `moneda` varchar(10) NOT NULL DEFAULT 'PEN',
+  `tipo_negocio` varchar(20) NOT NULL DEFAULT 'GENERAL' COMMENT 'GENERAL | ABARROTES | FERRETERIA | ROPA',
+  `dias_alerta_vencimiento` int(11) NOT NULL DEFAULT 30,
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `mensaje_ticket` varchar(160) NOT NULL DEFAULT 'Gracias por su compra',
   PRIMARY KEY (`idconfig`)
@@ -204,7 +206,9 @@ CREATE TABLE `detalle_ingreso` (
   `iddetalle_ingreso` int(11) NOT NULL AUTO_INCREMENT,
   `idingreso` int(11) NOT NULL,
   `idarticulo` int(11) NOT NULL,
+  `idpresentacion` int(11) DEFAULT NULL,
   `cantidad` decimal(14,3) NOT NULL,
+  `factor` decimal(14,3) NOT NULL DEFAULT 1.000,
   `precio_compra` decimal(11,2) NOT NULL,
   `precio_venta` decimal(11,2) NOT NULL,
   PRIMARY KEY (`iddetalle_ingreso`),
@@ -215,7 +219,7 @@ CREATE TABLE `detalle_ingreso` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
 CREATE TRIGGER `tr_updStockIngreso` AFTER INSERT ON `detalle_ingreso` FOR EACH ROW BEGIN
-UPDATE articulo SET stock=stock + NEW.cantidad
+UPDATE articulo SET stock=stock + (NEW.cantidad * NEW.factor)
 WHERE articulo.idarticulo = NEW.idarticulo;
 END;
 
@@ -225,7 +229,9 @@ CREATE TABLE `detalle_venta` (
   `iddetalle_venta` int(11) NOT NULL AUTO_INCREMENT,
   `idventa` int(11) NOT NULL,
   `idarticulo` int(11) NOT NULL,
+  `idpresentacion` int(11) DEFAULT NULL,
   `cantidad` decimal(14,3) NOT NULL,
+  `factor` decimal(14,3) NOT NULL DEFAULT 1.000,
   `precio_venta` decimal(11,2) NOT NULL,
   `descuento` decimal(11,2) NOT NULL,
   PRIMARY KEY (`iddetalle_venta`),
@@ -236,7 +242,7 @@ CREATE TABLE `detalle_venta` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
 CREATE TRIGGER `tr_udpStockVenta` AFTER INSERT ON `detalle_venta` FOR EACH ROW BEGIN
-UPDATE articulo SET stock = stock - NEW.cantidad
+UPDATE articulo SET stock = stock - (NEW.cantidad * NEW.factor)
 WHERE articulo.idarticulo = NEW.idarticulo;
 END;
 
@@ -352,6 +358,7 @@ CREATE TABLE `unidad_medida` (
   `nombre` varchar(60) NOT NULL,
   `abreviatura` varchar(10) NOT NULL,
   `descripcion` varchar(120) DEFAULT NULL,
+  `permite_fraccion` tinyint(1) NOT NULL DEFAULT 0,
   `condicion` tinyint(4) NOT NULL DEFAULT 1,
   PRIMARY KEY (`idunidad`),
   UNIQUE KEY `nombre_UNIQUE` (`nombre`),
@@ -447,7 +454,9 @@ CREATE TABLE IF NOT EXISTS `detalle_cotizacion` (
   `iddetalle_cotizacion` INT(11) NOT NULL AUTO_INCREMENT,
   `idcotizacion` INT(11) NOT NULL,
   `idarticulo` INT(11) NOT NULL,
+  `idpresentacion` INT(11) DEFAULT NULL,
   `cantidad` DECIMAL(14,3) NOT NULL,
+  `factor` DECIMAL(14,3) NOT NULL DEFAULT 1.000,
   `precio` DECIMAL(11,2) NOT NULL,
   `descuento` DECIMAL(11,2) NOT NULL DEFAULT 0.00,
   PRIMARY KEY (`iddetalle_cotizacion`),
@@ -457,17 +466,76 @@ CREATE TABLE IF NOT EXISTS `detalle_cotizacion` (
   CONSTRAINT `fk_detcot_articulo` FOREIGN KEY (`idarticulo`) REFERENCES `articulo` (`idarticulo`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `articulo_presentacion` (
+  `idpresentacion` INT(11) NOT NULL AUTO_INCREMENT,
+  `idarticulo` INT(11) NOT NULL,
+  `nombre` VARCHAR(60) NOT NULL,
+  `factor` DECIMAL(14,3) NOT NULL COMMENT 'Unidades base que contiene',
+  `precio_venta` DECIMAL(11,2) NOT NULL DEFAULT 0.00,
+  `precio_compra` DECIMAL(11,2) NOT NULL DEFAULT 0.00,
+  `codigo` VARCHAR(50) DEFAULT NULL,
+  `condicion` TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`idpresentacion`),
+  UNIQUE KEY `uq_presentacion_articulo_nombre` (`idarticulo`, `nombre`),
+  KEY `idx_presentacion_codigo` (`codigo`),
+  CONSTRAINT `fk_presentacion_articulo` FOREIGN KEY (`idarticulo`) REFERENCES `articulo` (`idarticulo`) ON DELETE CASCADE ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `articulo_precio_escala` (
+  `idescala` INT(11) NOT NULL AUTO_INCREMENT,
+  `idarticulo` INT(11) NOT NULL,
+  `cantidad_minima` DECIMAL(14,3) NOT NULL,
+  `precio` DECIMAL(11,2) NOT NULL,
+  PRIMARY KEY (`idescala`),
+  UNIQUE KEY `uq_escala_articulo_cantidad` (`idarticulo`, `cantidad_minima`),
+  CONSTRAINT `fk_escala_articulo` FOREIGN KEY (`idarticulo`) REFERENCES `articulo` (`idarticulo`) ON DELETE CASCADE ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `lote` (
+  `idlote` INT(11) NOT NULL AUTO_INCREMENT,
+  `idarticulo` INT(11) NOT NULL,
+  `codigo_lote` VARCHAR(40) DEFAULT NULL,
+  `fecha_vencimiento` DATE DEFAULT NULL,
+  `cantidad_inicial` DECIMAL(14,3) NOT NULL,
+  `stock` DECIMAL(14,3) NOT NULL,
+  `costo_unitario` DECIMAL(11,2) NOT NULL DEFAULT 0.00,
+  `idingreso` INT(11) DEFAULT NULL,
+  `idajuste` INT(11) DEFAULT NULL,
+  `fecha_ingreso` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `condicion` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0 = anulado junto con su compra',
+  PRIMARY KEY (`idlote`),
+  KEY `idx_lote_articulo_vence` (`idarticulo`, `fecha_vencimiento`),
+  KEY `idx_lote_vence` (`fecha_vencimiento`),
+  KEY `idx_lote_ingreso` (`idingreso`),
+  CONSTRAINT `fk_lote_articulo` FOREIGN KEY (`idarticulo`) REFERENCES `articulo` (`idarticulo`) ON DELETE CASCADE ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `lote_movimiento` (
+  `idmovimiento` INT(11) NOT NULL AUTO_INCREMENT,
+  `idlote` INT(11) NOT NULL,
+  `tipo` VARCHAR(20) NOT NULL COMMENT 'VENTA | AJUSTE',
+  `cantidad` DECIMAL(14,3) NOT NULL COMMENT 'Unidades base retiradas del lote',
+  `iddetalle_venta` INT(11) DEFAULT NULL,
+  `idventa` INT(11) DEFAULT NULL,
+  `idajuste` INT(11) DEFAULT NULL,
+  `fecha_hora` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`idmovimiento`),
+  KEY `idx_lotemov_lote` (`idlote`),
+  KEY `idx_lotemov_venta` (`idventa`),
+  CONSTRAINT `fk_lotemov_lote` FOREIGN KEY (`idlote`) REFERENCES `lote` (`idlote`) ON DELETE CASCADE ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 -- ------------------------------------------------------------------
 -- Datos semilla
 -- ------------------------------------------------------------------
 INSERT IGNORE INTO `permiso` (`idpermiso`,`nombre`) VALUES (1,'Escritorio'),(2,'Almacen'),(3,'Compras'),(4,'Ventas'),(5,'Acceso'),(6,'Consulta Compras'),(7,'Consulta Ventas'),(8,'Gestion Pro'),(9,'Empresa'),(10,'Centro Inteligente'),(11,'Cuentas CxC CxP'),(12,'Backup'),(13,'Centro Reportes'),(14,'Caja'),(15,'Ajustes Inventario');
 
-INSERT IGNORE INTO `unidad_medida` (`nombre`,`abreviatura`,`descripcion`,`condicion`) VALUES ('Unidad','und','Unidad individual',1),('Kilogramo','kg','Peso en kilogramo',1),('Gramo','g','Peso en gramo',1),('Litro','lt','Volumen en litro',1),('Mililitro','ml','Volumen en mililitro',1),('Metro','m','Longitud en metro',1),('Centimetro','cm','Longitud en centimetro',1),('Caja','caja','Presentacion en caja',1),('Paquete','paq','Presentacion en paquete',1),('Galon','gal','Volumen en galon',1);
+INSERT IGNORE INTO `unidad_medida` (`nombre`,`abreviatura`,`descripcion`,`permite_fraccion`,`condicion`) VALUES ('Unidad','und','Unidad individual',0,1),('Kilogramo','kg','Peso en kilogramo',1,1),('Gramo','g','Peso en gramo',1,1),('Litro','lt','Volumen en litro',1,1),('Mililitro','ml','Volumen en mililitro',1,1),('Metro','m','Longitud en metro',1,1),('Centimetro','cm','Longitud en centimetro',1,1),('Caja','caja','Presentacion en caja',0,1),('Paquete','paq','Presentacion en paquete',0,1),('Galon','gal','Volumen en galon',1,1);
 
 INSERT IGNORE INTO `categoria` (`idcategoria`,`nombre`,`descripcion`,`condicion`) VALUES (1,'General','Categoria por defecto',1);
 
 INSERT IGNORE INTO `configuracion_empresa` (`idconfig`,`nombre_comercial`,`razon_social`,`ruc`,`direccion`,`telefono`,`celular`,`correo`,`web`,`logo`,`color_primario`,`color_secundario`,`serie_boleta`,`serie_factura`,`serie_ticket`,`impuesto_default`,`moneda`,`mensaje_ticket`) VALUES (1,'Mi Tienda','','','','','','','','','#0f766e','#f59e0b','B001','F001','T001',18.00,'PEN','Gracias por su compra');
 
-INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql'),('20260913_cotizaciones.sql');
+INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql'),('20260913_cotizaciones.sql'),('20260915_perfil_negocio.sql'),('20260916_ferreteria.sql'),('20260917_abarrotes.sql');
 
 SET FOREIGN_KEY_CHECKS=1;

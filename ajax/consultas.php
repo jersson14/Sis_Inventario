@@ -95,7 +95,7 @@ switch ($op) {
 					"0" => e($reg->codigo),
 					"1" => e($reg->articulo),
 					"2" => e($reg->categoria),
-					"3" => number_format((float)$reg->cantidad_vendida, 0),
+					"3" => formatearCantidad($reg->cantidad_vendida),
 					"4" => number_format((float)$reg->venta_total, 2),
 					"5" => number_format((float)$reg->costo_estimado, 2),
 					"6" => number_format($utilidad, 2),
@@ -127,7 +127,7 @@ switch ($op) {
 					"1" => e($reg->codigo),
 					"2" => e($reg->articulo),
 					"3" => e($reg->categoria),
-					"4" => number_format((float)$reg->cantidad, 0) . " " . e($reg->unidad),
+					"4" => formatearCantidad($reg->cantidad) . " " . e($reg->unidad),
 					"5" => number_format((float)$reg->total, 2)
 				);
 			}
@@ -156,8 +156,8 @@ switch ($op) {
 					"0" => e($reg->codigo),
 					"1" => e($reg->articulo),
 					"2" => e($reg->categoria),
-					"3" => number_format((float)$reg->stock, 0) . " " . e($reg->unidad),
-					"4" => number_format((float)$reg->stock_minimo, 0) . " " . e($reg->unidad),
+					"3" => formatearCantidad($reg->stock) . " " . e($reg->unidad),
+					"4" => formatearCantidad($reg->stock_minimo) . " " . e($reg->unidad),
 					"5" => $badge,
 					"6" => e($reg->ultimo_mov),
 					"7" => (int)$reg->dias_sin_mov

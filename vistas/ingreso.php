@@ -82,9 +82,9 @@ if (usuarioTienePermiso('compras')) {
                 </div>
                 <div class="table-responsive">
                   <table id="detalles" class="table table-bordered table-hover">
-                    <thead><tr><th style="width:52px"></th><th>Artículo</th><th>Unidad</th><th style="width:110px">Cantidad</th><th style="width:120px">P. Compra</th><th style="width:120px">P. Venta</th><th style="width:120px" class="text-right">Subtotal</th><th style="width:44px"></th></tr></thead>
+                    <thead><tr><th style="width:52px"></th><th class="col-articulo">Artículo</th><th style="width:70px">Unidad</th><th style="width:104px">Cantidad</th><th style="width:112px">P. Compra</th><th style="width:112px">P. Venta</th><th style="width:124px" class="text-right">Subtotal</th></tr></thead>
                     <tbody></tbody>
-                    <tfoot><tr><th colspan="6" class="text-right">TOTAL</th><th class="text-right"><h4 id="total" class="mb-0"><?php echo e(formatearMoneda(0)); ?></h4><input type="hidden" name="total_compra" id="total_compra"></th><th></th></tr></tfoot>
+                    <tfoot><tr><th colspan="6" class="text-right">TOTAL</th><th class="text-right"><h4 id="total" class="mb-0"><?php echo e(formatearMoneda(0)); ?></h4><input type="hidden" name="total_compra" id="total_compra"></th></tr></tfoot>
                   </table>
                   <div class="empty-state" id="detalleVacio"><i class="fa fa-cubes"></i><strong>Aún no hay artículos</strong>Abre el catálogo (F2) y agrega los productos que ingresan.</div>
                 </div>

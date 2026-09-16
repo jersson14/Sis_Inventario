@@ -11,19 +11,30 @@ function cargarEmpresa(){
 	$.get("../ajax/empresa.php?op=mostrar", function(resp){
 		var d = appParseJson(resp, null);
 		if (!d || !d.idconfig) { return; }
-		var campos = ["nombre_comercial", "razon_social", "ruc", "direccion", "telefono", "celular", "correo", "web", "serie_boleta", "serie_factura", "serie_ticket", "serie_cotizacion", "impuesto_default", "moneda", "mensaje_ticket"];
+		var campos = ["nombre_comercial", "razon_social", "ruc", "direccion", "telefono", "celular", "correo", "web", "serie_boleta", "serie_factura", "serie_ticket", "serie_cotizacion", "impuesto_default", "moneda", "dias_alerta_vencimiento", "mensaje_ticket"];
 		campos.forEach(function(c){ if (typeof d[c] !== "undefined" && d[c] !== null) { $("#" + c).val($("<textarea/>").html(String(d[c])).text()); } });
 		$("#color_primario").val(d.color_primario || "#0f766e");
 		$("#color_secundario").val(d.color_secundario || "#f59e0b");
 		$("#logoactual").val(d.logo || "");
 		if (d.logo_url) { $("#logomuestra").attr("src", d.logo_url); }
 		else if (d.logo) { $("#logomuestra").attr("src", "../files/empresa/" + d.logo); }
+		marcarRubro(d.tipo_negocio || "GENERAL");
 		actualizarPreview();
 	});
 }
 
+// Marca visualmente la tarjeta del rubro activo (:has() no llega a navegadores viejos)
+function marcarRubro(valor){
+	var $radio = $(".rubro-card input[name='tipo_negocio'][value='" + valor + "']");
+	if (!$radio.length) { $radio = $(".rubro-card input[name='tipo_negocio'][value='GENERAL']"); }
+	$radio.prop("checked", true);
+	$(".rubro-card").removeClass("is-activa");
+	$radio.closest(".rubro-card").addClass("is-activa");
+}
+
 function init(){
 	cargarEmpresa();
+	$(document).on("change", ".rubro-card input[name='tipo_negocio']", function(){ marcarRubro($(this).val()); });
 	$("#color_primario, #color_secundario, #nombre_comercial").on("input change", actualizarPreview);
 	$("#logo").on("change", function(){
 		var file = this.files && this.files[0];

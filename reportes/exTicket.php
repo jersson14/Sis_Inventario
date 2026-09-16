@@ -100,10 +100,10 @@ if (!isset($_SESSION['nombre'])) {
           $rsptad = $venta->ventadetalles($idReporte);
           $cantidadTotal = 0.0;
           while ($regd = $rsptad->fetch_object()) {
-            $cantidadTotal += (float)$regd->cantidad;
+            $cantidadTotal += (float)$regd->cantidad * (float)$regd->factor;
           ?>
           <tr>
-            <td class="qty"><?php echo number_format((float)$regd->cantidad, 0) . " " . e($regd->unidad); ?></td>
+            <td class="qty"><?php echo formatearCantidad($regd->cantidad) . " " . e($regd->unidad); ?></td>
             <td class="desc"><?php echo e($regd->articulo); ?></td>
             <td class="amount"><?php echo e($simboloMoneda); ?> <?php echo number_format((float)$regd->subtotal, 2); ?></td>
           </tr>
@@ -117,7 +117,7 @@ if (!isset($_SESSION['nombre'])) {
         <div class="totals-row totals-main"><span>Total</span><strong><?php echo e($simboloMoneda); ?> <?php echo number_format($total, 2); ?></strong></div>
       </div>
 
-      <p class="info-line" style="margin-top:8px;"><strong>Items:</strong> <?php echo number_format($cantidadTotal, 0); ?></p>
+      <p class="info-line" style="margin-top:8px;"><strong>Items:</strong> <?php echo formatearCantidad($cantidadTotal); ?></p>
 
       <div class="ticket-foot">
         <p><?php echo e(!empty($cfgEmpresa["mensaje_ticket"]) ? $cfgEmpresa["mensaje_ticket"] : "Gracias por su compra."); ?></p>

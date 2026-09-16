@@ -4,6 +4,8 @@
  * No hay trigger: este modelo actualiza articulo.stock dentro de una transaccion.
  */
 require_once "../config/Conexion.php";
+require_once "../config/negocio.php";
+require_once "../modelos/Lote.php";
 
 class Inventario
 {
@@ -26,7 +28,7 @@ class Inventario
 
 	public function articulosActivos()
 	{
-		return dbQuery("SELECT a.idarticulo, a.nombre, IFNULL(a.codigo,'') AS codigo, a.stock, a.precio_compra, IFNULL(u.abreviatura,'und') AS unidad
+		return dbQuery("SELECT a.idarticulo, a.nombre, IFNULL(a.codigo,'') AS codigo, a.stock, a.precio_compra, IFNULL(u.abreviatura,'und') AS unidad, IFNULL(u.permite_fraccion,0) AS permite_fraccion
 			FROM articulo a
 			LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
 			WHERE a.condicion=1
@@ -44,13 +46,15 @@ class Inventario
 	/**
 	 * Registra un ajuste. Devuelve array(ok, message, stock_nuevo).
 	 */
-	public function registrar($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion)
+	public function registrar($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion, $idlote = 0, $loteCodigo = '', $loteVencimiento = '')
 	{
 		$idarticulo = (int)$idarticulo;
 		$idusuario = (int)$idusuario;
 		$tipo = strtoupper(trim((string)$tipo));
 		$motivo = strtoupper(trim((string)$motivo));
-		$cantidad = (int)round((float)$cantidad);
+		// Decimales solo si el rubro usa fracciones y la unidad del articulo lo admite
+		$fraccion = articulosPermitenFraccion(array((int)$idarticulo));
+		$cantidad = cantidadSegura($cantidad, !empty($fraccion[(int)$idarticulo]));
 		$costo_unitario = round((float)$costo_unitario, 2);
 		$observacion = substr((string)$observacion, 0, 200);
 
@@ -70,8 +74,16 @@ class Inventario
 		if ($costo_unitario < 0) {
 			return array('ok' => false, 'message' => 'El costo no puede ser negativo.');
 		}
+		$usaLotes = Lote::activo();
+		$idlote = $usaLotes && $tipo === 'SALIDA' ? (int)$idlote : 0;
+		$loteCodigo = $usaLotes && $tipo === 'ENTRADA' ? Lote::codigoValido($loteCodigo) : '';
+		$loteVencimiento = $usaLotes && $tipo === 'ENTRADA' ? Lote::fechaValida($loteVencimiento) : '';
+		if ($loteVencimiento === false) {
+			return array('ok' => false, 'message' => 'La fecha de vencimiento no es válida.');
+		}
 
-		$resultado = dbTransaccion(function () use ($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion) {
+		$errorLote = '';
+		$resultado = dbTransaccion(function () use ($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion, $usaLotes, $idlote, $loteCodigo, $loteVencimiento, &$errorLote) {
 			$art = dbRow("SELECT idarticulo, nombre, stock, precio_compra, condicion FROM articulo WHERE idarticulo=? FOR UPDATE", array($idarticulo));
 			if (!$art) {
 				return array('ok' => false, 'message' => 'El artículo no existe.');
@@ -81,9 +93,9 @@ class Inventario
 			}
 			$stockAnterior = (float)$art['stock'];
 			$delta = $tipo === 'ENTRADA' ? $cantidad : -$cantidad;
-			$stockNuevo = $stockAnterior + $delta;
+			$stockNuevo = round($stockAnterior + $delta, 3);
 			if ($stockNuevo < 0) {
-				return array('ok' => false, 'message' => 'No puedes retirar más de lo que hay en stock (' . number_format($stockAnterior, 0) . ').');
+				return array('ok' => false, 'message' => 'No puedes retirar más de lo que hay en stock (' . formatearCantidad($stockAnterior) . ').');
 			}
 			$costo = $costo_unitario > 0 ? $costo_unitario : (float)$art['precio_compra'];
 
@@ -96,11 +108,33 @@ class Inventario
 			if (!dbExec("UPDATE articulo SET stock=? WHERE idarticulo=?", array($stockNuevo, $idarticulo))) {
 				return false;
 			}
-			return array('ok' => true, 'message' => 'Ajuste registrado. Stock de ' . $art['nombre'] . ': ' . number_format($stockAnterior, 0) . ' → ' . number_format($stockNuevo, 0), 'idajuste' => $id, 'stock_nuevo' => $stockNuevo, 'articulo' => $art['nombre']);
+
+			// Lotes: la entrada puede crear uno; la salida sale de un lote elegido o en orden FEFO
+			if ($usaLotes && $tipo === 'ENTRADA' && ($loteVencimiento !== '' || $loteCodigo !== '')) {
+				if (Lote::crear($idarticulo, $cantidad, $loteVencimiento, $loteCodigo, $costo, null, $id) <= 0) {
+					return false;
+				}
+			} elseif ($usaLotes && $tipo === 'SALIDA') {
+				$ref = array('tipo' => 'AJUSTE', 'idajuste' => $id);
+				if ($idlote > 0) {
+					$r = Lote::consumirLote($idlote, $idarticulo, $cantidad, $ref);
+					if ($r !== true) {
+						// false (no un array): dbTransaccion solo deshace el ajuste ya escrito con false
+						$errorLote = $r . '.';
+						return false;
+					}
+				} elseif (Lote::consumir($idarticulo, $cantidad, $ref) === false) {
+					return false;
+				}
+			}
+			if (!Lote::ajustarAlStock($idarticulo)) {
+				return false;
+			}
+			return array('ok' => true, 'message' => 'Ajuste registrado. Stock de ' . $art['nombre'] . ': ' . formatearCantidad($stockAnterior) . ' → ' . formatearCantidad($stockNuevo), 'idajuste' => $id, 'stock_nuevo' => $stockNuevo, 'articulo' => $art['nombre']);
 		});
 
 		if ($resultado === false) {
-			return array('ok' => false, 'message' => 'No se pudo registrar el ajuste.');
+			return array('ok' => false, 'message' => $errorLote !== '' ? $errorLote : 'No se pudo registrar el ajuste.');
 		}
 		return $resultado;
 	}

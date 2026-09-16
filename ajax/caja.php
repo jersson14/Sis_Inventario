@@ -133,7 +133,7 @@ switch ($op) {
                     '8' => $reg->diferencia === null ? '-' : formatearMoneda((float)$reg->diferencia),
                     '9' => $estado,
                     '10' => e($reg->usuario),
-                    '11' => '<button class="btn btn-default btn-xs" title="Ver detalle" onclick="verDetalleCaja(' . $id . ')"><i class="fa fa-print"></i></button>'
+                    '11' => '<button class="btn btn-default btn-xs" title="Ver arqueo" onclick="verDetalleCaja(' . $id . ')"><i class="fa fa-eye"></i></button>'
                 );
             }
         }

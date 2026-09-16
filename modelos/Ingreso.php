@@ -11,6 +11,8 @@
  *  - CREDITO: se genera automaticamente una cuenta_pagar.
  */
 require_once "../config/Conexion.php";
+require_once "../config/negocio.php";   // fracciones y presentaciones
+require_once "../modelos/Lote.php";      // lotes y vencimientos
 
 class Ingreso{
 
@@ -72,14 +74,6 @@ class Ingreso{
 			return date("Y-m-d H:i:s");
 		}
 		return date("Y-m-d H:i:s", $ts);
-	}
-
-	private function normalizarCantidadEntera($valor){
-		$cantidad = (int)round((float)$valor);
-		if ($cantidad < 0) {
-			$cantidad = 0;
-		}
-		return $cantidad;
 	}
 
 	private function normalizarTipoPago($valor){
@@ -157,7 +151,7 @@ class Ingreso{
 	 * Devuelve array {ok, message} o
 	 * {ok:true, idingreso, tipo_comprobante, serie_comprobante, num_comprobante, total, caja_registrada, cuenta_pagar}.
 	 */
-	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta){
+	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta,$idpresentacion = array(),$loteCodigo = array(),$loteVencimiento = array()){
 		$idproveedor = (int)$idproveedor;
 		$idusuario = (int)$idusuario;
 
@@ -187,6 +181,16 @@ class Ingreso{
 		if (!is_array($precio_venta)) {
 			$precio_venta = array();
 		}
+		if (!is_array($idpresentacion)) {
+			$idpresentacion = array();
+		}
+		if (!is_array($loteCodigo)) {
+			$loteCodigo = array();
+		}
+		if (!is_array($loteVencimiento)) {
+			$loteVencimiento = array();
+		}
+		$usaLotes = Lote::activo();
 
 		// Cabecera
 		$fecha_hora = $this->normalizarFechaHora($fecha_hora);
@@ -215,9 +219,16 @@ class Ingreso{
 		$articulosAfectados = array();
 		$total = 0.0;
 		$n = count($idarticulo);
+		$fraccion = articulosPermitenFraccion($idarticulo);
 		for ($i = 0; $i < $n; $i++) {
 			$idArticuloActual = (int)$idarticulo[$i];
-			$cantidadActual = $this->normalizarCantidadEntera($cantidad[$i]);
+			$presentacion = resolverPresentacionDetalle($idArticuloActual, isset($idpresentacion[$i]) ? $idpresentacion[$i] : 0);
+			if ($presentacion === false) {
+				return $this->error("Una de las presentaciones del detalle no es valida o fue desactivada");
+			}
+			list($idPresentacionActual, $factorActual) = $presentacion;
+			// Cajas y paquetes se compran enteros; la unidad base puede fraccionarse
+			$cantidadActual = cantidadSegura($cantidad[$i], $idPresentacionActual === null && !empty($fraccion[$idArticuloActual]));
 			$precioCompraActual = isset($precio_compra[$i]) ? decimalSeguro($precio_compra[$i], 2, -1) : -1;
 			$precioVentaActual = isset($precio_venta[$i]) ? decimalSeguro($precio_venta[$i], 2, 0) : 0.0;
 
@@ -231,9 +242,22 @@ class Ingreso{
 				return $this->error("Los precios no pueden ser negativos");
 			}
 
+			$codigoLote = $usaLotes ? Lote::codigoValido(isset($loteCodigo[$i]) ? $loteCodigo[$i] : '') : '';
+			$vence = $usaLotes ? Lote::fechaValida(isset($loteVencimiento[$i]) ? $loteVencimiento[$i] : '') : '';
+			if ($vence === false) {
+				return $this->error("Hay una fecha de vencimiento no valida en el detalle");
+			}
+			if ($vence !== '' && $vence < $fecha_compra) {
+				return $this->error("La fecha de vencimiento (" . date('d/m/Y', strtotime($vence)) . ") no puede ser anterior a la fecha de la compra");
+			}
+
 			$articulosAfectados[$idArticuloActual] = true;
 			$detalles[] = array(
+				"lote_codigo"=>$codigoLote,
+				"lote_vencimiento"=>$vence,
 				"idarticulo"=>$idArticuloActual,
+				"idpresentacion"=>$idPresentacionActual,
+				"factor"=>$factorActual,
 				"cantidad"=>$cantidadActual,
 				"precio_compra"=>(float)$precioCompraActual,
 				"precio_venta"=>(float)$precioVentaActual
@@ -325,17 +349,39 @@ class Ingreso{
 			// Detalle (el trigger suma el stock) + precios de referencia del articulo
 			foreach ($detalles as $d) {
 				$ok = dbExec(
-					"INSERT INTO detalle_ingreso (idingreso,idarticulo,cantidad,precio_compra,precio_venta) VALUES (?,?,?,?,?)",
-					array($idingreso, $d["idarticulo"], $d["cantidad"], $d["precio_compra"], $d["precio_venta"])
+					"INSERT INTO detalle_ingreso (idingreso,idarticulo,idpresentacion,cantidad,factor,precio_compra,precio_venta) VALUES (?,?,?,?,?,?,?)",
+					array($idingreso, $d["idarticulo"], $d["idpresentacion"], $d["cantidad"], $d["factor"], $d["precio_compra"], $d["precio_venta"])
 				);
 				if (!$ok) {
 					$mensajeError = "No se pudo registrar el detalle del ingreso";
 					return false;
 				}
-				$ok = dbExec(
-					"UPDATE articulo SET precio_compra=?, precio_venta=IF(?>0, ?, precio_venta) WHERE idarticulo=?",
-					array($d["precio_compra"], $d["precio_venta"], $d["precio_venta"], $d["idarticulo"])
-				);
+				// Lote: solo si la linea trae fecha de vencimiento o codigo de lote
+				if ($d["lote_vencimiento"] !== '' || $d["lote_codigo"] !== '') {
+					$idlote = Lote::crear(
+						$d["idarticulo"], round($d["cantidad"] * $d["factor"], 3), $d["lote_vencimiento"], $d["lote_codigo"],
+						round($d["precio_compra"] / $d["factor"], 2), $idingreso
+					);
+					if ($idlote <= 0) {
+						$mensajeError = "No se pudo registrar el lote del articulo";
+						return false;
+					}
+				}
+				if ($d["idpresentacion"] !== null) {
+					// Comprado por caja: la caja guarda su precio y el articulo el costo por unidad base
+					$ok = dbExec(
+						"UPDATE articulo_presentacion SET precio_compra=?, precio_venta=IF(?>0, ?, precio_venta) WHERE idpresentacion=?",
+						array($d["precio_compra"], $d["precio_venta"], $d["precio_venta"], $d["idpresentacion"])
+					) && dbExec(
+						"UPDATE articulo SET precio_compra=? WHERE idarticulo=?",
+						array(round($d["precio_compra"] / $d["factor"], 2), $d["idarticulo"])
+					);
+				} else {
+					$ok = dbExec(
+						"UPDATE articulo SET precio_compra=?, precio_venta=IF(?>0, ?, precio_venta) WHERE idarticulo=?",
+						array($d["precio_compra"], $d["precio_venta"], $d["precio_venta"], $d["idarticulo"])
+					);
+				}
 				if (!$ok) {
 					$mensajeError = "No se pudo actualizar los precios de referencia del articulo";
 					return false;
@@ -449,7 +495,7 @@ class Ingreso{
 
 			// Verificar que el stock ingresado siga disponible (por articulo, con bloqueo)
 			$detalle = dbAll(
-				"SELECT d.idarticulo, SUM(d.cantidad) AS cantidad
+				"SELECT d.idarticulo, SUM(d.cantidad*d.factor) AS cantidad
 				 FROM detalle_ingreso d
 				 WHERE d.idingreso=?
 				 GROUP BY d.idarticulo",
@@ -467,6 +513,12 @@ class Ingreso{
 				}
 			}
 
+			$consumidos = Lote::lotesConsumidosDeIngreso($idingreso);
+			if (count($consumidos) > 0) {
+				$mensajeError = "No se puede anular: parte del lote de " . $consumidos[0]["nombre"] . ($consumidos[0]["codigo_lote"] ? " (" . $consumidos[0]["codigo_lote"] . ")" : "") . " ya salio por venta o ajuste";
+				return false;
+			}
+
 			foreach ($cuentas as $c) {
 				if (!dbExec("UPDATE cuenta_pagar SET estado='ANULADO', saldo=0 WHERE idcuenta_pagar=?", array((int)$c["idcuenta_pagar"]))) {
 					$mensajeError = "No se pudo anular la cuenta por pagar";
@@ -474,10 +526,20 @@ class Ingreso{
 				}
 			}
 
-			// Restar stock
+			// Restar stock y retirar los lotes que trajo esta compra
 			foreach ($detalle as $d) {
 				if (!dbExec("UPDATE articulo SET stock=stock-? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
 					$mensajeError = "No se pudo revertir el stock de los articulos";
+					return false;
+				}
+			}
+			if (!Lote::anularLotesIngreso($idingreso)) {
+				$mensajeError = "No se pudo anular los lotes de la compra";
+				return false;
+			}
+			foreach ($detalle as $d) {
+				if (!Lote::ajustarAlStock($d["idarticulo"])) {
+					$mensajeError = "No se pudo actualizar los lotes del articulo";
 					return false;
 				}
 			}
@@ -516,6 +578,130 @@ class Ingreso{
 		return array("ok"=>true, "message"=>"Ingreso anulado correctamente");
 	}
 
+	/**
+	 * Borrado definitivo de una compra (solo perfil con permiso 'acceso').
+	 *
+	 * Igual que en ventas, se exige que no haya pagos aplicados ni movimientos
+	 * en una caja cerrada. La diferencia es el stock: una compra lo sumo, asi
+	 * que borrarla obliga a restarlo, y eso solo es valido si esa mercaderia
+	 * sigue en el almacen (si ya se vendio, el stock quedaria negativo).
+	 *
+	 * El descuento se aplica UNICAMENTE si la compra seguia vigente; si ya
+	 * estaba anulada el stock se descontó en la anulacion.
+	 */
+	public function eliminar($idingreso, $idusuario){
+		$idingreso = (int)$idingreso;
+		$idusuario = (int)$idusuario;
+		if ($idingreso <= 0) {
+			return $this->error("Ingreso no valido");
+		}
+		if ($idusuario <= 0) {
+			return $this->error("Sesion de usuario no valida");
+		}
+		$mensajeError = '';
+		$documento = '';
+
+		$resultado = dbTransaccion(function($cx) use ($idingreso, &$mensajeError, &$documento) {
+			$ingreso = dbRow(
+				"SELECT idingreso,estado,tipo_comprobante,serie_comprobante,num_comprobante,total_compra
+				 FROM ingreso WHERE idingreso=? FOR UPDATE",
+				array($idingreso)
+			);
+			if (!$ingreso) {
+				$mensajeError = "El ingreso no existe";
+				return false;
+			}
+			$documento = $ingreso["tipo_comprobante"] . " " . $ingreso["serie_comprobante"] . "-" . $ingreso["num_comprobante"];
+
+			// Pagos aplicados: el dinero ya salio, no se puede borrar el origen
+			$cuentas = dbAll("SELECT idcuenta_pagar FROM cuenta_pagar WHERE idingreso=? FOR UPDATE", array($idingreso));
+			foreach ($cuentas as $c) {
+				$pagos = (int)dbValue(
+					"SELECT COUNT(*) FROM pago_cuenta_pagar WHERE idcuenta_pagar=?",
+					array((int)$c["idcuenta_pagar"]),
+					0
+				);
+				if ($pagos > 0) {
+					$mensajeError = "El ingreso tiene pagos registrados; anula primero los pagos";
+					return false;
+				}
+			}
+
+			// Un arqueo cerrado es historico: no se le quitan movimientos
+			$enCajaCerrada = (int)dbValue(
+				"SELECT COUNT(*) FROM caja_movimiento m
+				 INNER JOIN caja_diaria c ON c.idcaja=m.idcaja
+				 WHERE m.referencia IN (?,?) AND c.estado='CERRADA'",
+				array("C-" . $idingreso, "AC-" . $idingreso),
+				0
+			);
+			if ($enCajaCerrada > 0) {
+				$mensajeError = "La compra pertenece a una caja ya cerrada; solo puede anularse, no eliminarse";
+				return false;
+			}
+
+			$consumidos = $ingreso["estado"] !== "Anulado" ? Lote::lotesConsumidosDeIngreso($idingreso) : array();
+			if (count($consumidos) > 0) {
+				$mensajeError = "No se puede eliminar: parte del lote de " . $consumidos[0]["nombre"] . ($consumidos[0]["codigo_lote"] ? " (" . $consumidos[0]["codigo_lote"] . ")" : "") . " ya salio por venta o ajuste";
+				return false;
+			}
+
+			// Stock: solo si la compra seguia vigente y la mercaderia sigue disponible
+			if ($ingreso["estado"] !== "Anulado") {
+				$detalle = dbAll(
+					"SELECT idarticulo, SUM(cantidad*factor) AS cantidad FROM detalle_ingreso WHERE idingreso=? GROUP BY idarticulo",
+					array($idingreso)
+				);
+				foreach ($detalle as $d) {
+					$art = dbRow("SELECT nombre,stock FROM articulo WHERE idarticulo=? FOR UPDATE", array((int)$d["idarticulo"]));
+					if (!$art) {
+						$mensajeError = "No se encontro el articulo ID " . (int)$d["idarticulo"];
+						return false;
+					}
+					if (((float)$art["stock"] - (float)$d["cantidad"]) < 0) {
+						$mensajeError = "No se puede eliminar: el stock de " . $art["nombre"] . " ya fue utilizado";
+						return false;
+					}
+				}
+				foreach ($detalle as $d) {
+					if (!dbExec("UPDATE articulo SET stock=stock-? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
+						$mensajeError = "No se pudo revertir el stock de los articulos";
+						return false;
+					}
+				}
+			}
+
+			if (!dbExec("DELETE FROM caja_movimiento WHERE referencia IN (?,?)", array("C-" . $idingreso, "AC-" . $idingreso))) {
+				$mensajeError = "No se pudieron eliminar los movimientos de caja";
+				return false;
+			}
+			foreach ($cuentas as $c) {
+				if (!dbExec("DELETE FROM cuenta_pagar WHERE idcuenta_pagar=?", array((int)$c["idcuenta_pagar"]))) {
+					$mensajeError = "No se pudo eliminar la cuenta por pagar";
+					return false;
+				}
+			}
+			if (!Lote::eliminarLotesIngreso($idingreso)) {
+				$mensajeError = "No se pudo eliminar los lotes de la compra";
+				return false;
+			}
+			if (!dbExec("DELETE FROM detalle_ingreso WHERE idingreso=?", array($idingreso))) {
+				$mensajeError = "No se pudo eliminar el detalle del ingreso";
+				return false;
+			}
+			if (!dbExec("DELETE FROM ingreso WHERE idingreso=?", array($idingreso))) {
+				$mensajeError = "No se pudo eliminar el ingreso";
+				return false;
+			}
+			return true;
+		});
+
+		if ($resultado === false) {
+			return $this->error($mensajeError !== '' ? $mensajeError : "No se pudo eliminar el ingreso");
+		}
+		return array("ok"=>true, "message"=>"Compra eliminada correctamente", "documento"=>$documento);
+	}
+
 	// ---------- Consultas ----------
 
 	public function mostrar($idingreso){
@@ -534,10 +720,13 @@ class Ingreso{
 	/** @return mysqli_result|false */
 	public function listarDetalle($idingreso){
 		return dbQuery(
-			"SELECT di.idingreso,di.idarticulo,a.nombre,IFNULL(u.abreviatura,'und') AS unidad,di.cantidad,di.precio_compra,di.precio_venta
+			"SELECT di.idingreso,di.idarticulo,a.nombre,IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad,di.cantidad,di.factor,di.precio_compra,di.precio_venta,
+				(SELECT GROUP_CONCAT(CONCAT(IFNULL(l.codigo_lote,'s/c'),' vence ',IFNULL(DATE_FORMAT(l.fecha_vencimiento,'%d/%m/%Y'),'—')) SEPARATOR ', ')
+				 FROM lote l WHERE l.idingreso=di.idingreso AND l.idarticulo=di.idarticulo) AS lotes
 			 FROM detalle_ingreso di
 			 INNER JOIN articulo a ON di.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=di.idpresentacion
 			 WHERE di.idingreso=?",
 			array((int)$idingreso)
 		);
@@ -607,11 +796,12 @@ class Ingreso{
 	/** @return mysqli_result|false */
 	public function ingresodetalles($idingreso){
 		return dbQuery(
-			"SELECT a.nombre AS articulo, a.codigo, IFNULL(u.abreviatura,'und') AS unidad, d.cantidad, d.precio_compra, d.precio_venta,
+			"SELECT a.nombre AS articulo, IFNULL(ap.codigo, a.codigo) AS codigo, IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad, d.cantidad, d.factor, d.precio_compra, d.precio_venta,
 				(d.cantidad*d.precio_compra) AS subtotal
 			 FROM detalle_ingreso d
 			 INNER JOIN articulo a ON d.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=d.idpresentacion
 			 WHERE d.idingreso=?",
 			array((int)$idingreso)
 		);

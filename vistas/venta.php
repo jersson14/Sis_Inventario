@@ -146,13 +146,12 @@ if (usuarioTienePermiso('ventas')) {
                     <thead>
                       <tr>
                         <th style="width:52px"></th>
-                        <th>Artículo</th>
-                        <th>Unidad</th>
-                        <th style="width:110px">Cantidad</th>
-                        <th style="width:120px">Precio</th>
-                        <th style="width:110px">Dscto.</th>
-                        <th style="width:120px" class="text-right">Subtotal</th>
-                        <th style="width:44px"></th>
+                        <th class="col-articulo">Artículo</th>
+                        <th style="width:70px">Unidad</th>
+                        <th style="width:104px">Cantidad</th>
+                        <th style="width:112px">Precio</th>
+                        <th style="width:104px">Dscto.</th>
+                        <th style="width:124px" class="text-right">Subtotal</th>
                       </tr>
                     </thead>
                     <tbody></tbody>
@@ -160,7 +159,6 @@ if (usuarioTienePermiso('ventas')) {
                       <tr>
                         <th colspan="6" class="text-right">TOTAL</th>
                         <th class="text-right"><h4 id="total" class="mb-0"><?php echo e(formatearMoneda(0)); ?></h4><input type="hidden" name="total_venta" id="total_venta"></th>
-                        <th></th>
                       </tr>
                     </tfoot>
                   </table>

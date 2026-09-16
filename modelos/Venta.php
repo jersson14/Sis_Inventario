@@ -10,6 +10,8 @@
  *  - CREDITO: se genera automaticamente una cuenta_cobrar.
  */
 require_once "../config/Conexion.php";
+require_once "../config/negocio.php";   // fracciones y presentaciones
+require_once "../modelos/Lote.php";      // lotes y vencimientos (FEFO)
 
 class Venta{
 
@@ -71,14 +73,6 @@ class Venta{
 			return date("Y-m-d H:i:s");
 		}
 		return date("Y-m-d H:i:s", $ts);
-	}
-
-	private function normalizarCantidadEntera($valor){
-		$cantidad = (int)round((float)$valor);
-		if ($cantidad < 0) {
-			$cantidad = 0;
-		}
-		return $cantidad;
 	}
 
 	private function normalizarTipoPago($valor){
@@ -156,7 +150,7 @@ class Venta{
 	 * Devuelve array {ok, message} o
 	 * {ok:true, idventa, tipo_comprobante, serie_comprobante, num_comprobante, total, alertas, caja_registrada, cuenta_cobrar}.
 	 */
-	public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_venta,$descuento){
+	public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_venta,$descuento,$idpresentacion = array()){
 		$idcliente = (int)$idcliente;
 		$idusuario = (int)$idusuario;
 
@@ -186,6 +180,9 @@ class Venta{
 		if (!is_array($descuento)) {
 			$descuento = array();
 		}
+		if (!is_array($idpresentacion)) {
+			$idpresentacion = array();
+		}
 
 		// Cabecera
 		$fecha_hora = $this->normalizarFechaHora($fecha_hora);
@@ -210,13 +207,22 @@ class Venta{
 		$observacion = $this->textoOpcional($observacion, 200);
 
 		// Detalle: validaciones y total en servidor
+		// cantidadesSolicitadas se acumula en unidades base (lo que mueve el stock)
 		$cantidadesSolicitadas = array();
 		$detalles = array();
 		$total = 0.0;
 		$n = count($idarticulo);
+		$fraccion = articulosPermitenFraccion($idarticulo);
 		for ($i = 0; $i < $n; $i++) {
 			$idArticuloActual = (int)$idarticulo[$i];
-			$cantidadActual = $this->normalizarCantidadEntera($cantidad[$i]);
+			$presentacion = resolverPresentacionDetalle($idArticuloActual, isset($idpresentacion[$i]) ? $idpresentacion[$i] : 0);
+			if ($presentacion === false) {
+				return $this->error("Una de las presentaciones del detalle no es valida o fue desactivada");
+			}
+			list($idPresentacionActual, $factorActual) = $presentacion;
+			// Las presentaciones (cajas, paquetes) se venden enteras; la unidad base puede fraccionarse
+			$permiteFraccion = $idPresentacionActual === null && !empty($fraccion[$idArticuloActual]);
+			$cantidadActual = cantidadSegura($cantidad[$i], $permiteFraccion);
 			$precioActual = isset($precio_venta[$i]) ? decimalSeguro($precio_venta[$i], 2, -1) : -1;
 			$descuentoActual = isset($descuento[$i]) ? decimalSeguro($descuento[$i], 2, 0) : 0.0;
 
@@ -238,11 +244,13 @@ class Venta{
 			}
 
 			if (!isset($cantidadesSolicitadas[$idArticuloActual])) {
-				$cantidadesSolicitadas[$idArticuloActual] = 0;
+				$cantidadesSolicitadas[$idArticuloActual] = 0.0;
 			}
-			$cantidadesSolicitadas[$idArticuloActual] += $cantidadActual;
+			$cantidadesSolicitadas[$idArticuloActual] = round($cantidadesSolicitadas[$idArticuloActual] + ($cantidadActual * $factorActual), 3);
 			$detalles[] = array(
 				"idarticulo"=>$idArticuloActual,
+				"idpresentacion"=>$idPresentacionActual,
+				"factor"=>$factorActual,
 				"cantidad"=>$cantidadActual,
 				"precio_venta"=>(float)$precioActual,
 				"descuento"=>(float)$descuentoActual
@@ -315,9 +323,11 @@ class Venta{
 					$erroresStock[] = $stockActual[$idArt]["nombre"] . " esta inactivo";
 					continue;
 				}
-				$stockDisp = (int)floor((float)$stockActual[$idArt]["stock"]);
-				if ($stockDisp < $cantSolicitada) {
-					$erroresStock[] = $stockActual[$idArt]["nombre"] . " (stock: " . number_format($stockDisp, 0) . ", solicitado: " . number_format($cantSolicitada, 0) . ")";
+				$stockDisp = round((float)$stockActual[$idArt]["stock"], 3);
+				// Con control de vencimientos, lo vencido no esta disponible para la venta
+				$vencido = Lote::activo() ? Lote::stockVencido($idArt) : 0.0;
+				if (round($stockDisp - $vencido, 3) + 0.0005 < $cantSolicitada) {
+					$erroresStock[] = $stockActual[$idArt]["nombre"] . " (disponible: " . formatearCantidad(max($stockDisp - $vencido, 0)) . ($vencido > 0 ? ", vencido: " . formatearCantidad($vencido) : "") . ", solicitado: " . formatearCantidad($cantSolicitada) . ")";
 				}
 			}
 			if (count($erroresStock) > 0) {
@@ -345,15 +355,32 @@ class Venta{
 				return false;
 			}
 
-			// Detalle (el trigger descuenta el stock)
+			// Detalle (el trigger descuenta el stock) y salida de lotes en orden FEFO
+			$usaLotes = Lote::activo();
 			foreach ($detalles as $d) {
-				$ok = dbExec(
-					"INSERT INTO detalle_venta (idventa,idarticulo,cantidad,precio_venta,descuento) VALUES (?,?,?,?,?)",
-					array($idventa, $d["idarticulo"], $d["cantidad"], $d["precio_venta"], $d["descuento"])
+				$iddetalle = dbInsert(
+					"INSERT INTO detalle_venta (idventa,idarticulo,idpresentacion,cantidad,factor,precio_venta,descuento) VALUES (?,?,?,?,?,?,?)",
+					array($idventa, $d["idarticulo"], $d["idpresentacion"], $d["cantidad"], $d["factor"], $d["precio_venta"], $d["descuento"])
 				);
-				if (!$ok) {
+				if ($iddetalle <= 0) {
 					$mensajeError = "No se pudo registrar el detalle de la venta";
 					return false;
+				}
+				if ($usaLotes) {
+					$ref = array("tipo"=>"VENTA", "idventa"=>$idventa, "iddetalle_venta"=>$iddetalle);
+					if (Lote::consumir($d["idarticulo"], round($d["cantidad"] * $d["factor"], 3), $ref) === false) {
+						$mensajeError = "No se pudo descontar los lotes del articulo";
+						return false;
+					}
+				}
+			}
+			if (!$usaLotes) {
+				// Sin control de lotes igual se mantiene la regla: los lotes no superan el stock
+				foreach (array_keys($cantidadesSolicitadas) as $idArt) {
+					if (!Lote::ajustarAlStock($idArt)) {
+						$mensajeError = "No se pudo actualizar los lotes del articulo";
+						return false;
+					}
 				}
 			}
 
@@ -416,8 +443,8 @@ class Venta{
 					"idarticulo"=>(int)$reg["idarticulo"],
 					"codigo"=>$reg["codigo"],
 					"nombre"=>$reg["nombre"],
-					"stock"=>$this->normalizarCantidadEntera($reg["stock"]),
-					"stock_minimo"=>$this->normalizarCantidadEntera($reg["stock_minimo"])
+					"stock"=>round((float)$reg["stock"], 3),
+					"stock_minimo"=>round((float)$reg["stock_minimo"], 3)
 				);
 			}
 		}
@@ -489,13 +516,17 @@ class Venta{
 				}
 			}
 
-			// Devolver stock
-			$detalle = dbAll("SELECT idarticulo,cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
+			// Devolver stock (y a los mismos lotes de los que salio)
+			$detalle = dbAll("SELECT idarticulo,(cantidad*factor) AS cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
 			foreach ($detalle as $d) {
 				if (!dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
 					$mensajeError = "No se pudo devolver el stock de los articulos";
 					return false;
 				}
+			}
+			if (!Lote::revertirVenta($idventa)) {
+				$mensajeError = "No se pudo devolver la mercaderia a sus lotes";
+				return false;
 			}
 
 			// Egreso en caja si la caja de origen sigue abierta
@@ -532,6 +563,121 @@ class Venta{
 		return array("ok"=>true, "message"=>"Venta anulada correctamente");
 	}
 
+	/**
+	 * Borrado definitivo de una venta (solo perfil con permiso 'acceso').
+	 *
+	 * A diferencia de anular(), aqui no queda rastro del documento, por eso se
+	 * exige que no haya cobros aplicados ni movimientos en una caja ya cerrada
+	 * (eso rompería un arqueo historico).
+	 *
+	 * El stock se devuelve UNICAMENTE si la venta seguia vigente; si ya estaba
+	 * anulada el stock se repuso en la anulacion y volver a sumarlo duplicaria
+	 * las existencias.
+	 */
+	public function eliminar($idventa, $idusuario){
+		$idventa = (int)$idventa;
+		$idusuario = (int)$idusuario;
+		if ($idventa <= 0) {
+			return $this->error("Venta no valida");
+		}
+		if ($idusuario <= 0) {
+			return $this->error("Sesion de usuario no valida");
+		}
+		$mensajeError = '';
+		$documento = '';
+
+		$resultado = dbTransaccion(function($cx) use ($idventa, &$mensajeError, &$documento) {
+			$venta = dbRow(
+				"SELECT idventa,estado,tipo_comprobante,serie_comprobante,num_comprobante,total_venta
+				 FROM venta WHERE idventa=? FOR UPDATE",
+				array($idventa)
+			);
+			if (!$venta) {
+				$mensajeError = "La venta no existe";
+				return false;
+			}
+			$documento = $venta["tipo_comprobante"] . " " . $venta["serie_comprobante"] . "-" . $venta["num_comprobante"];
+
+			// Cobros aplicados: el dinero ya entro, no se puede borrar el origen
+			$cuentas = dbAll("SELECT idcuenta_cobrar FROM cuenta_cobrar WHERE idventa=? FOR UPDATE", array($idventa));
+			foreach ($cuentas as $c) {
+				$pagos = (int)dbValue(
+					"SELECT COUNT(*) FROM pago_cuenta_cobrar WHERE idcuenta_cobrar=?",
+					array((int)$c["idcuenta_cobrar"]),
+					0
+				);
+				if ($pagos > 0) {
+					$mensajeError = "La venta tiene cobros registrados; anula primero los pagos";
+					return false;
+				}
+			}
+
+			// Un arqueo cerrado es historico: no se le quitan movimientos
+			$enCajaCerrada = (int)dbValue(
+				"SELECT COUNT(*) FROM caja_movimiento m
+				 INNER JOIN caja_diaria c ON c.idcaja=m.idcaja
+				 WHERE m.referencia IN (?,?) AND c.estado='CERRADA'",
+				array("V-" . $idventa, "AV-" . $idventa),
+				0
+			);
+			if ($enCajaCerrada > 0) {
+				$mensajeError = "La venta pertenece a una caja ya cerrada; solo puede anularse, no eliminarse";
+				return false;
+			}
+
+			// Stock: solo si la venta seguia vigente (una anulada ya lo devolvio)
+			if ($venta["estado"] !== "Anulado") {
+				$detalle = dbAll("SELECT idarticulo,(cantidad*factor) AS cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
+				foreach ($detalle as $d) {
+					if (!dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
+						$mensajeError = "No se pudo devolver el stock de los articulos";
+						return false;
+					}
+				}
+				if (!Lote::revertirVenta($idventa)) {
+					$mensajeError = "No se pudo devolver la mercaderia a sus lotes";
+					return false;
+				}
+			}
+
+			if (!dbExec("DELETE FROM caja_movimiento WHERE referencia IN (?,?)", array("V-" . $idventa, "AV-" . $idventa))) {
+				$mensajeError = "No se pudieron eliminar los movimientos de caja";
+				return false;
+			}
+			foreach ($cuentas as $c) {
+				if (!dbExec("DELETE FROM cuenta_cobrar WHERE idcuenta_cobrar=?", array((int)$c["idcuenta_cobrar"]))) {
+					$mensajeError = "No se pudo eliminar la cuenta por cobrar";
+					return false;
+				}
+			}
+			if (!dbExec("DELETE FROM detalle_venta WHERE idventa=?", array($idventa))) {
+				$mensajeError = "No se pudo eliminar el detalle de la venta";
+				return false;
+			}
+
+			// La cotizacion de origen vuelve a quedar disponible
+			$hayCotizacion = (int)dbValue(
+				"SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cotizacion'",
+				array(),
+				0
+			);
+			if ($hayCotizacion > 0) {
+				dbExec("UPDATE cotizacion SET estado='ACEPTADA', idventa=NULL WHERE idventa=?", array($idventa));
+			}
+
+			if (!dbExec("DELETE FROM venta WHERE idventa=?", array($idventa))) {
+				$mensajeError = "No se pudo eliminar la venta";
+				return false;
+			}
+			return true;
+		});
+
+		if ($resultado === false) {
+			return $this->error($mensajeError !== '' ? $mensajeError : "No se pudo eliminar la venta");
+		}
+		return array("ok"=>true, "message"=>"Venta eliminada correctamente", "documento"=>$documento);
+	}
+
 	// ---------- Consultas ----------
 
 	public function mostrar($idventa){
@@ -550,11 +696,12 @@ class Venta{
 	/** @return mysqli_result|false */
 	public function listarDetalle($idventa){
 		return dbQuery(
-			"SELECT dv.idventa,dv.idarticulo,a.nombre,IFNULL(u.abreviatura,'und') AS unidad,dv.cantidad,dv.precio_venta,dv.descuento,
+			"SELECT dv.idventa,dv.idarticulo,a.nombre,IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad,dv.cantidad,dv.factor,dv.precio_venta,dv.descuento,
 				(dv.cantidad*dv.precio_venta-dv.descuento) AS subtotal
 			 FROM detalle_venta dv
 			 INNER JOIN articulo a ON dv.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=dv.idpresentacion
 			 WHERE dv.idventa=?",
 			array((int)$idventa)
 		);
@@ -624,11 +771,12 @@ class Venta{
 	/** @return mysqli_result|false */
 	public function ventadetalles($idventa){
 		return dbQuery(
-			"SELECT a.nombre AS articulo, a.codigo, IFNULL(u.abreviatura,'und') AS unidad, d.cantidad, d.precio_venta, d.descuento,
+			"SELECT a.nombre AS articulo, IFNULL(ap.codigo, a.codigo) AS codigo, IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad, d.cantidad, d.factor, d.precio_venta, d.descuento,
 				(d.cantidad*d.precio_venta-d.descuento) AS subtotal
 			 FROM detalle_venta d
 			 INNER JOIN articulo a ON d.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=d.idpresentacion
 			 WHERE d.idventa=?",
 			array((int)$idventa)
 		);

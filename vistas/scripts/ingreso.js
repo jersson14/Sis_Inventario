@@ -9,13 +9,6 @@ var enFormulario = false;
 
 function money(v){ return window.appMoney ? window.appMoney(v, 2) : ((window.appCurrencySymbol || "S/") + " " + Number(v || 0).toFixed(2)); }
 
-function normalizarCantidadEntera(valor, minimo){
-	var num = parseFloat(valor);
-	if (!isFinite(num)) { return minimo; }
-	num = Math.round(num);
-	return num < minimo ? minimo : num;
-}
-
 function fechaHoraActualInput(){
 	var now = new Date();
 	return now.getFullYear() + "-" + ("0" + (now.getMonth() + 1)).slice(-2) + "-" + ("0" + now.getDate()).slice(-2) + "T" + ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2);
@@ -247,6 +240,18 @@ function anular(idingreso){
 	}, { titulo: "Anular compra", ok: "Sí, anular", tipo: "danger" });
 }
 
+// Borrado definitivo (solo administrador). Si la compra seguía vigente el
+// servidor descuenta el stock ingresado antes de borrarla; si ya estaba
+// anulada no lo vuelve a tocar, porque la anulación ya lo descontó.
+function eliminar(idingreso){
+	appConfirm("Se eliminará la compra de forma PERMANENTE, junto con su detalle, su cuenta por pagar y sus movimientos de caja. Si la compra estaba vigente, el stock ingresado se descontará del inventario. Esta acción no se puede deshacer. ¿Continuar?", function(){
+		$.post("../ajax/ingreso.php?op=eliminar", { idingreso: idingreso }, function(e){
+			appNotifyFromResponse(e);
+			tabla.ajax.reload(null, false);
+		});
+	}, { titulo: "Eliminar compra", ok: "Sí, eliminar", tipo: "danger" });
+}
+
 function aplicarSerieImpuestoIngreso(){
 	var tipo = $("#tipo_comprobante").val();
 	if (tipo === 'Factura') { $("#serie_comprobante").val(empresaDefaultsIngreso.serie_factura); $("#impuesto").val((empresaDefaultsIngreso.impuesto_default || 18).toFixed(2)); }
@@ -254,60 +259,145 @@ function aplicarSerieImpuestoIngreso(){
 	else { $("#serie_comprobante").val(empresaDefaultsIngreso.serie_boleta); $("#impuesto").val("0"); }
 }
 
-function agregarDetalle(idarticulo, articulo, unidad, precio_compra_ref, precio_venta_ref){
-	var precio_compra = (precio_compra_ref && parseFloat(precio_compra_ref) > 0) ? parseFloat(precio_compra_ref) : 0;
-	var precio_venta = (precio_venta_ref && parseFloat(precio_venta_ref) > 0) ? parseFloat(precio_venta_ref) : 0;
-	var unidadTexto = unidad || "und";
-	var articulos = document.getElementsByName("idarticulo[]");
-	var cantidades = document.getElementsByName("cantidad[]");
-	if (!idarticulo) { appNotify("warning", "No se pudo agregar el artículo."); return; }
-	for (var i = 0; i < articulos.length; i++) {
-		if (parseInt(articulos[i].value, 10) === parseInt(idarticulo, 10)) {
-			cantidades[i].value = normalizarCantidadEntera(parseFloat(cantidades[i].value || 0) + 1, 1);
-			modificarSubtotales();
-			$('#myModal').modal('hide');
-			appNotify("info", articulo + ": cantidad " + cantidades[i].value);
-			return;
-		}
-	}
-	var fila = '<tr class="filas" id="fila' + cont + '">' +
-		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
-		'<td><input type="hidden" name="idarticulo[]" value="' + parseInt(idarticulo, 10) + '"><strong>' + appEscapeHtml(articulo) + '</strong></td>' +
-		'<td>' + appEscapeHtml(unidadTexto) + '</td>' +
-		'<td><input type="number" step="1" min="1" name="cantidad[]" value="1" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="precio_compra[]" value="' + precio_compra.toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="precio_venta[]" value="' + precio_venta.toFixed(2) + '" onfocus="this.select()" title="Nuevo precio de venta (0 = mantener)"></td>' +
-		'<td class="text-right"><span class="money" name="subtotal" data-value="' + precio_compra.toFixed(2) + '">' + precio_compra.toFixed(2) + '</span></td>' +
-		'<td></td></tr>';
-	cont++; detalles++;
-	$('#detalles tbody').append(fila);
-	modificarSubtotales();
-	$('#myModal').modal('hide');
-	setTimeout(function(){ $("#fila" + (cont - 1) + " input[name='cantidad[]']").focus().select(); }, 300);
+// ---------------------------------------------------------------------
+// Detalle de la compra. Igual que en ventas: la cantidad se escribe en la
+// presentacion elegida (5 cajas) y el trigger suma cantidad x factor al stock.
+// ---------------------------------------------------------------------
+
+function agregarArticulo(idarticulo, idpresentacion){
+	$.post("../ajax/ingreso.php?op=infoArticulo", { idarticulo: idarticulo }, function(resp){
+		var f = appParseJson(resp, null);
+		if (!f || !f.ok) { appNotify("warning", (f && f.message) || "No se pudo agregar el artículo."); return; }
+		agregarFicha(f, idpresentacion || 0);
+	});
 }
 
-function modificarSubtotales(){
-	var cant = document.getElementsByName("cantidad[]");
-	var prec = document.getElementsByName("precio_compra[]");
-	var sub = document.getElementsByName("subtotal");
-	for (var i = 0; i < cant.length; i++) {
-		cant[i].value = normalizarCantidadEntera(cant[i].value, 1);
-		var s = parseFloat(cant[i].value || 0) * parseFloat(prec[i].value || 0);
-		sub[i].textContent = s.toFixed(2);
-		sub[i].setAttribute("data-value", s.toFixed(2));
+function presentacionDeFicha(f, idpresentacion){
+	var id = parseInt(idpresentacion, 10) || 0;
+	for (var i = 0; i < (f.presentaciones || []).length; i++) {
+		if (f.presentaciones[i].idpresentacion === id) { return f.presentaciones[i]; }
 	}
+	return null;
+}
+
+function agregarFicha(f, idpresentacion){
+	var pres = presentacionDeFicha(f, idpresentacion);
+	var idPres = pres ? pres.idpresentacion : 0;
+	var $existente = $("#detalles tbody tr.filas").filter(function(){
+		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres;
+	}).first();
+	if ($existente.length) {
+		var $cant = $existente.find("[name='cantidad[]']");
+		$cant.val((parseFloat($cant.val()) || 0) + 1);
+		modificarSubtotales();
+		$('#myModal').modal('hide');
+		appNotify("info", f.nombre + ": cantidad " + window.appCantidad($cant.val()));
+		return;
+	}
+	var selector = "";
+	if (f.presentaciones && f.presentaciones.length) {
+		selector = '<select class="form-control input-sm sel-presentacion" onchange="cambiarPresentacion(this)">' +
+			'<option value="0">' + appEscapeHtml(f.unidad) + '</option>' +
+			f.presentaciones.map(function(p){
+				return '<option value="' + p.idpresentacion + '"' + (p.idpresentacion === idPres ? " selected" : "") + '>' + appEscapeHtml(p.nombre) + ' (' + window.appCantidad(p.factor) + ' ' + appEscapeHtml(f.unidad) + ')</option>';
+			}).join("") + '</select>';
+	}
+	var fila = $('<tr class="filas" id="fila' + cont + '"></tr>');
+	fila.attr({ "data-idarticulo": f.idarticulo, "data-fraccion": f.permite_fraccion ? "1" : "0" });
+	fila.data("ficha", f);
+	fila.html(
+		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
+		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><strong>' + appEscapeHtml(f.nombre) + '</strong>' + selector +
+			'<small class="text-soft d-block">Stock: ' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) + '</small>' +
+			camposLote() + '</td>' +
+		'<td><span class="unidad-fila"></span></td>' +
+		'<td><input type="number" min="0" name="cantidad[]" value="1" oninput="modificarSubtotales()" onblur="modificarSubtotales()" onfocus="this.select()"></td>' +
+		'<td><input type="number" step="0.01" min="0" name="precio_compra[]" value="0.00" oninput="$(this).attr(\'data-manual\',\'1\');modificarSubtotales()" onfocus="this.select()"></td>' +
+		'<td><input type="number" step="0.01" min="0" name="precio_venta[]" value="0.00" oninput="$(this).attr(\'data-manual\',\'1\')" onfocus="this.select()" title="Nuevo precio de venta (0 = mantener)"></td>' +
+		'<td class="text-right"><span class="money" name="subtotal" data-value="0">0.00</span></td>'
+	);
+	cont++; detalles++;
+	$('#detalles tbody').append(fila);
+	aplicarPreciosPresentacion(fila);
+	etiquetaUnidadFila(fila);
+	modificarSubtotales();
+	$('#myModal').modal('hide');
+	setTimeout(function(){ fila.find("input[name='cantidad[]']").focus().select(); }, 300);
+}
+
+// Lote y vencimiento por linea (rubros con control de vencimientos)
+function camposLote(){
+	if (!window.appNegocioTiene || !(window.appNegocioTiene("vencimientos") || window.appNegocioTiene("lotes"))) {
+		return '<input type="hidden" name="lote_codigo[]" value=""><input type="hidden" name="lote_vencimiento[]" value="">';
+	}
+	return '<div class="lote-fila">' +
+		'<input type="text" class="form-control input-sm" name="lote_codigo[]" maxlength="40" placeholder="Lote" title="Código de lote (opcional)">' +
+		'<input type="date" class="form-control input-sm" name="lote_vencimiento[]" title="Fecha de vencimiento">' +
+		'</div>';
+}
+
+function filaFactor($tr){
+	var pres = presentacionDeFicha($tr.data("ficha") || {}, $tr.find("[name='idpresentacion[]']").val());
+	return pres ? pres.factor : 1;
+}
+
+function filaPermiteFraccion($tr){
+	return $tr.attr("data-fraccion") === "1" && (parseInt($tr.find("[name='idpresentacion[]']").val(), 10) || 0) === 0;
+}
+
+// Precios de referencia segun la presentacion elegida, salvo que el usuario ya los haya escrito
+function aplicarPreciosPresentacion($tr){
+	var f = $tr.data("ficha") || {};
+	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
+	var pc = pres ? (pres.precio_compra > 0 ? pres.precio_compra : (f.precio_compra || 0) * pres.factor) : (f.precio_compra || 0);
+	var pv = pres ? (pres.precio_venta || 0) : (f.precio_venta || 0);
+	var $pc = $tr.find("[name='precio_compra[]']"), $pv = $tr.find("[name='precio_venta[]']");
+	if ($pc.attr("data-manual") !== "1") { $pc.val(Number(pc).toFixed(2)); }
+	if ($pv.attr("data-manual") !== "1") { $pv.val(Number(pv).toFixed(2)); }
+	$tr.find("[name='cantidad[]']").attr("step", filaPermiteFraccion($tr) ? "0.001" : "1");
+}
+
+function cambiarPresentacion(select){
+	var $tr = $(select).closest("tr");
+	$tr.find("[name='idpresentacion[]']").val($(select).val());
+	$tr.find("[name='precio_compra[]'], [name='precio_venta[]']").removeAttr("data-manual");
+	aplicarPreciosPresentacion($tr);
+	etiquetaUnidadFila($tr);
+	modificarSubtotales();
+}
+
+// Texto corto de la unidad de la fila: la abreviatura base o el nombre de la presentacion
+function etiquetaUnidadFila($tr){
+	var f = $tr.data("ficha") || {};
+	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
+	$tr.find(".unidad-fila").text(pres ? pres.nombre : (f.unidad || "und"));
+}
+
+
+function modificarSubtotales(){
+	$("#detalles tbody tr.filas").each(function(){
+		var $tr = $(this);
+		var $cant = $tr.find("[name='cantidad[]']");
+		var fraccion = filaPermiteFraccion($tr);
+		var cantidad = window.appNormalizarCantidad($cant.val(), fraccion, fraccion ? 0.001 : 1);
+		// Mientras se escribe un decimal no se reescribe el campo; se corrige al salir
+		if (document.activeElement !== $cant[0] && parseFloat($cant.val()) !== cantidad) { $cant.val(cantidad); }
+		var s = Math.round(cantidad * parseFloat($tr.find("[name='precio_compra[]']").val() || 0) * 100) / 100;
+		$tr.find("[name='subtotal']").text(s.toFixed(2)).attr("data-value", s.toFixed(2));
+	});
 	calcularTotales();
 }
 
 function calcularTotales(){
-	var sub = document.getElementsByName("subtotal");
-	var cant = document.getElementsByName("cantidad[]");
 	var total = 0, unidades = 0;
-	for (var i = 0; i < sub.length; i++) { total += parseFloat(sub[i].getAttribute("data-value") || 0); }
-	for (var j = 0; j < cant.length; j++) { unidades += parseInt(cant[j].value || 0, 10); }
+	$("#detalles tbody tr.filas").each(function(){
+		var $tr = $(this);
+		total += parseFloat($tr.find("[name='subtotal']").attr("data-value") || 0);
+		unidades += (parseFloat($tr.find("[name='cantidad[]']").val()) || 0) * filaFactor($tr);
+	});
 	$("#total").html(money(total));
 	$("#posTotal").text(money(total));
-	$("#posUnidades").text(unidades);
+	$("#posUnidades").text(window.appCantidad(unidades));
 	$("#total_compra").val(total.toFixed(2));
 	var count = document.getElementsByName("idarticulo[]").length;
 	$("#comprasItemsSeleccionados, #comprasItemsSeleccionadosModal").text(count);

@@ -370,7 +370,7 @@ $pdf->DrawTableHeader();
 $rsptad = $ingreso->ingresodetalles($idReporte);
 $index = 0;
 while ($regd = $rsptad->fetch_object()) {
-  $cantidad = number_format((float)$regd->cantidad, 0)." ".(empty($regd->unidad) ? "und" : $regd->unidad);
+  $cantidad = formatearCantidad($regd->cantidad)." ".(empty($regd->unidad) ? "und" : $regd->unidad);
   $linea = array(
     $pdf->u($regd->codigo),
     $pdf->u($regd->articulo),

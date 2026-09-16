@@ -721,23 +721,37 @@ hr {
   font-weight: 600;
   padding: 7px 14px;
   border-width: 1px;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease, border-color 0.15s ease;
+  border-style: solid;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease, border-color 0.15s ease, color 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   line-height: 1.45;
+  white-space: nowrap;
+  text-shadow: none;
+}
+
+.btn > .fa,
+.btn > .glyphicon {
+  font-size: 1em;
+  line-height: 1;
 }
 
 .btn:active {
   transform: translateY(1px);
 }
 
+/* El anillo de foco solo se muestra con teclado, no al hacer clic. */
 .btn:focus,
 .btn:active:focus,
 .btn.focus {
   outline: 0;
-  box-shadow: 0 0 0 3px var(--brand-primary-soft);
+  box-shadow: 0 0 0 3px var(--btn-ring, var(--brand-primary-soft));
+}
+
+.btn:focus:not(:focus-visible) {
+  box-shadow: var(--btn-shadow, none);
 }
 
 .btn-lg {
@@ -758,12 +772,14 @@ hr {
   padding: 3px 8px;
   font-size: 12px;
   border-radius: 7px;
+  gap: 5px;
 }
 
 .btn-default {
   background: #fff;
   border-color: var(--line-strong);
   color: var(--text-body);
+  --btn-ring: rgba(100, 116, 139, 0.25);
 }
 
 .btn-default:hover,
@@ -777,7 +793,9 @@ hr {
   background: var(--brand-primary);
   border-color: var(--brand-primary);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.22);
+  --btn-shadow: 0 2px 6px rgba(15, 118, 110, 0.18);
+  --btn-ring: var(--brand-primary-soft);
+  box-shadow: var(--btn-shadow);
 }
 
 .btn-primary:hover,
@@ -792,7 +810,10 @@ hr {
 .btn-success {
   background: var(--success);
   border-color: var(--success);
-  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.22);
+  color: #fff;
+  --btn-shadow: 0 2px 6px rgba(22, 163, 74, 0.18);
+  --btn-ring: rgba(22, 163, 74, 0.28);
+  box-shadow: var(--btn-shadow);
 }
 
 .btn-success:hover,
@@ -800,12 +821,16 @@ hr {
 .btn-success:active {
   background: #15803d;
   border-color: #15803d;
+  color: #fff;
 }
 
 .btn-info {
   background: var(--info);
   border-color: var(--info);
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.22);
+  color: #fff;
+  --btn-shadow: 0 2px 6px rgba(2, 132, 199, 0.18);
+  --btn-ring: rgba(2, 132, 199, 0.28);
+  box-shadow: var(--btn-shadow);
 }
 
 .btn-info:hover,
@@ -813,13 +838,16 @@ hr {
 .btn-info:active {
   background: #0369a1;
   border-color: #0369a1;
+  color: #fff;
 }
 
 .btn-warning {
   background: var(--warning);
   border-color: var(--warning);
   color: #1f2937;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.22);
+  --btn-shadow: 0 2px 6px rgba(245, 158, 11, 0.18);
+  --btn-ring: rgba(245, 158, 11, 0.3);
+  box-shadow: var(--btn-shadow);
 }
 
 .btn-warning:hover,
@@ -833,7 +861,10 @@ hr {
 .btn-danger {
   background: var(--danger);
   border-color: var(--danger);
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+  color: #fff;
+  --btn-shadow: 0 2px 6px rgba(220, 38, 38, 0.16);
+  --btn-ring: rgba(220, 38, 38, 0.28);
+  box-shadow: var(--btn-shadow);
 }
 
 .btn-danger:hover,
@@ -841,6 +872,7 @@ hr {
 .btn-danger:active {
   background: #b91c1c;
   border-color: #b91c1c;
+  color: #fff;
 }
 
 .btn-outline {
@@ -916,10 +948,69 @@ fieldset[disabled] .btn {
   to { transform: rotate(360deg); }
 }
 
-/* Botones de accion en tablas */
-.table .btn-xs {
-  margin: 1px 2px 1px 0;
+/* --------------------------------------------------------------------
+   Botones de accion dentro de tablas
+   Tres o cuatro botones solidos por fila saturaban la vista. Aqui van en
+   version discreta (fondo tenue, icono en color) y se rellenan al pasar
+   el mouse, conservando el codigo de color de cada accion.
+   -------------------------------------------------------------------- */
+.table .btn-xs,
+.table .btn-group-xs > .btn {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 8px;
+  margin: 2px 4px 2px 0;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  vertical-align: middle;
+  box-shadow: none;
+  background: #f8fafc;
+  border-color: var(--line);
+  color: var(--text-body);
+}
+
+.table .btn-xs:last-child {
+  margin-right: 0;
+}
+
+.table .btn-xs:hover,
+.table .btn-xs:focus {
+  background: #e2e8f0;
+  border-color: var(--line-strong);
+  color: var(--text-main);
+  box-shadow: none;
+}
+
+.table .btn-xs:focus-visible {
+  box-shadow: 0 0 0 3px var(--btn-ring, rgba(100, 116, 139, 0.25));
+}
+
+.table .btn-primary.btn-xs { background: var(--brand-primary-soft); border-color: rgba(15, 118, 110, 0.35); color: var(--brand-primary-dark); }
+.table .btn-primary.btn-xs:hover,
+.table .btn-primary.btn-xs:focus { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+
+.table .btn-success.btn-xs { background: var(--success-soft); border-color: #86efac; color: #14532d; }
+.table .btn-success.btn-xs:hover,
+.table .btn-success.btn-xs:focus { background: var(--success); border-color: var(--success); color: #fff; }
+
+.table .btn-info.btn-xs { background: var(--info-soft); border-color: #7dd3fc; color: #0c4a6e; }
+.table .btn-info.btn-xs:hover,
+.table .btn-info.btn-xs:focus { background: var(--info); border-color: var(--info); color: #fff; }
+
+.table .btn-warning.btn-xs { background: var(--warning-soft); border-color: #fcd34d; color: #78350f; }
+.table .btn-warning.btn-xs:hover,
+.table .btn-warning.btn-xs:focus { background: var(--brand-accent-dark); border-color: var(--brand-accent-dark); color: #fff; }
+
+.table .btn-danger.btn-xs { background: var(--danger-soft); border-color: #fca5a5; color: #7f1d1d; }
+.table .btn-danger.btn-xs:hover,
+.table .btn-danger.btn-xs:focus { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+/* Boton cuadrado de solo icono (ej. quitar fila del detalle) */
+.table .btn-xs.btn-icon {
+  width: 28px;
   min-width: 28px;
+  padding: 0;
 }
 
 .btn-icon {
@@ -1371,6 +1462,8 @@ table.dataTable.no-footer {
 
 .table-responsive {
   border: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* --------------------------------------------------------------------
@@ -1378,21 +1471,27 @@ table.dataTable.no-footer {
    -------------------------------------------------------------------- */
 .label {
   display: inline-block;
-  padding: 4px 9px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.3px;
-  line-height: 1.2;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
-.label.bg-green { background: var(--success-soft) !important; color: #166534; }
-.label.bg-red { background: var(--danger-soft) !important; color: #991b1b; }
-.label.bg-yellow { background: var(--warning-soft) !important; color: #92400e; }
-.label.bg-aqua, .label.bg-blue, .label.bg-light-blue { background: var(--info-soft) !important; color: #075985; }
-.label.bg-orange { background: #ffedd5 !important; color: #9a3412; }
-.label.bg-purple { background: var(--purple-soft) !important; color: #5b21b6; }
-.label.bg-gray { background: #e2e8f0 !important; color: #334155; }
+/* AdminLTE declara `color:#fff !important` para todas las clases .bg-*, lo que
+   dejaba el texto de los badges casi invisible sobre nuestros fondos pastel.
+   Por eso el color de texto va con !important y se suma un borde que define
+   el contorno de la pastilla. */
+.label.bg-green { background: var(--success-soft) !important; color: #14532d !important; border-color: #86efac; }
+.label.bg-red { background: var(--danger-soft) !important; color: #7f1d1d !important; border-color: #fca5a5; }
+.label.bg-yellow { background: var(--warning-soft) !important; color: #78350f !important; border-color: #fcd34d; }
+.label.bg-aqua, .label.bg-blue, .label.bg-light-blue { background: var(--info-soft) !important; color: #0c4a6e !important; border-color: #7dd3fc; }
+.label.bg-orange { background: #ffedd5 !important; color: #7c2d12 !important; border-color: #fdba74; }
+.label.bg-purple { background: var(--purple-soft) !important; color: #4c1d95 !important; border-color: #c4b5fd; }
+.label.bg-gray { background: #e2e8f0 !important; color: #1e293b !important; border-color: #cbd5e1; }
 
 .stock-pill {
   display: inline-block;
@@ -1662,18 +1761,53 @@ table.dataTable.no-footer {
   background: #fff;
 }
 
-/* Detalle de venta / compra */
+/* --------------------------------------------------------------------
+   Detalle de venta / compra
+   Es la zona donde el cajero teclea contra reloj: tipografia y campos
+   mas grandes que en el resto del sistema, pensados para leer de un
+   vistazo y acertar el clic sin apuntar.
+   -------------------------------------------------------------------- */
+#detalles {
+  font-size: 14.5px;
+  min-width: 680px;
+}
+
+/* El nombre del articulo se lleva el espacio sobrante, no al reves */
+#detalles .col-articulo {
+  min-width: 200px;
+  width: auto;
+}
+
 #detalles thead {
   background: #f8fafc !important;
 }
 
+#detalles thead > tr > th {
+  font-size: 12px;
+  padding: 12px 10px;
+}
+
+#detalles tbody > tr > td {
+  padding: 10px 7px;
+  vertical-align: middle;
+}
+
+#detalles tbody strong {
+  font-size: 15px;
+  color: var(--text-main);
+}
+
 #detalles input[type="number"] {
-  width: 96px;
+  width: 100%;
   max-width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  padding: 5px 8px;
-  height: 34px;
+  padding: 6px 10px;
+  height: 40px;
+  padding: 6px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: right;
 }
 
 #detalles input[type="number"]:focus {
@@ -1682,15 +1816,23 @@ table.dataTable.no-footer {
   outline: 0;
 }
 
+#detalles .money,
+#detalles td.text-right {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
 #detalles tfoot th {
-  font-size: 13px;
+  font-size: 14px;
   text-transform: none;
   letter-spacing: 0;
+  padding: 14px 10px;
 }
 
 #detalles #total {
   margin: 0;
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 800;
   color: var(--brand-primary-dark);
   white-space: nowrap;
@@ -1708,16 +1850,60 @@ table.dataTable.no-footer {
   min-width: 0;
 }
 
+/* La cabecera del documento comparte el tamano de campo del detalle:
+   en esta pantalla se teclea, no se lee. */
+.pos-main .form-group > label {
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.pos-main .form-control,
+.pos-main .bootstrap-select > .btn {
+  height: 40px;
+  font-size: 14.5px;
+}
+
+.pos-main .box-title {
+  font-size: 17px;
+}
+
+/* Evita que el bloque quede flotando arriba con la pantalla vacia */
+.pos-main .table-responsive {
+  min-height: 220px;
+}
+
 .pos-side {
-  flex: 0 0 320px;
+  flex: 0 0 310px;
   position: sticky;
   top: 80px;
+}
+
+@media (min-width: 1600px) {
+  .pos-side {
+    flex: 0 0 360px;
+  }
 }
 
 @media (max-width: 1100px) {
   .pos-side {
     flex: 1 1 100%;
     position: static;
+  }
+  /* Sin esto, el ancho minimo de la tabla de detalle empuja el formulario
+     entero fuera de la pantalla (pasaba en tablet con el menu abierto). */
+  .pos-layout,
+  .pos-main,
+  .pos-side,
+  .pos-main > .box,
+  .pos-main .box-body {
+    min-width: 0;
+  }
+  .pos-main {
+    flex: 1 1 100%;
+  }
+  .pos-main .table-responsive {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 
@@ -1739,19 +1925,29 @@ table.dataTable.no-footer {
 }
 
 .pos-summary .pos-total {
-  font-size: 32px;
+  font-size: 40px;
   font-weight: 800;
   color: #fff;
-  line-height: 1.1;
+  line-height: 1.05;
   margin-bottom: 12px;
+  letter-spacing: -0.5px;
 }
 
 .pos-summary .pos-row {
   display: flex;
   justify-content: space-between;
-  padding: 6px 0;
+  padding: 8px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 13px;
+  font-size: 14px;
+}
+
+.pos-summary .form-control {
+  height: 38px;
+  font-size: 14px;
+}
+
+.pos-summary label {
+  font-size: 12.5px !important;
 }
 
 .pos-summary .pos-row span:last-child {
@@ -1762,6 +1958,16 @@ table.dataTable.no-footer {
 .pos-summary .btn {
   width: 100%;
   margin-top: 12px;
+}
+
+.pos-summary .btn-lg {
+  font-size: 16px;
+  padding: 13px 20px;
+}
+
+.pago-toggle .btn {
+  height: 40px;
+  font-size: 13.5px;
 }
 
 .pos-shortcuts {
@@ -2292,7 +2498,187 @@ a.kpi-card:focus {
   }
 }
 
-/* Responsive */
+/* --------------------------------------------------------------------
+   Presentaciones y precio por mayor
+   -------------------------------------------------------------------- */
+.bloque-editable {
+  margin-bottom: 22px;
+}
+
+.tabla-editable {
+  margin-bottom: 10px;
+}
+
+.tabla-editable > tbody > tr > td {
+  padding: 6px;
+  vertical-align: middle;
+}
+
+.tabla-editable .form-control {
+  height: 36px;
+}
+
+/* Selector de presentacion: va debajo del nombre, en la columna mas ancha */
+#detalles .sel-presentacion {
+  display: block;
+  height: 34px;
+  width: 100%;
+  max-width: 240px;
+  margin: 5px 0 3px;
+  font-size: 13.5px;
+  padding: 4px 8px;
+}
+
+#detalles .unidad-fila {
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text-body);
+}
+
+.lote-fila {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  max-width: 300px;
+}
+
+.lote-fila .form-control {
+  height: 32px;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.lote-fila input[type="text"] {
+  flex: 0 0 100px;
+}
+
+.d-block {
+  display: block;
+}
+
+/* Sin flechas en los numericos del detalle: ocupaban el espacio de las cifras */
+#detalles input[type="number"]::-webkit-outer-spin-button,
+#detalles input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#detalles input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* --------------------------------------------------------------------
+   Selector de rubro (Configuracion > Empresa)
+   -------------------------------------------------------------------- */
+.rubro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.rubro-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 400;
+  margin: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.rubro-card:hover {
+  border-color: var(--brand-primary);
+}
+
+.rubro-card input[type="radio"] {
+  margin: 3px 0 0;
+  flex: 0 0 auto;
+  accent-color: var(--brand-primary);
+}
+
+.rubro-card .rubro-icono {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 10px;
+  background: var(--brand-primary-soft);
+  color: var(--brand-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+}
+
+.rubro-card .rubro-datos {
+  display: block;
+  min-width: 0;
+}
+
+.rubro-card .rubro-datos strong {
+  display: block;
+  color: var(--text-main);
+  font-size: 14.5px;
+}
+
+.rubro-card .rubro-datos small {
+  display: block;
+  color: var(--text-soft);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.rubro-card .rubro-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+/* Marcado: el radio pinta toda la tarjeta */
+.rubro-card:has(input:checked) {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary-soft);
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+.rubro-card.is-activa {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary-soft);
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+/* --------------------------------------------------------------------
+   Responsive
+   Tres cortes: tablet (<=1024), movil ancho (<=767) y movil (<=480).
+   Regla de fondo: nada debe salirse del ancho de la pantalla, y las
+   tablas de datos se desplazan dentro de su caja, nunca arrastrando
+   la pagina entera.
+   -------------------------------------------------------------------- */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .content {
+    padding: 18px 16px 32px;
+  }
+  .page-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .page-head .page-actions {
+    width: 100%;
+  }
+  .table-toolbar .form-group {
+    min-width: 130px;
+    flex: 1 1 130px;
+  }
+}
+
+/* Movil ancho y tablet en vertical */
 @media (max-width: 767px) {
   .navbar-quick, .navbar-page-title {
     display: none;
@@ -2300,21 +2686,173 @@ a.kpi-card:focus {
   .user-menu-text {
     display: none;
   }
+  .content {
+    padding: 14px 12px 28px;
+  }
   .page-head h1 {
     font-size: 20px;
   }
-  .dataTables_wrapper .dataTables_filter,
-  .dataTables_wrapper .dataTables_filter input {
-    float: none;
-    width: 100%;
+  .page-head p {
+    font-size: 13px;
   }
-  .dt-buttons {
-    float: none;
+
+  /* Titulo y acciones de cada caja, uno debajo del otro: en una sola
+     linea el boton se montaba encima del titulo. */
+  .box-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px;
   }
+  .box-header .box-title {
+    font-size: 16px;
+  }
+  .box-tools,
+  .page-head .page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .box-tools > .btn,
+  .page-head .page-actions > .btn,
+  .page-head .page-actions > a.btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
   .box-body, .panel-body {
     padding: 14px;
   }
   .kpi-meta strong {
     font-size: 20px;
+  }
+
+  /* Filtros: dos por fila, y los botones ocupando el ancho completo */
+  .table-toolbar {
+    padding: 10px;
+    gap: 8px;
+  }
+  .table-toolbar .form-group {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+  .table-toolbar .toolbar-actions {
+    flex: 1 1 100%;
+  }
+  .table-toolbar .toolbar-actions .btn {
+    flex: 1 1 0;
+  }
+
+  /* Tablas de datos: se desplazan dentro de su caja, con impulso tactil
+     y una sombra en el borde que avisa de que hay mas columnas. */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to right, var(--bg-card) 30%, rgba(255, 255, 255, 0)) left center / 32px 100% no-repeat,
+      linear-gradient(to left, var(--bg-card) 30%, rgba(255, 255, 255, 0)) right center / 32px 100% no-repeat,
+      radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, 0.16), transparent) left center / 12px 100% no-repeat,
+      radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.16), transparent) right center / 12px 100% no-repeat;
+    background-attachment: local, local, scroll, scroll;
+  }
+  .table-responsive > .table {
+    font-size: 13px;
+  }
+  .table-responsive > .table > thead > tr > th,
+  .table-responsive > .table > tbody > tr > td {
+    white-space: nowrap;
+    padding: 9px 10px;
+  }
+
+  /* DataTables: buscador, botones y paginacion en bloque */
+  .dataTables_wrapper .dataTables_filter,
+  .dataTables_wrapper .dataTables_filter input,
+  .dataTables_wrapper .dataTables_length {
+    float: none;
+    width: 100%;
+    text-align: left;
+  }
+  .dataTables_wrapper .dataTables_paginate,
+  .dataTables_wrapper .dataTables_info {
+    float: none;
+    text-align: center;
+  }
+  .dt-buttons {
+    float: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .dt-buttons .btn {
+    flex: 1 1 auto;
+  }
+
+  /* Punto de venta / compra: el resumen deja de ser barra lateral */
+  .pos-layout {
+    gap: 12px;
+  }
+  .pos-summary {
+    padding: 14px;
+  }
+  .pos-summary .pos-total {
+    font-size: 32px;
+  }
+  .pos-shortcuts {
+    display: none;
+  }
+  #detalles {
+    min-width: 520px;
+  }
+  #detalles .col-articulo {
+    min-width: 140px;
+  }
+  #detalles #total {
+    font-size: 22px;
+  }
+
+  /* Modales a pantalla casi completa: el catalogo era inusable */
+  .modal-dialog,
+  .modal-catalog .modal-dialog {
+    width: auto !important;
+    max-width: 100%;
+    margin: 10px;
+  }
+  .modal-body {
+    padding: 14px;
+  }
+  .modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .modal-footer .btn {
+    flex: 1 1 auto;
+    margin: 0 !important;
+  }
+}
+
+/* Movil */
+@media (max-width: 480px) {
+  .page-head h1 {
+    font-size: 18px;
+  }
+  .page-head .page-actions > .btn,
+  .page-head .page-actions > a.btn,
+  .box-tools > .btn {
+    flex: 1 1 100%;
+  }
+  .table-toolbar .form-group {
+    flex: 1 1 100%;
+  }
+  /* Los botones dejan de forzar una sola linea cuando no hay sitio */
+  .btn {
+    white-space: normal;
+  }
+  .table .btn-xs {
+    white-space: nowrap;
+  }
+  .pos-summary .pos-total {
+    font-size: 28px;
   }
 }

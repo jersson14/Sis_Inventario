@@ -111,7 +111,7 @@ function imprimirDetalleCaja(){
 	var contenido = $("#detCajaBody").html();
 	var titulo = "Arqueo de caja " + $("#detCajaTitulo").text();
 	var w = window.open("", "_blank", "width=800,height=900");
-	w.document.write('<html><head><title>' + titulo + '</title><link rel="stylesheet" href="../public/css/bootstrap.min.css"><style>body{font-family:Segoe UI,Arial,sans-serif;padding:24px;font-size:13px}.label{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}.bg-green{background:#dcfce7;color:#166534}.bg-red{background:#fee2e2;color:#991b1b}.bg-aqua{background:#e0f2fe;color:#075985}h2{margin-top:0}</style></head><body><h2>' + titulo + '</h2>' + contenido + '<script>window.onload=function(){window.print();}<\/script></body></html>');
+	w.document.write('<html><head><title>' + titulo + '</title><link rel="stylesheet" href="../public/css/bootstrap.min.css"><style>body{font-family:Segoe UI,Arial,sans-serif;padding:24px;font-size:13px}.label{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}.bg-green{background:#dcfce7;color:#14532d;border:1px solid #86efac}.bg-red{background:#fee2e2;color:#7f1d1d;border:1px solid #fca5a5}.bg-aqua{background:#e0f2fe;color:#0c4a6e;border:1px solid #7dd3fc}h2{margin-top:0}</style></head><body><h2>' + titulo + '</h2>' + contenido + '<script>window.onload=function(){window.print();}<\/script></body></html>');
 	w.document.close();
 }
 

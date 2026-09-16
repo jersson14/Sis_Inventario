@@ -65,6 +65,16 @@ if (usuarioTienePermiso('inventario') || usuarioTienePermiso('almacen')) {
           <div class="form-group col-xs-6"><label>Cantidad <span class="req">*</span></label><input type="number" step="1" min="1" class="form-control input-lg" name="cantidad" id="aj_cantidad" required></div>
           <div class="form-group col-xs-6"><label>Costo unitario</label><input type="number" step="0.01" min="0" class="form-control" name="costo_unitario" id="aj_costo" placeholder="Precio de compra"><span class="help-block">Vacío = costo del artículo.</span></div>
         </div>
+<?php if (negocioTiene('lotes') || negocioTiene('vencimientos')): ?>
+        <div class="row lote-entrada">
+          <div class="form-group col-xs-6"><label>Lote</label><input type="text" class="form-control" name="lote_codigo" id="aj_lote_codigo" maxlength="40" placeholder="Opcional"></div>
+          <div class="form-group col-xs-6"><label>Fecha de vencimiento</label><input type="date" class="form-control" name="lote_vencimiento" id="aj_lote_vence"></div>
+        </div>
+        <div class="form-group lote-salida" style="display:none">
+          <label>Retirar del lote</label>
+          <select name="idlote" id="aj_idlote" class="form-control"><option value="0">Automático: primero lo vencido y lo que vence antes</option></select>
+        </div>
+<?php endif; ?>
         <div class="form-group">
           <label>Motivo <span class="req">*</span></label>
           <select name="motivo" id="aj_motivo" class="form-control" required>

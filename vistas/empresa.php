@@ -36,6 +36,45 @@ if (usuarioTienePermiso('empresa') || usuarioTienePermiso('acceso')) {
           </div>
 
           <div class="box">
+            <div class="box-header with-border">
+              <h3 class="box-title"><i class="fa fa-briefcase"></i> Tipo de negocio</h3>
+            </div>
+            <div class="box-body">
+              <p class="text-soft" style="margin-top:0">Elige el rubro de tu tienda. Cada uno habilita las funciones que ese giro necesita y adapta los nombres de la interfaz.</p>
+              <div class="rubro-grid">
+<?php foreach (perfilesNegocio() as $clave => $def): ?>
+                <label class="rubro-card" for="rubro_<?php echo e(strtolower($clave)); ?>">
+                  <input type="radio" name="tipo_negocio" id="rubro_<?php echo e(strtolower($clave)); ?>" value="<?php echo e($clave); ?>">
+                  <span class="rubro-icono"><i class="fa <?php echo e($def['icono']); ?>"></i></span>
+                  <span class="rubro-datos">
+                    <strong><?php echo e($def['nombre']); ?></strong>
+                    <small><?php echo e($def['descripcion']); ?></small>
+<?php if (!empty($def['capacidades'])): ?>
+                    <span class="rubro-caps">
+<?php   foreach ($def['capacidades'] as $cap): ?>
+                      <span class="label bg-aqua" title="<?php echo e(capacidadesNegocio()[$cap]); ?>"><?php echo e(ucfirst(str_replace("_", " ", $cap))); ?></span>
+<?php   endforeach; ?>
+                    </span>
+<?php endif; ?>
+                  </span>
+                </label>
+<?php endforeach; ?>
+              </div>
+              <div class="row" id="grupoDiasVencimiento">
+                <div class="form-group col-md-4 col-sm-6">
+                  <label for="dias_alerta_vencimiento">Avisar vencimientos con</label>
+                  <div class="input-group">
+                    <input type="number" min="1" max="365" class="form-control" name="dias_alerta_vencimiento" id="dias_alerta_vencimiento" value="30">
+                    <span class="input-group-addon">días de anticipación</span>
+                  </div>
+                  <span class="help-block">Solo en rubros con control de vencimientos (abarrotes).</span>
+                </div>
+              </div>
+              <p class="text-soft" style="margin-bottom:0"><i class="fa fa-info-circle"></i> Cambiar de rubro no borra información: solo muestra u oculta campos. Los datos ya registrados se conservan.</p>
+            </div>
+          </div>
+
+          <div class="box">
             <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-file-text-o"></i> Comprobantes e impuestos</h3></div>
             <div class="box-body">
               <div class="row">

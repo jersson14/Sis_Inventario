@@ -71,6 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
 	$dbPass = (string)($_POST['db_pass'] ?? '');
 	$producto = trim((string)($_POST['producto'] ?? 'Mi Tienda'));
 	$empresa = trim((string)($_POST['empresa'] ?? ''));
+	$rubrosValidos = array('GENERAL', 'ABARROTES', 'FERRETERIA', 'ROPA');
+	$rubro = strtoupper(trim((string)($_POST['rubro'] ?? 'GENERAL')));
+	if (!in_array($rubro, $rubrosValidos, true)) { $rubro = 'GENERAL'; }
 	$admNombre = trim((string)($_POST['adm_nombre'] ?? ''));
 	$admLogin = trim((string)($_POST['adm_login'] ?? ''));
 	$admClave = (string)($_POST['adm_clave'] ?? '');
@@ -113,6 +116,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
 							$st = $c->prepare("UPDATE configuracion_empresa SET nombre_comercial=?, razon_social=? WHERE idconfig=1");
 							$st->bind_param('ss', $empresa, $empresa);
 							$st->execute();
+						}
+						// Rubro: decide que funciones se habilitan (vencimientos, fracciones, tallas)
+						$st = $c->prepare("UPDATE configuracion_empresa SET tipo_negocio=? WHERE idconfig=1");
+						if ($st) {
+							$st->bind_param('s', $rubro);
+							$st->execute();
+							$resumen[] = 'Tipo de negocio: ' . $rubro . '.';
 						}
 						// Administrador
 						$hash = password_hash($admClave, PASSWORD_BCRYPT, array('cost' => 11));
@@ -243,6 +253,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
       <div class="grid">
         <div><label>Nombre del producto (marca del sistema)</label><input type="text" name="producto" value="<?php echo h($_POST['producto'] ?? 'Mi Tienda'); ?>"></div>
         <div><label>Nombre comercial de la empresa</label><input type="text" name="empresa" value="<?php echo h($_POST['empresa'] ?? ''); ?>" placeholder="Ferretería Los Andes"></div>
+        <div><label>Tipo de negocio</label><select name="rubro">
+<?php foreach (array('GENERAL' => 'General (inventario estándar)', 'ABARROTES' => 'Abarrotes / bodega (vencimientos y lotes)', 'FERRETERIA' => 'Ferretería (fracciones y mayoreo)', 'ROPA' => 'Ropa / calzado (tallas y colores)') as $rk => $rv): ?>
+          <option value="<?php echo h($rk); ?>" <?php echo (($_POST['rubro'] ?? 'GENERAL') === $rk) ? 'selected' : ''; ?>><?php echo h($rv); ?></option>
+<?php endforeach; ?>
+        </select><div class="help">Habilita las funciones propias de tu giro. Se puede cambiar después en Configuración.</div></div>
         <div><label>Nombre del administrador</label><input type="text" name="adm_nombre" value="<?php echo h($_POST['adm_nombre'] ?? ''); ?>"></div>
         <div><label>Usuario (login)</label><input type="text" name="adm_login" value="<?php echo h($_POST['adm_login'] ?? 'admin'); ?>"></div>
         <div><label>Contraseña</label><input type="password" name="adm_clave"><div class="help">Mínimo 8 caracteres, letras y números.</div></div>

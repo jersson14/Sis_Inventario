@@ -76,8 +76,8 @@ switch ($op) {
 				$id = (int)$reg->idcategoria;
 				$data[] = array(
 					"0" => ($reg->condicion)
-						? '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-danger btn-xs" onclick="desactivar(' . $id . ')"><i class="fa fa-close"></i></button>'
-						: '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-primary btn-xs" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>',
+						? '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-danger btn-xs" title="Desactivar" onclick="desactivar(' . $id . ')"><i class="fa fa-close"></i></button>'
+						: '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-success btn-xs" title="Activar" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>',
 					"1" => e($reg->nombre),
 					"2" => e($reg->descripcion),
 					"3" => ($reg->condicion) ? '<span class="label bg-green">Activado</span>' : '<span class="label bg-red">Desactivado</span>'

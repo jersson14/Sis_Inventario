@@ -11,7 +11,7 @@ class Empresa
     const CAMPOS = array(
         'nombre_comercial', 'razon_social', 'ruc', 'direccion', 'telefono', 'celular', 'correo', 'web', 'logo',
         'color_primario', 'color_secundario', 'serie_boleta', 'serie_factura', 'serie_ticket', 'serie_cotizacion',
-        'impuesto_default', 'moneda', 'mensaje_ticket'
+        'impuesto_default', 'moneda', 'tipo_negocio', 'dias_alerta_vencimiento', 'mensaje_ticket'
     );
 
     public function __construct()
@@ -38,6 +38,8 @@ class Empresa
             'serie_cotizacion' => 'COT',
             'impuesto_default' => 18.00,
             'moneda' => 'PEN',
+            'tipo_negocio' => 'GENERAL',
+            'dias_alerta_vencimiento' => 30,
             'mensaje_ticket' => 'Gracias por su compra'
         );
 

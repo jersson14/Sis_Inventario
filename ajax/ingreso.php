@@ -29,11 +29,14 @@ switch ($op) {
 			$arrCantidad     = (isset($_POST["cantidad"]) && is_array($_POST["cantidad"])) ? $_POST["cantidad"] : array();
 			$arrPrecioCompra = (isset($_POST["precio_compra"]) && is_array($_POST["precio_compra"])) ? $_POST["precio_compra"] : array();
 			$arrPrecioVenta  = (isset($_POST["precio_venta"]) && is_array($_POST["precio_venta"])) ? $_POST["precio_venta"] : array();
+			$arrPresentacion = (isset($_POST["idpresentacion"]) && is_array($_POST["idpresentacion"])) ? $_POST["idpresentacion"] : array();
+			$arrLoteCodigo   = (isset($_POST["lote_codigo"]) && is_array($_POST["lote_codigo"])) ? array_map('limpiarCadena', $_POST["lote_codigo"]) : array();
+			$arrLoteVence    = (isset($_POST["lote_vencimiento"]) && is_array($_POST["lote_vencimiento"])) ? $_POST["lote_vencimiento"] : array();
 
 			$rspta = $ingreso->insertar(
 				$idproveedor, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
-				$arrIdArticulo, $arrCantidad, $arrPrecioCompra, $arrPrecioVenta
+				$arrIdArticulo, $arrCantidad, $arrPrecioCompra, $arrPrecioVenta, $arrPresentacion, $arrLoteCodigo, $arrLoteVence
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('compras', 'crear', "Ingreso " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));
@@ -77,6 +80,19 @@ switch ($op) {
 		echo isset($rspta["message"]) ? $rspta["message"] : "No se pudo anular el ingreso";
 		break;
 
+	// Borrado definitivo: reservado al administrador porque no deja rastro.
+	case 'eliminar':
+		if (!usuarioTienePermiso('acceso')) {
+			echo "Solo un administrador puede eliminar compras";
+			break;
+		}
+		$rspta = $ingreso->eliminar($idingreso, $idusuario);
+		if (!empty($rspta["ok"])) {
+			registrarAuditoria('compras', 'eliminar', "Ingreso id " . $idingreso . " (" . (isset($rspta["documento"]) ? $rspta["documento"] : "") . ") eliminado definitivamente");
+		}
+		echo isset($rspta["message"]) ? $rspta["message"] : "No se pudo eliminar la compra";
+		break;
+
 	case 'mostrar':
 		$rspta = $ingreso->mostrar($idingreso);
 		echo json_encode($rspta, JSON_UNESCAPED_UNICODE);
@@ -90,7 +106,7 @@ switch ($op) {
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
 				$subtotal = (float)$reg->precio_compra * (float)$reg->cantidad;
-				echo '<tr><td>' . e($reg->nombre) . '</td><td>' . e($reg->unidad) . '</td><td class="text-right">' . number_format((float)$reg->cantidad, 0) . '</td><td class="text-right">' . number_format((float)$reg->precio_compra, 2) . '</td><td class="text-right">' . number_format((float)$reg->precio_venta, 2) . '</td><td class="text-right">' . number_format($subtotal, 2) . '</td></tr>';
+				echo '<tr><td>' . e($reg->nombre) . (!empty($reg->lotes) ? '<br><small class="text-soft"><i class="fa fa-calendar-times-o"></i> Lote ' . e($reg->lotes) . '</small>' : '') . '</td><td>' . e($reg->unidad) . '</td><td class="text-right">' . formatearCantidad($reg->cantidad) . '</td><td class="text-right">' . number_format((float)$reg->precio_compra, 2) . '</td><td class="text-right">' . number_format((float)$reg->precio_venta, 2) . '</td><td class="text-right">' . number_format($subtotal, 2) . '</td></tr>';
 				$total = $total + $subtotal;
 			}
 		}
@@ -104,17 +120,21 @@ switch ($op) {
 		$f_tipo_pago  = isset($_GET["tipo_pago"]) ? limpiarCadena($_GET["tipo_pago"]) : '';
 		$rspta = $ingreso->listarPorFecha($fecha_inicio, $fecha_fin, $f_estado, $f_tipo_pago);
 		$data = array();
+		$puedeEliminar = usuarioTienePermiso('acceso');
 
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
 				$id = (int)$reg->idingreso;
 				$url = '../reportes/exIngreso.php?id=';
 
-				$botones = '<button class="btn btn-warning btn-xs" type="button" title="Ver detalle" onclick="mostrar(' . $id . ')"><i class="fa fa-eye"></i></button> ';
+				$botones = '<button class="btn btn-default btn-xs" type="button" title="Ver detalle" onclick="mostrar(' . $id . ')"><i class="fa fa-eye"></i></button> ';
 				if ($reg->estado == 'Aceptado') {
-					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="Anular ingreso" onclick="anular(' . $id . ')"><i class="fa fa-close"></i></button> ';
+					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="Anular ingreso" onclick="anular(' . $id . ')"><i class="fa fa-ban"></i></button> ';
 				}
-				$botones .= '<a target="_blank" href="' . $url . $id . '" title="Imprimir comprobante"><button class="btn btn-info btn-xs" type="button" title="Imprimir comprobante"><i class="fa fa-file"></i></button></a>';
+				$botones .= '<a class="btn btn-info btn-xs" target="_blank" href="' . $url . $id . '" title="Imprimir comprobante"><i class="fa fa-print"></i></a>';
+				if ($puedeEliminar) {
+					$botones .= ' <button class="btn btn-danger btn-xs" type="button" title="Eliminar definitivamente" onclick="eliminar(' . $id . ')"><i class="fa fa-trash"></i></button>';
+				}
 
 				$tipoPago = strtoupper((string)$reg->tipo_pago);
 				$clasePago = ($tipoPago === 'CREDITO') ? 'bg-yellow' : 'bg-aqua';
@@ -197,6 +217,19 @@ switch ($op) {
 		), JSON_UNESCAPED_UNICODE);
 		break;
 
+	// Ficha para agregar un articulo al detalle (presentaciones y si admite decimales)
+	case 'infoArticulo':
+		require_once "../modelos/Articulo.php";
+		$articuloFicha = new Articulo();
+		$ficha = $articuloFicha->fichaOperacion(enteroSeguro(isset($_POST['idarticulo']) ? $_POST['idarticulo'] : 0));
+		if (!$ficha) {
+			echo json_encode(array("ok"=>false, "message"=>"El artículo no existe o está inactivo"), JSON_UNESCAPED_UNICODE);
+			break;
+		}
+		$ficha["ok"] = true;
+		echo json_encode($ficha, JSON_UNESCAPED_UNICODE);
+		break;
+
 	case 'listarArticulos':
 		require_once "../modelos/Articulo.php";
 		$articulo = new Articulo();
@@ -207,13 +240,11 @@ switch ($op) {
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
 				$idart = (int)$reg->idarticulo;
-				$nombrejs = addslashes((string)$reg->nombre);
-				$unidadjs = addslashes((string)$reg->abreviatura);
 				$stock = (float)$reg->stock;
-				$stockFmt = number_format($stock, 0);
+				$stockFmt = formatearCantidad($stock);
 				$precioCompraRef = (isset($reg->precio_compra_ref) && !is_null($reg->precio_compra_ref)) ? (float)$reg->precio_compra_ref : 0;
 				$precioVentaRef = (isset($reg->precio_venta_ref) && !is_null($reg->precio_venta_ref)) ? (float)$reg->precio_venta_ref : 0;
-				$btnAgregar = '<button class="btn btn-add-item" type="button" title="Agregar al ingreso" onclick="agregarDetalle(' . $idart . ',\'' . $nombrejs . '\',\'' . $unidadjs . '\',' . $precioCompraRef . ',' . $precioVentaRef . ')"><i class="fa fa-plus-circle"></i> Agregar</button>';
+				$btnAgregar = '<button class="btn btn-add-item" type="button" title="Agregar al ingreso" onclick="agregarArticulo(' . $idart . ')"><i class="fa fa-plus-circle"></i> Agregar</button>';
 
 				if ($stock <= 0) {
 					$stockHtml = '<span class="stock-pill stock-empty">' . $stockFmt . '</span>';

@@ -160,6 +160,14 @@
         items.push({ cls: "bell-warning", ico: "fa-exclamation-triangle", href: "procenter.php", t: r.articulos_bajo_minimo + " artículo(s) bajo el mínimo", s: "Revisa compras sugeridas" });
         total += Number(r.articulos_bajo_minimo);
       }
+      if (Number(r.lotes_vencidos) > 0) {
+        items.push({ cls: "bell-danger", ico: "fa-calendar-times-o", href: "vencimientos.php?estado=VENCIDO", t: r.lotes_vencidos + " lote(s) vencido(s)", s: money(r.lotes_vencidos_valor) + " sin poder venderse · dar de baja" });
+        total += Number(r.lotes_vencidos);
+      }
+      if (Number(r.lotes_por_vencer) > 0) {
+        items.push({ cls: "bell-warning", ico: "fa-hourglass-half", href: "vencimientos.php?estado=POR_VENCER", t: r.lotes_por_vencer + " lote(s) por vencer", s: "En los próximos " + r.dias_alerta_vencimiento + " días · " + money(r.lotes_por_vencer_valor) });
+        total += Number(r.lotes_por_vencer);
+      }
       if (Number(r.cxc_vencidas) > 0) {
         items.push({ cls: "bell-danger", ico: "fa-hand-holding-usd fa-money", href: "cuentas.php", t: r.cxc_vencidas + " cuenta(s) por cobrar vencida(s)", s: money(r.cxc_vencidas_monto) + " pendiente" });
         total += Number(r.cxc_vencidas);

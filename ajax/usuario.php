@@ -316,12 +316,12 @@ switch ($op) {
 		if ($rspta instanceof mysqli_result) {
 			while ($reg = $rspta->fetch_object()) {
 				$id = (int)$reg->idusuario;
-				$editar = '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button>';
+				$editar = '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button>';
 				if ($reg->condicion) {
 					// No se muestra el boton de desactivar para el propio usuario.
-					$opciones = ($id === $idSesion) ? $editar : $editar . ' <button class="btn btn-danger btn-xs" onclick="desactivar(' . $id . ')"><i class="fa fa-close"></i></button>';
+					$opciones = ($id === $idSesion) ? $editar : $editar . ' <button class="btn btn-danger btn-xs" title="Desactivar" onclick="desactivar(' . $id . ')"><i class="fa fa-ban"></i></button>';
 				} else {
-					$opciones = $editar . ' <button class="btn btn-primary btn-xs" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>';
+					$opciones = $editar . ' <button class="btn btn-success btn-xs" title="Activar" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>';
 				}
 				$img = nombreArchivoSeguro($reg->imagen);
 				$srcImg = ($img !== '') ? '../files/usuarios/' . e($img) : '../public/img/avatar.png';

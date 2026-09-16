@@ -14,6 +14,7 @@
  *   requiereLogin(false);          // redirige a login.php si no hay sesion
  */
 require_once __DIR__ . "/Conexion.php";
+require_once __DIR__ . "/negocio.php";   // perfil de negocio: perfilNegocio(), negocioTiene()
 
 if (!function_exists('iniciarSesionSegura')) {
 

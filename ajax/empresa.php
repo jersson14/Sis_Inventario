@@ -170,12 +170,14 @@ switch ($op) {
             'serie_cotizacion' => serieSegura(isset($_POST['serie_cotizacion']) ? $_POST['serie_cotizacion'] : '', 'COT'),
             'impuesto_default' => $impuesto,
             'moneda' => $moneda,
+            'tipo_negocio' => normalizarPerfilNegocio(isset($_POST['tipo_negocio']) ? $_POST['tipo_negocio'] : ''),
+            'dias_alerta_vencimiento' => max(1, min(365, enteroSeguro(isset($_POST['dias_alerta_vencimiento']) ? $_POST['dias_alerta_vencimiento'] : 30) ?: 30)),
             'mensaje_ticket' => substr(limpiarCadena(isset($_POST['mensaje_ticket']) ? $_POST['mensaje_ticket'] : ''), 0, 160)
         );
 
         $rspta = $empresa->guardar($data);
         if ($rspta) {
-            registrarAuditoria('empresa', 'guardar', 'Config empresa: ' . $nombre_comercial . ' moneda ' . $moneda . ' imp ' . $impuesto . ' logo ' . $logo);
+            registrarAuditoria('empresa', 'guardar', 'Config empresa: ' . $nombre_comercial . ' moneda ' . $moneda . ' imp ' . $impuesto . ' rubro ' . $data['tipo_negocio'] . ' logo ' . $logo);
             echo 'Configuracion de empresa actualizada correctamente';
         } else {
             echo 'No se pudo actualizar la configuracion';

@@ -8,6 +8,7 @@ function init(){
 
 function limpiar(){
 	$("#idunidad, #nombre, #abreviatura, #descripcion").val("");
+	$("#permite_fraccion").prop("checked", false);
 	$("#formTitulo").text("Nueva unidad");
 }
 
@@ -74,6 +75,7 @@ function mostrar(idunidad){
 		$("#nombre").val(data.nombre);
 		$("#abreviatura").val(data.abreviatura);
 		$("#descripcion").val(data.descripcion);
+		$("#permite_fraccion").prop("checked", String(data.permite_fraccion) === "1");
 		$("#idunidad").val(data.idunidad);
 	});
 }

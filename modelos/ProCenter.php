@@ -37,12 +37,12 @@ class ProCenter
     {
         $id = (int)$idarticulo;
         $sql = "SELECT
-          IFNULL((SELECT SUM(di.cantidad)
+          IFNULL((SELECT SUM(di.cantidad*di.factor)
               FROM detalle_ingreso di
               INNER JOIN ingreso i ON i.idingreso=di.idingreso
               WHERE di.idarticulo=? AND i.estado='Aceptado'),0)
           + IFNULL((SELECT SUM(aj.cantidad) FROM ajuste_inventario aj WHERE aj.idarticulo=? AND aj.tipo='ENTRADA'),0) AS entradas_total,
-          IFNULL((SELECT SUM(dv.cantidad)
+          IFNULL((SELECT SUM(dv.cantidad*dv.factor)
               FROM detalle_venta dv
               INNER JOIN venta v ON v.idventa=dv.idventa
               WHERE dv.idarticulo=? AND v.estado='Aceptado'),0)
@@ -60,13 +60,13 @@ class ProCenter
         }
         $id = (int)$idarticulo;
         $sql = "SELECT
-          IFNULL((SELECT SUM(di.cantidad)
+          IFNULL((SELECT SUM(di.cantidad*di.factor)
               FROM detalle_ingreso di
               INNER JOIN ingreso i ON i.idingreso=di.idingreso
               WHERE di.idarticulo=? AND i.estado='Aceptado' AND DATE(i.fecha_hora) < ?),0)
           + IFNULL((SELECT SUM(aj.cantidad) FROM ajuste_inventario aj
               WHERE aj.idarticulo=? AND aj.tipo='ENTRADA' AND DATE(aj.fecha_hora) < ?),0) AS entradas_antes,
-          IFNULL((SELECT SUM(dv.cantidad)
+          IFNULL((SELECT SUM(dv.cantidad*dv.factor)
               FROM detalle_venta dv
               INNER JOIN venta v ON v.idventa=dv.idventa
               WHERE dv.idarticulo=? AND v.estado='Aceptado' AND DATE(v.fecha_hora) < ?),0)
@@ -115,7 +115,7 @@ class ProCenter
             'INGRESO' AS tipo,
             CONCAT(i.tipo_comprobante,' ',i.serie_comprobante,'-',i.num_comprobante) AS documento,
             IFNULL(p.nombre,'-') AS tercero,
-            di.cantidad AS entrada,
+            di.cantidad*di.factor AS entrada,
             0.000 AS salida,
             di.precio_compra AS costo,
             di.precio_venta AS precio_ref
@@ -131,7 +131,7 @@ class ProCenter
             CONCAT(v.tipo_comprobante,' ',v.serie_comprobante,'-',v.num_comprobante) AS documento,
             IFNULL(p.nombre,'-') AS tercero,
             0.000 AS entrada,
-            dv.cantidad AS salida,
+            dv.cantidad*dv.factor AS salida,
             IFNULL((SELECT di2.precio_compra
               FROM detalle_ingreso di2
               INNER JOIN ingreso i2 ON i2.idingreso=di2.idingreso
@@ -228,7 +228,7 @@ class ProCenter
         }
 
         $sql = "SELECT a.nombre, a.codigo, IFNULL(u.abreviatura,'und') AS unidad,
-          SUM(dv.cantidad) AS cantidad,
+          SUM(dv.cantidad*dv.factor) AS cantidad,
           SUM((dv.cantidad*dv.precio_venta)-dv.descuento) AS total
         FROM detalle_venta dv
         INNER JOIN venta v ON v.idventa=dv.idventa
@@ -272,10 +272,11 @@ class ProCenter
             IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
             a.nombre AS producto,
             dv.cantidad,
+            dv.factor,
             dv.precio_venta,
             dv.descuento,
             IFNULL((
-              SELECT di2.precio_compra
+              SELECT di2.precio_compra/di2.factor
               FROM detalle_ingreso di2
               INNER JOIN ingreso i2 ON i2.idingreso=di2.idingreso
               WHERE di2.idarticulo=dv.idarticulo
@@ -291,10 +292,10 @@ class ProCenter
           INNER JOIN usuario u ON u.idusuario=v.idusuario
           WHERE $where";
 
-        $agregados = "SUM(cantidad) AS cantidad,
+        $agregados = "SUM(cantidad*factor) AS cantidad,
               SUM((cantidad*precio_venta)-descuento) AS venta,
-              SUM(cantidad*costo_unit) AS costo,
-              SUM(((cantidad*precio_venta)-descuento)-(cantidad*costo_unit)) AS utilidad";
+              SUM(cantidad*factor*costo_unit) AS costo,
+              SUM(((cantidad*precio_venta)-descuento)-(cantidad*factor*costo_unit)) AS utilidad";
 
         if ($agrupar === 'categoria') {
             $sql = "SELECT categoria, $agregados FROM ($base) t GROUP BY categoria ORDER BY utilidad DESC";
@@ -333,7 +334,7 @@ class ProCenter
         FROM articulo a
         LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
         LEFT JOIN (
-          SELECT dv.idarticulo, SUM(dv.cantidad) AS cantidad_vendida
+          SELECT dv.idarticulo, SUM(dv.cantidad*dv.factor) AS cantidad_vendida
           FROM detalle_venta dv
           INNER JOIN venta v ON v.idventa=dv.idventa
           WHERE v.estado='Aceptado'

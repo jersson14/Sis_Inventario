@@ -10,6 +10,7 @@ $idunidad    = enteroSeguro(isset($_POST["idunidad"]) ? $_POST["idunidad"] : 0);
 $nombre      = isset($_POST["nombre"]) ? limpiarCadena($_POST["nombre"]) : "";
 $abreviatura = isset($_POST["abreviatura"]) ? limpiarCadena($_POST["abreviatura"]) : "";
 $descripcion = isset($_POST["descripcion"]) ? limpiarCadena($_POST["descripcion"]) : "";
+$permite_fraccion = !empty($_POST["permite_fraccion"]) ? 1 : 0;
 
 $op = isset($_GET["op"]) ? $_GET["op"] : '';
 
@@ -40,13 +41,13 @@ switch ($op) {
 			break;
 		}
 		if ($idunidad <= 0) {
-			$rspta = $unidad->insertar($nombre, $abreviatura, $descripcion);
+			$rspta = $unidad->insertar($nombre, $abreviatura, $descripcion, $permite_fraccion);
 			if ($rspta) {
 				registrarAuditoria('almacen', 'crear_unidad', 'Unidad creada: ' . $nombre . ' (' . $abreviatura . ')');
 			}
 			echo $rspta ? "Unidad registrada correctamente" : "No se pudo registrar la unidad";
 		} else {
-			$rspta = $unidad->editar($idunidad, $nombre, $abreviatura, $descripcion);
+			$rspta = $unidad->editar($idunidad, $nombre, $abreviatura, $descripcion, $permite_fraccion);
 			if ($rspta) {
 				registrarAuditoria('almacen', 'editar_unidad', 'Unidad #' . $idunidad . ' editada: ' . $nombre . ' (' . $abreviatura . ')');
 			}
@@ -85,12 +86,13 @@ switch ($op) {
 				$id = (int)$reg->idunidad;
 				$data[] = array(
 					"0" => ($reg->condicion)
-						? '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-danger btn-xs" onclick="desactivar(' . $id . ')"><i class="fa fa-close"></i></button>'
-						: '<button class="btn btn-warning btn-xs" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-primary btn-xs" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>',
+						? '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-danger btn-xs" title="Desactivar" onclick="desactivar(' . $id . ')"><i class="fa fa-ban"></i></button>'
+						: '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-success btn-xs" title="Activar" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>',
 					"1" => e($reg->nombre),
 					"2" => e($reg->abreviatura),
 					"3" => e($reg->descripcion),
-					"4" => ($reg->condicion) ? '<span class="label bg-green">Activo</span>' : '<span class="label bg-red">Inactivo</span>'
+					"4" => ((int)$reg->permite_fraccion === 1) ? '<span class="label bg-aqua" title="Se puede vender 1.5, 0.75…">Sí</span>' : '<span class="label bg-gray" title="Solo cantidades enteras">No</span>',
+					"5" => ($reg->condicion) ? '<span class="label bg-green">Activo</span>' : '<span class="label bg-red">Inactivo</span>'
 				);
 			}
 		}

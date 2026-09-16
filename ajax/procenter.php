@@ -76,9 +76,9 @@ switch ($op) {
                     'tipo' => $reg->tipo,
                     'documento' => $reg->documento,
                     'tercero' => $reg->tercero,
-                    'entrada' => number_format($entrada, 0),
-                    'salida' => number_format($salida, 0),
-                    'saldo' => number_format($saldo, 0),
+                    'entrada' => formatearCantidad($entrada),
+                    'salida' => formatearCantidad($salida),
+                    'saldo' => formatearCantidad($saldo),
                     'costo' => (float)$reg->costo,
                     'precio_ref' => (float)$reg->precio_ref
                 );
@@ -90,9 +90,9 @@ switch ($op) {
             'articulo' => $info['nombre'],
             'codigo' => $info['codigo'],
             'unidad' => $info['unidad'],
-            'stock_actual' => number_format($stockActual, 0),
-            'stock_minimo' => number_format((float)$info['stock_minimo'], 0),
-            'saldo_inicial' => number_format($saldoInicialRango, 0),
+            'stock_actual' => formatearCantidad($stockActual),
+            'stock_minimo' => formatearCantidad($info['stock_minimo']),
+            'saldo_inicial' => formatearCantidad($saldoInicialRango),
             'movimientos' => $data
         ), JSON_UNESCAPED_UNICODE);
         break;
@@ -107,7 +107,7 @@ switch ($op) {
                     '1' => e($reg->nombre),
                     '2' => formatearCantidad($reg->stock) . ' ' . e($reg->unidad),
                     '3' => formatearCantidad($reg->stock_minimo) . ' ' . e($reg->unidad),
-                    '4' => number_format((float)$reg->faltante, 0) . ' ' . e($reg->unidad)
+                    '4' => formatearCantidad($reg->faltante) . ' ' . e($reg->unidad)
                 );
             }
         }
@@ -208,10 +208,10 @@ switch ($op) {
                     '1' => e($reg->nombre),
                     '2' => formatearCantidad($reg->stock) . ' ' . e($reg->unidad),
                     '3' => formatearCantidad($reg->stock_minimo) . ' ' . e($reg->unidad),
-                    '4' => number_format((float)$reg->vendido_periodo, 0),
-                    '5' => number_format((float)$reg->promedio_diario, 0),
+                    '4' => formatearCantidad($reg->vendido_periodo),
+                    '5' => number_format((float)$reg->promedio_diario, 2),
                     '6' => formatearCantidad($reg->stock_objetivo),
-                    '7' => number_format((float)$reg->sugerido, 0)
+                    '7' => formatearCantidad($reg->sugerido)
                 );
             }
         }

@@ -14,7 +14,7 @@ function cargar(){
 				'<td><strong>' + appEscapeHtml(a.nombre) + '</strong><br><small class="text-soft">' + appEscapeHtml(a.categoria || "") + '</small></td>' +
 				'<td>' + (a.codigo ? '<code>' + appEscapeHtml(a.codigo) + '</code>' : '<span class="text-danger">sin código</span>') + '</td>' +
 				'<td class="money">' + money(a.precio_venta) + '</td>' +
-				'<td><span class="stock-pill ' + pill + '">' + a.stock + '</span></td>' +
+				'<td><span class="stock-pill ' + pill + '">' + window.appCantidad(a.stock) + '</span></td>' +
 				'<td><input type="number" class="form-control input-sm cant" data-i="' + i + '" value="' + ($("#opCantidad").val() || 1) + '" min="1" max="500"></td>' +
 				'</tr>';
 		});

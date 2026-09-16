@@ -122,8 +122,11 @@ function agregarFicha(f, idpresentacion, opciones){
 	opciones = opciones || {};
 	var pres = presentacionDeFicha(f, idpresentacion);
 	var idPres = pres ? pres.idpresentacion : 0;
+	var idVar = 0;
+	(f.variantes || []).forEach(function(v){ if (v.idvariante === (parseInt(opciones.idvariante || f.idvariante, 10) || 0)) { idVar = v.idvariante; } });
 	var $existente = $("#detalles tbody tr.filas").filter(function(){
-		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres;
+		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres &&
+			(parseInt($(this).find("[name='idvariante[]']").val(), 10) || 0) === idVar;
 	}).first();
 	if ($existente.length && !opciones.cantidad) {
 		var $c = $existente.find("[name='cantidad[]']");
@@ -144,7 +147,7 @@ function agregarFicha(f, idpresentacion, opciones){
 	fila.data("ficha", f);
 	fila.html(
 		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
-		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><strong>' + appEscapeHtml(f.nombre) + '</strong>' + selector + '<small class="text-soft d-block">Stock: ' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) +
+		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><input type="hidden" name="idvariante[]" value="' + idVar + '"><strong>' + appEscapeHtml(f.nombre) + '</strong>' + selectorVarianteCot(f, idVar) + selector + '<small class="text-soft d-block">Stock: ' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) +
 			(f.escalas && f.escalas.length ? ' · <span class="text-success"><i class="fa fa-tags"></i> por mayor</span>' : '') + '</small></td>' +
 		'<td><span class="unidad-fila"></span></td>' +
 		'<td><input type="number" min="0" name="cantidad[]" value="' + (opciones.cantidad || 1) + '" oninput="modificarSubtotales()" onblur="modificarSubtotales()" onfocus="this.select()"></td>' +
@@ -162,6 +165,22 @@ function agregarFicha(f, idpresentacion, opciones){
 	if (!opciones.silencioso) { setTimeout(function(){ $("#codigo_rapido").focus(); }, 50); }
 }
 
+// Talla/color (sin tope de stock: cotizar no mueve inventario)
+function selectorVarianteCot(f, idVar){
+	if (!f.variantes || !f.variantes.length) { return ""; }
+	return '<select class="form-control input-sm sel-variante" onchange="cambiarVarianteCot(this)" title="Talla y color">' +
+		'<option value="0">— Elige talla / color —</option>' +
+		f.variantes.map(function(v){ return '<option value="' + v.idvariante + '"' + (v.idvariante === idVar ? " selected" : "") + '>' + appEscapeHtml(v.etiqueta) + ' · stock ' + window.appCantidad(v.stock) + '</option>'; }).join("") +
+		'</select>';
+}
+
+function cambiarVarianteCot(select){
+	var $tr = $(select).closest("tr");
+	$tr.find("[name='idvariante[]']").val($(select).val());
+	$tr.find("[name='precio[]']").removeAttr("data-manual");
+	modificarSubtotales();
+}
+
 function filaFactor($tr){
 	var pres = presentacionDeFicha($tr.data("ficha") || {}, $tr.find("[name='idpresentacion[]']").val());
 	return pres ? pres.factor : 1;
@@ -176,7 +195,9 @@ function precioAutomatico($tr){
 	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
 	if (pres) { return pres.precio_venta > 0 ? pres.precio_venta : (f.precio_venta || 0) * pres.factor; }
 	var cantidad = parseFloat($tr.find("[name='cantidad[]']").val()) || 0;
+	var idVar = parseInt($tr.find("[name='idvariante[]']").val(), 10) || 0;
 	var precio = f.precio_venta || 0;
+	(f.variantes || []).forEach(function(v){ if (v.idvariante === idVar) { precio = v.precio_venta; } });
 	(f.escalas || []).forEach(function(es){ if (cantidad + 0.0005 >= es.cantidad_minima) { precio = es.precio; } });
 	return precio;
 }
@@ -238,7 +259,7 @@ function buscarCodigo(codigo){
 	$.post("../ajax/cotizacion.php?op=buscarArticuloCodigo", { codigo: codigo }, function(resp){
 		var r = appParseJson(resp, null);
 		if (!r || !r.ok) { appNotify("warning", (r && r.message) || "No se encontró el artículo"); return; }
-		agregarFicha(r, r.idpresentacion || 0);
+		agregarFicha(r, r.idpresentacion || 0, { idvariante: r.idvariante || 0 });
 	});
 }
 
@@ -299,7 +320,7 @@ function editar(id){
 		if (clientesCargados) { fijarCliente(); } else { setTimeout(fijarCliente, 600); }
 		var cadena = $.Deferred().resolve();
 		(c.items || []).forEach(function(it){
-			cadena = cadena.then(function(){ return agregarArticulo(it.idarticulo, it.idpresentacion || 0, { cantidad: it.cantidad, precio: Number(it.precio), descuento: it.descuento, silencioso: true }); });
+			cadena = cadena.then(function(){ return agregarArticulo(it.idarticulo, it.idpresentacion || 0, { cantidad: it.cantidad, precio: Number(it.precio), descuento: it.descuento, idvariante: it.idvariante || 0, silencioso: true }); });
 		});
 	});
 }

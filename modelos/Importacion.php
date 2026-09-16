@@ -6,6 +6,7 @@
 require_once "../config/Conexion.php";
 require_once "../config/negocio.php";
 require_once "../modelos/Lote.php";
+require_once "../modelos/Variante.php";
 
 class Importacion
 {
@@ -25,7 +26,11 @@ class Importacion
 				'precio_compra' => array('Precio compra', false, '0.80'),
 				'precio_venta'  => array('Precio venta', false, '1.50'),
 				'descripcion'   => array('Descripción', false, 'Acero zincado'),
-			);
+			) + (Variante::activo() ? array(
+				// Rubro ropa: una fila por talla/color; el codigo de esa fila es el de la combinacion
+				'talla'         => array('Talla', false, 'M'),
+				'color'         => array('Color', false, 'Negro'),
+			) : array());
 		}
 		return array(
 			'nombre'         => array('Nombre', true, $tipo === 'proveedores' ? 'Distribuidora Ferretera SAC' : 'María Quispe'),
@@ -61,6 +66,7 @@ class Importacion
 			'costo' => 'precio_compra', 'precio_de_compra' => 'precio_compra', 'p_compra' => 'precio_compra', 'pcompra' => 'precio_compra',
 			'precio' => 'precio_venta', 'precio_de_venta' => 'precio_venta', 'p_venta' => 'precio_venta', 'pventa' => 'precio_venta', 'pvp' => 'precio_venta',
 			'desc' => 'descripcion', 'detalle' => 'descripcion', 'observacion' => 'descripcion',
+			'size' => 'talla', 'tamano' => 'talla', 'talle' => 'talla', 'colour' => 'color',
 			'tipo_doc' => 'tipo_documento', 'tipodocumento' => 'tipo_documento', 'documento' => 'num_documento', 'n_documento' => 'num_documento', 'numero_documento' => 'num_documento', 'dni' => 'num_documento', 'ruc' => 'num_documento', 'nro_documento' => 'num_documento',
 			'celular' => 'telefono', 'fono' => 'telefono', 'whatsapp' => 'telefono', 'correo' => 'email', 'e_mail' => 'email', 'mail' => 'email', 'direccion_fiscal' => 'direccion',
 		);
@@ -212,6 +218,126 @@ class Importacion
 
 	public function validarArticulos(array $filas)
 	{
+		// Rubro ropa: las filas con talla o color se validan como combinaciones de un articulo
+		if (Variante::activo()) {
+			$simples = array();
+			$conVariante = array();
+			foreach ($filas as $f) {
+				if ((isset($f['talla']) && trim($f['talla']) !== '') || (isset($f['color']) && trim($f['color']) !== '')) {
+					$conVariante[] = $f;
+				} else {
+					$simples[] = $f;
+				}
+			}
+			if ($conVariante) {
+				$a = $simples ? $this->validarArticulosSimples($simples) : array('crear' => 0, 'actualizar' => 0, 'error' => 0, 'categorias_nuevas' => array(), 'filas' => array());
+				$b = $this->validarArticulosVariantes($conVariante);
+				$res = array(
+					'crear' => $a['crear'] + $b['crear'], 'actualizar' => $a['actualizar'] + $b['actualizar'], 'error' => $a['error'] + $b['error'],
+					'categorias_nuevas' => array_values(array_unique(array_merge($a['categorias_nuevas'], $b['categorias_nuevas']))),
+					'filas' => array_merge($a['filas'], $b['filas']),
+					'modo_variantes' => true
+				);
+				usort($res['filas'], function ($x, $y) { return $x['fila'] <=> $y['fila']; });
+				return $res;
+			}
+		}
+		return $this->validarArticulosSimples($filas);
+	}
+
+	/**
+	 * Filas con talla/color: cada una es una combinacion del articulo "nombre".
+	 * Varias filas del mismo nombre forman un articulo con varias tallas/colores.
+	 */
+	private function validarArticulosVariantes(array $filas)
+	{
+		$cats = array(); foreach (dbAll("SELECT idcategoria, nombre FROM categoria") as $c) { $cats[self::normalizarValor($c['nombre'])] = (int)$c['idcategoria']; }
+		$unis = array(); foreach (dbAll("SELECT idunidad, nombre, abreviatura FROM unidad_medida WHERE condicion=1") as $u) { $unis[self::normalizarValor($u['abreviatura'])] = (int)$u['idunidad']; $unis[self::normalizarValor($u['nombre'])] = (int)$u['idunidad']; }
+		$porNombre = array();
+		foreach (dbAll("SELECT a.idarticulo, a.nombre, a.stock, (SELECT COUNT(*) FROM articulo_variante v WHERE v.idarticulo=a.idarticulo AND v.condicion=1) AS variantes FROM articulo a") as $a) {
+			$porNombre[mb_strtolower(html_entity_decode($a['nombre'], ENT_QUOTES, 'UTF-8'))] = $a;
+		}
+		// Categoria por articulo: basta con que una de sus filas la indique
+		$catDeNombre = array();
+		foreach ($filas as $f) {
+			$k = mb_strtolower(isset($f['nombre']) ? trim($f['nombre']) : '');
+			if ($k !== '' && !isset($catDeNombre[$k]) && isset($f['categoria']) && trim($f['categoria']) !== '') { $catDeNombre[$k] = trim($f['categoria']); }
+		}
+		$vistos = array();
+		$vistosCodigo = array();
+		$res = array('crear' => 0, 'actualizar' => 0, 'error' => 0, 'categorias_nuevas' => array(), 'filas' => array());
+		foreach ($filas as $f) {
+			$errores = array();
+			$nombre = isset($f['nombre']) ? trim($f['nombre']) : '';
+			$talla = Variante::textoCorto(isset($f['talla']) ? $f['talla'] : '', 20);
+			$color = Variante::textoCorto(isset($f['color']) ? $f['color'] : '', 30);
+			$codigo = isset($f['codigo']) ? trim($f['codigo']) : '';
+			$claveNombre = mb_strtolower($nombre);
+			if ($nombre === '') $errores[] = 'Nombre vacío';
+			if (mb_strlen($nombre) > 100) $errores[] = 'Nombre supera 100 caracteres';
+			if (mb_strlen($codigo) > 50) $errores[] = 'Código supera 50 caracteres';
+			$clave = $claveNombre . '|' . mb_strtolower($talla) . '|' . mb_strtolower($color);
+			if (isset($vistos[$clave])) $errores[] = 'Talla/color repetida en el archivo (fila ' . $vistos[$clave] . ')';
+			$vistos[$clave] = $f['_fila'];
+			if ($codigo !== '') {
+				if (isset($vistosCodigo[mb_strtolower($codigo)])) $errores[] = 'Código repetido en el archivo (fila ' . $vistosCodigo[mb_strtolower($codigo)] . ')';
+				$vistosCodigo[mb_strtolower($codigo)] = $f['_fila'];
+			}
+			$categoria = isset($catDeNombre[$claveNombre]) ? $catDeNombre[$claveNombre] : '';
+			$idcat = 0; $catNueva = false;
+			if ($categoria !== '') {
+				$k = self::normalizarValor($categoria);
+				if (isset($cats[$k])) $idcat = $cats[$k]; else { $catNueva = true; $res['categorias_nuevas'][$k] = $categoria; }
+			}
+			$unidad = isset($f['unidad']) ? trim($f['unidad']) : '';
+			$idunidad = 0;
+			if ($unidad !== '') { $k = self::normalizarValor($unidad); if (isset($unis[$k])) $idunidad = $unis[$k]; else $errores[] = 'Unidad "' . $unidad . '" no existe'; }
+			if ($idunidad === 0 && $unidad === '') { $idunidad = isset($unis['und']) ? $unis['und'] : (count($unis) ? reset($unis) : 0); }
+			$stock = $this->numero(isset($f['stock']) ? $f['stock'] : '', 0);
+			$stockMin = $this->numero(isset($f['stock_minimo']) ? $f['stock_minimo'] : '', 0);
+			$pc = $this->numero(isset($f['precio_compra']) ? $f['precio_compra'] : '', 0);
+			$pv = $this->numero(isset($f['precio_venta']) ? $f['precio_venta'] : '', 0);
+			if ($stock < 0 || $stockMin < 0 || $pc < 0 || $pv < 0) $errores[] = 'Valores negativos';
+
+			$art = isset($porNombre[$claveNombre]) ? $porNombre[$claveNombre] : null;
+			$variante = null;
+			if ($art) {
+				if ((int)$art['variantes'] === 0 && (float)$art['stock'] > 0) {
+					$errores[] = 'El artículo ya tiene ' . formatearCantidad($art['stock']) . ' en stock sin talla/color: reparte ese stock desde su ficha antes de importar combinaciones';
+				}
+				// Se guardan escapados (limpiarCadena), igual que desde el formulario
+				$variante = dbRow("SELECT idvariante, stock FROM articulo_variante WHERE idarticulo=? AND talla=? AND color=? LIMIT 1", array((int)$art['idarticulo'], limpiarCadena($talla), limpiarCadena($color)));
+			}
+			if ($codigo !== '') {
+				$usado = (int)dbValue(
+					"SELECT (SELECT COUNT(*) FROM articulo WHERE codigo=?)
+					      + (SELECT COUNT(*) FROM articulo_presentacion WHERE codigo=? AND condicion=1)
+					      + (SELECT COUNT(*) FROM articulo_variante WHERE codigo=? AND condicion=1 AND idvariante<>?)",
+					array($codigo, $codigo, $codigo, $variante ? (int)$variante['idvariante'] : 0), 0);
+				if ($usado > 0) $errores[] = 'El código ' . $codigo . ' ya lo usa otro artículo o talla/color';
+			}
+			if (!$art && $categoria === '') $errores[] = 'Categoría vacía (indícala en al menos una fila del artículo nuevo)';
+			$accion = $errores ? 'error' : ($variante ? 'actualizar' : 'crear');
+			$res[$accion]++;
+			$res['filas'][] = array(
+				'fila' => (int)$f['_fila'], 'accion' => $accion, 'errores' => $errores, 'variante' => true,
+				'nombre' => $nombre, 'talla' => $talla, 'color' => $color, 'codigo' => $codigo,
+				'categoria' => $categoria, 'categoria_nueva' => $catNueva, 'idcategoria' => $idcat,
+				'unidad' => $unidad === '' ? 'und' : $unidad, 'idunidad' => $idunidad,
+				'stock' => cantidadSegura($stock, false), 'stock_minimo' => cantidadSegura($stockMin, false),
+				'precio_compra' => round($pc, 2), 'precio_venta' => round($pv, 2),
+				'descripcion' => isset($f['descripcion']) ? mb_substr(trim($f['descripcion']), 0, 256) : '',
+				'idexistente' => $art ? (int)$art['idarticulo'] : 0,
+				'idvariante_existente' => $variante ? (int)$variante['idvariante'] : 0,
+				'stock_actual' => $variante ? round((float)$variante['stock'], 3) : null
+			);
+		}
+		$res['categorias_nuevas'] = array_values($res['categorias_nuevas']);
+		return $res;
+	}
+
+	private function validarArticulosSimples(array $filas)
+	{
 		$cats = array(); foreach (dbAll("SELECT idcategoria, nombre FROM categoria") as $c) { $cats[self::normalizarValor($c['nombre'])] = (int)$c['idcategoria']; }
 		$unis = array(); $fraccionUnidad = array();
 		foreach (dbAll("SELECT idunidad, nombre, abreviatura, permite_fraccion FROM unidad_medida WHERE condicion=1") as $u) { $unis[self::normalizarValor($u['abreviatura'])] = (int)$u['idunidad']; $unis[self::normalizarValor($u['nombre'])] = (int)$u['idunidad']; $fraccionUnidad[(int)$u['idunidad']] = (int)$u['permite_fraccion'] === 1; }
@@ -318,6 +444,7 @@ class Importacion
 		$res = array('creados' => 0, 'actualizados' => 0, 'omitidos' => 0, 'categorias' => 0, 'ajustes' => 0);
 		$ok = dbTransaccion(function () use ($validacion, $crearCat, $actualizar, $ajustarStock, $idusuario, &$res) {
 			$cats = array(); foreach (dbAll("SELECT idcategoria, nombre FROM categoria") as $c) { $cats[Importacion::normalizarValor($c['nombre'])] = (int)$c['idcategoria']; }
+			$articulosVariante = array(); // nombre normalizado => idarticulo creado o existente
 			foreach ($validacion['filas'] as $r) {
 				if ($r['accion'] === 'error') { $res['omitidos']++; continue; }
 				$idcat = (int)$r['idcategoria'];
@@ -329,6 +456,10 @@ class Importacion
 						if ($idcat <= 0) return false;
 						$cats[$k] = $idcat; $res['categorias']++;
 					}
+				}
+				if (!empty($r['variante'])) {
+					if (Importacion::importarFilaVariante($r, $idcat, $actualizar, $ajustarStock, $idusuario, $res, $articulosVariante) === false) return false;
+					continue;
 				}
 				$nombre = limpiarCadena($r['nombre']); $desc = limpiarCadena($r['descripcion']); $codigo = limpiarCadena($r['codigo']);
 				if ($r['accion'] === 'crear') {
@@ -367,11 +498,78 @@ class Importacion
 					$res['actualizados']++;
 				}
 			}
+			// Articulos con tallas/colores: su stock es la suma de las combinaciones
+			foreach (array_unique(array_values($articulosVariante)) as $idArt) {
+				if (!Variante::recalcularArticulo($idArt)) return false;
+			}
 			return true;
 		});
 		if ($ok === false) return array('ok' => false, 'message' => 'La importación falló y se revirtió por completo. Revisa logs/app.log.');
 		$res['ok'] = true;
 		return $res;
+	}
+
+	/**
+	 * Importa una fila talla/color: crea el articulo la primera vez que aparece su
+	 * nombre y luego crea o actualiza la combinacion. El stock se registra como
+	 * ajuste (INICIAL o CONTEO) con su idvariante para que quede en el kardex.
+	 */
+	public static function importarFilaVariante(array $r, $idcat, $actualizar, $ajustarStock, $idusuario, array &$res, array &$articulosVariante)
+	{
+		$clave = mb_strtolower($r['nombre']);
+		$nombre = limpiarCadena($r['nombre']);
+		$talla = limpiarCadena($r['talla']);
+		$color = limpiarCadena($r['color']);
+		$codigo = limpiarCadena($r['codigo']);
+		$idart = isset($articulosVariante[$clave]) ? $articulosVariante[$clave] : (int)$r['idexistente'];
+		if ($idart <= 0) {
+			if ((int)$idcat <= 0) { $res['omitidos']++; return true; }
+			$idart = dbInsert("INSERT INTO articulo(idcategoria, idunidad, codigo, nombre, stock, stock_minimo, precio_compra, precio_venta, descripcion, imagen, condicion) VALUES(?,?,'',?,0,0,?,?,?,'',1)",
+				array((int)$idcat, (int)$r['idunidad'], $nombre, (float)$r['precio_compra'], (float)$r['precio_venta'], limpiarCadena($r['descripcion'])));
+			if ($idart <= 0) return false;
+			$res['creados']++;
+		}
+		$articulosVariante[$clave] = $idart;
+		$precioArticulo = (float)dbValue("SELECT precio_venta FROM articulo WHERE idarticulo=?", array($idart), 0);
+		// Precio propio solo si difiere del articulo (0 = usa el del articulo)
+		$precioVariante = abs((float)$r['precio_venta'] - $precioArticulo) > 0.004 ? (float)$r['precio_venta'] : 0;
+		$existente = dbRow("SELECT idvariante, stock, condicion FROM articulo_variante WHERE idarticulo=? AND talla=? AND color=? FOR UPDATE", array($idart, $talla, $color));
+		$stockArt = (float)dbValue("SELECT stock FROM articulo WHERE idarticulo=? FOR UPDATE", array($idart), 0);
+
+		if (!$existente) {
+			$idvar = dbInsert("INSERT INTO articulo_variante (idarticulo,talla,color,codigo,stock,stock_minimo,precio_venta,orden,condicion) VALUES (?,?,?,?,?,?,?,?,1)",
+				array($idart, $talla, $color, $codigo !== '' ? $codigo : null, (float)$r['stock'], (float)$r['stock_minimo'], $precioVariante, (int)$r['fila']));
+			if ($idvar <= 0) return false;
+			if ((float)$r['stock'] > 0) {
+				dbInsert("INSERT INTO ajuste_inventario(idarticulo, idvariante, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,?,'ENTRADA','INICIAL',?,?,?,?,'Stock inicial por importación')",
+					array($idart, $idvar, (int)$idusuario, (float)$r['stock'], $stockArt, $stockArt + (float)$r['stock'], (float)$r['precio_compra']));
+				dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array((float)$r['stock'], $idart));
+				$res['ajustes']++;
+			}
+			if ((int)$r['idexistente'] > 0) { $res['actualizados']++; }
+			return true;
+		}
+		if (!$actualizar) { $res['omitidos']++; return true; }
+		$idvar = (int)$existente['idvariante'];
+		$sets = "stock_minimo=?, precio_venta=?, condicion=1";
+		$params = array((float)$r['stock_minimo'], $precioVariante);
+		if ($codigo !== '') { $sets .= ", codigo=?"; $params[] = $codigo; }
+		$params[] = $idvar;
+		if (!dbExec("UPDATE articulo_variante SET $sets WHERE idvariante=?", $params)) return false;
+		if ($ajustarStock) {
+			$anterior = (float)$existente['stock'];
+			$nuevo = (float)$r['stock'];
+			if (abs($nuevo - $anterior) > 0.0001) {
+				$delta = $nuevo - $anterior;
+				dbInsert("INSERT INTO ajuste_inventario(idarticulo, idvariante, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,?,?,'CONTEO',?,?,?,?,'Conteo por importación')",
+					array($idart, $idvar, (int)$idusuario, $delta > 0 ? 'ENTRADA' : 'SALIDA', abs($delta), $stockArt, $stockArt + $delta, (float)$r['precio_compra']));
+				if (!Variante::moverStock($idvar, $delta)) return false;
+				dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array($delta, $idart));
+				$res['ajustes']++;
+			}
+		}
+		$res['actualizados']++;
+		return true;
 	}
 
 	public function importarPersonas(array $validacion, $tipoPersona, array $op)

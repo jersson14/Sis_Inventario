@@ -424,6 +424,153 @@ try {
 		check('rubro GENERAL: módulo de vencimientos inactivo', stripos($b, 'no usa control de vencimientos') !== false, $b);
 		dbExec("UPDATE configuracion_empresa SET tipo_negocio=?", array($rubroOriginal));
 
+		// ---------- Rubro ropa: tallas y colores con stock propio ----------
+		echo "== Ropa\n";
+		if (!isset($rubroOriginal)) {
+			$rubroOriginal = (string)dbValue("SELECT tipo_negocio FROM configuracion_empresa ORDER BY idconfig ASC LIMIT 1", array(), 'GENERAL');
+		}
+		dbExec("UPDATE configuracion_empresa SET tipo_negocio='ROPA'");
+		$sufRo = substr(bin2hex(random_bytes(3)), 0, 5);
+		$idUndRo = (int)dbValue("SELECT idunidad FROM unidad_medida WHERE abreviatura='und' LIMIT 1", array(), 0);
+		$idCatRo = (int)dbValue("SELECT idcategoria FROM categoria WHERE condicion=1 ORDER BY idcategoria LIMIT 1", array(), 0);
+		$nomCatRo = html_entity_decode((string)dbValue("SELECT nombre FROM categoria WHERE idcategoria=?", array($idCatRo), ''), ENT_QUOTES, 'UTF-8');
+		$nombrePolo = 'QA Polo ' . $sufRo;
+		$codMN = 'QAPMN' . $sufRo;
+		$ids['articulos_ropa'] = array();
+
+		$fichaPolo = array(
+			'nombre' => $nombrePolo, 'idcategoria' => $idCatRo, 'idunidad' => $idUndRo, 'codigo' => 'QAPOLO' . $sufRo, 'stock' => '0', 'stock_minimo' => '1',
+			'precio_compra' => '20.00', 'precio_venta' => '40.00', 'descripcion' => 'SMOKE', 'temporada' => 'Verano 2026', 'coleccion' => 'Casual',
+			'var_enviadas' => '1',
+			'var_id' => array('0', '0', '0'), 'var_talla' => array('M', 'L', 'M'), 'var_color' => array('Negro', 'Negro', 'Blanco'),
+			'var_codigo' => array($codMN, '', ''), 'var_stock' => array('10', '5', '0'), 'var_stock_minimo' => array('2', '1', '1'), 'var_precio' => array('0', '0', '45.00')
+		);
+		$dup = $fichaPolo; $dup['nombre'] .= ' D'; $dup['codigo'] .= 'D'; $dup['var_talla'] = array('M', 'M', 'L'); $dup['var_color'] = array('Negro', 'negro', 'Negro'); $dup['var_codigo'] = array('', '', '');
+		list($c, $b) = http('POST', "$base/ajax/articulo.php?op=guardaryeditar", $dup);
+		check('talla/color repetida en el formulario se rechaza', stripos($b, 'repetida') !== false, $b);
+		list($c, $b) = http('POST', "$base/ajax/articulo.php?op=guardaryeditar", $fichaPolo);
+		$polo = (int)dbValue("SELECT idarticulo FROM articulo WHERE nombre=?", array($nombrePolo), 0);
+		if ($polo > 0) { $ids['articulos_ropa'][] = $polo; }
+		$stockPolo = function () use ($polo) { return round((float)dbValue("SELECT stock FROM articulo WHERE idarticulo=?", array($polo), 0), 3); };
+		$varStock = function ($talla, $color) use ($polo) { $v = dbValue("SELECT stock FROM articulo_variante WHERE idarticulo=? AND talla=? AND color=? AND condicion=1", array($polo, $talla, $color), null); return $v === null ? null : round((float)$v, 3); };
+		$varId = function ($talla, $color) use ($polo) { return (int)dbValue("SELECT idvariante FROM articulo_variante WHERE idarticulo=? AND talla=? AND color=?", array($polo, $talla, $color), 0); };
+		check('artículo con 3 tallas/colores: stock = suma (15)', stripos($b, 'correctamente') !== false && $stockPolo() == 15 && $varStock('M', 'Negro') == 10 && $varStock('L', 'Negro') == 5, $b . ' stock=' . $stockPolo());
+		$tmp = dbRow("SELECT temporada, coleccion FROM articulo WHERE idarticulo=?", array($polo));
+		check('temporada y colección guardadas', $tmp && $tmp['temporada'] === 'Verano 2026' && $tmp['coleccion'] === 'Casual', json_encode($tmp));
+		$idMN = $varId('M', 'Negro'); $idLN = $varId('L', 'Negro'); $idMB = $varId('M', 'Blanco');
+
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=buscarArticuloCodigo", array('codigo' => $codMN));
+		$r = json_decode($b, true);
+		check('código de la talla/color la selecciona', $r && !empty($r['ok']) && (int)$r['idvariante'] === $idMN && count($r['variantes']) === 3, substr($b, 0, 200));
+		$precioMB = 0; foreach (($r ? $r['variantes'] : array()) as $vv) { if ((int)$vv['idvariante'] === $idMB) { $precioMB = $vv['precio_venta']; } }
+		check('precio propio de la talla/color (M / Blanco 45.00)', abs($precioMB - 45) < 0.001, 'precio=' . $precioMB);
+
+		$ventaPolo = function (array $lineas) use ($base, $cli, $polo, &$ids) {
+			$d = array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE RO',
+				'idarticulo' => array(), 'idpresentacion' => array(), 'idvariante' => array(), 'cantidad' => array(), 'precio_venta' => array(), 'descuento' => array());
+			foreach ($lineas as $l) {
+				$d['idarticulo'][] = isset($l[2]) ? $l[2] : $polo; $d['idpresentacion'][] = 0; $d['idvariante'][] = $l[0]; $d['cantidad'][] = (string)$l[1]; $d['precio_venta'][] = '40.00'; $d['descuento'][] = '0';
+			}
+			list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", $d);
+			$r = json_decode($b, true);
+			if ($r && !empty($r['ok'])) { $ids['venta'][] = (int)$r['idventa']; }
+			return array($r, $b);
+		};
+
+		list($r, $b) = $ventaPolo(array(array(0, 1)));
+		check('vender sin elegir talla/color se rechaza', stripos($b, 'Elige la talla') !== false, $b);
+		list($r, $b) = $ventaPolo(array(array($idMN, 3), array($idLN, 1)));
+		$vRo = $r ? (int)$r['idventa'] : 0;
+		check('venta descuenta de cada talla/color (M/Negro 7, L/Negro 4, total 11)', $r && !empty($r['ok']) && $varStock('M', 'Negro') == 7 && $varStock('L', 'Negro') == 4 && $stockPolo() == 11, $b . ' stock=' . $stockPolo());
+		list($r, $b) = $ventaPolo(array(array($idMN, 8)));
+		check('pedir 8 de M/Negro con 7 se rechaza aunque el artículo tenga 11', empty($r['ok']) && stripos((string)($r['message'] ?? ''), 'M / Negro (disponible: 7') !== false, $b);
+		$otroArt = (int)dbValue("SELECT idarticulo FROM articulo WHERE idarticulo<>? AND condicion=1 AND stock>=1 ORDER BY idarticulo LIMIT 1", array($polo), 0);
+		list($r, $b) = $ventaPolo(array(array($idMN, 1, $otroArt)));
+		check('talla/color de otro artículo se rechaza', stripos($b, 'no las tiene') !== false, $b);
+		list($c, $b) = http('GET', "$base/reportes/exTicket.php?id=$vRo");
+		check('ticket muestra la talla y el color', $c === 200 && strpos($b, 'M / Negro') !== false, substr(strip_tags($b), 0, 120));
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=anular", array('idventa' => $vRo));
+		check('anular devuelve a cada talla/color (M/Negro 10, L/Negro 5)', stripos($b, 'anulada') !== false && $varStock('M', 'Negro') == 10 && $varStock('L', 'Negro') == 5 && $stockPolo() == 15, $b . ' stock=' . $stockPolo());
+
+		list($c, $b) = http('POST', "$base/ajax/ingreso.php?op=guardaryeditar", array('idproveedor' => $prov['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE RO',
+			'idarticulo' => array($polo), 'idpresentacion' => array(0), 'idvariante' => array($idMB), 'cantidad' => array('6'), 'precio_compra' => array('20.00'), 'precio_venta' => array('0'), 'lote_codigo' => array(''), 'lote_vencimiento' => array('')));
+		$r = json_decode($b, true);
+		$iRo = $r && !empty($r['ok']) ? (int)$r['idingreso'] : 0;
+		if ($iRo) { $ids['ingreso'][] = $iRo; }
+		check('compra suma a M/Blanco (6) y al artículo (21)', $iRo > 0 && $varStock('M', 'Blanco') == 6 && $stockPolo() == 21, $b . ' stock=' . $stockPolo());
+		list($r, $b) = $ventaPolo(array(array($idMB, 2)));
+		$vRo2 = $r ? (int)$r['idventa'] : 0;
+		list($c, $b) = http('POST', "$base/ajax/ingreso.php?op=anular", array('idingreso' => $iRo));
+		check('anular compra se bloquea si esa talla/color ya se vendió', stripos($b, 'M / Blanco ya fue utilizado') !== false && $varStock('M', 'Blanco') == 4, $b);
+		http('POST', "$base/ajax/venta.php?op=anular", array('idventa' => $vRo2));
+		list($c, $b) = http('POST', "$base/ajax/ingreso.php?op=anular", array('idingreso' => $iRo));
+		check('anular compra sin consumo resta de M/Blanco (0) y del artículo (15)', stripos($b, 'anulado') !== false && $varStock('M', 'Blanco') == 0 && $stockPolo() == 15, $b . ' stock=' . $stockPolo());
+
+		list($c, $b) = http('POST', "$base/ajax/inventario.php?op=registrar", array('idarticulo' => $polo, 'tipo' => 'SALIDA', 'motivo' => 'MERMA', 'cantidad' => '2', 'observacion' => 'SMOKE'));
+		check('ajuste sin talla/color se rechaza', stripos($b, 'Elige la talla') !== false && $stockPolo() == 15, $b);
+		list($c, $b) = http('POST', "$base/ajax/inventario.php?op=registrar", array('idarticulo' => $polo, 'idvariante' => $idMN, 'tipo' => 'SALIDA', 'motivo' => 'MERMA', 'cantidad' => '2', 'observacion' => 'SMOKE'));
+		check('ajuste de salida en M/Negro (8) y artículo (13)', strpos($b, '"ok":true') !== false && $varStock('M', 'Negro') == 8 && $stockPolo() == 13, $b . ' stock=' . $stockPolo());
+		list($c, $b) = http('POST', "$base/ajax/inventario.php?op=registrar", array('idarticulo' => $polo, 'idvariante' => $idLN, 'tipo' => 'SALIDA', 'motivo' => 'MERMA', 'cantidad' => '8', 'observacion' => 'SMOKE'));
+		check('salida de 8 en L/Negro (tiene 5, el artículo 13) se rechaza', stripos($b, 'solo tiene 5') !== false && $stockPolo() == 13, $b);
+
+		// Quitar tallas desde la ficha
+		$edit = $fichaPolo; $edit['idarticulo'] = $polo;
+		$edit['var_id'] = array((string)$idMN, (string)$idMB); $edit['var_talla'] = array('M', 'M'); $edit['var_color'] = array('Negro', 'Blanco');
+		$edit['var_codigo'] = array($codMN, ''); $edit['var_stock'] = array('0', '0'); $edit['var_stock_minimo'] = array('2', '1'); $edit['var_precio'] = array('0', '45.00');
+		list($c, $b) = http('POST', "$base/ajax/articulo.php?op=guardaryeditar", $edit);
+		check('no se puede quitar una talla/color con stock (L/Negro)', stripos($b, 'todavía tiene 5') !== false && $varStock('L', 'Negro') == 5, $b);
+		$edit['var_id'] = array((string)$idMN, (string)$idLN, '0'); $edit['var_talla'] = array('M', 'L', 'XL'); $edit['var_color'] = array('Negro', 'Negro', 'Negro');
+		$edit['var_codigo'] = array($codMN, '', ''); $edit['var_stock'] = array('99', '99', '3'); $edit['var_stock_minimo'] = array('2', '1', '1'); $edit['var_precio'] = array('0', '0', '0');
+		list($c, $b) = http('POST', "$base/ajax/articulo.php?op=guardaryeditar", $edit);
+		check('quitar M/Blanco (sin stock) y agregar XL/Negro con 3: el stock existente no se pisa', stripos($b, 'correctamente') !== false && $varStock('M', 'Blanco') === null && $varStock('M', 'Negro') == 8 && $varStock('XL', 'Negro') == 3 && $stockPolo() == 16, $b . ' stock=' . $stockPolo());
+
+		list($c, $b) = http('POST', "$base/ajax/cotizacion.php?op=guardar", array('idcliente' => $cli['idpersona'], 'fecha_hora' => date('Y-m-d\TH:i'), 'fecha_validez' => date('Y-m-d', strtotime('+10 days')), 'impuesto' => 0, 'observacion' => 'SMOKE RO',
+			'idarticulo' => array($polo), 'idpresentacion' => array(0), 'idvariante' => array($idLN), 'cantidad' => array('2'), 'precio' => array('40'), 'descuento' => array('0')));
+		$r = json_decode($b, true);
+		$ids['cotizacion_ropa'] = $r && !empty($r['idcotizacion']) ? (int)$r['idcotizacion'] : 0;
+		list($c, $b) = http('GET', "$base/ajax/cotizacion.php?op=paraVenta&id=" . $ids['cotizacion_ropa']);
+		$r = json_decode($b, true);
+		check('cotización conserva la talla/color para la venta', $r && !empty($r['ok']) && (int)$r['items'][0]['idvariante'] === $idLN, substr($b, 0, 160));
+
+		list($c, $b) = http('GET', "$base/ajax/procenter.php?op=kardex&idarticulo=$polo");
+		check('kardex muestra la talla/color de cada movimiento', $c === 200 && strpos($b, 'M \/ Negro') !== false, substr($b, 0, 160));
+		list($c, $b) = http('GET', "$base/ajax/articulo.php?op=catalogoEtiquetas");
+		check('etiquetas incluyen el código de la talla/color', strpos($b, $codMN) !== false, 'sin ' . $codMN);
+		list($c, $b) = http('GET', "$base/ajax/consultas.php?op=dashboardAlertas");
+		$al = json_decode($b, true);
+		check('alertas incluyen tallas/colores', $al && (int)$al['usa_variantes'] === 1 && isset($al['variantes_agotadas']), substr($b, 0, 160));
+
+		// Importacion: una fila por talla/color
+		$nombreCasaca = 'QA Casaca ' . $sufRo;
+		$csv = "\xEF\xBB\xBF" . "Nombre;Código;Categoría;Unidad;Stock;Precio venta;Talla;Color\n"
+			. $nombreCasaca . ";QACS" . $sufRo . ";" . $nomCatRo . ";und;4;120;S;Azul\n"
+			. $nombreCasaca . ";;;und;6;120;M;Azul\n"
+			. $nombreCasaca . ";;;und;2;135;L;Azul\n";
+		$archivoCsv = sys_get_temp_dir() . '/qa_ropa_' . $sufRo . '.csv';
+		file_put_contents($archivoCsv, $csv);
+		$ch = curl_init("$base/ajax/importar.php?op=previsualizar&tipo=articulos");
+		curl_setopt_array($ch, array(CURLOPT_RETURNTRANSFER => true, CURLOPT_COOKIEJAR => $jar, CURLOPT_COOKIEFILE => $jar, CURLOPT_POST => true,
+			CURLOPT_HTTPHEADER => array('X-CSRF-Token: ' . $csrf), CURLOPT_POSTFIELDS => array('archivo' => new CURLFile($archivoCsv, 'text/csv', 'casacas.csv'))));
+		$b = (string)curl_exec($ch); curl_close($ch);
+		@unlink($archivoCsv);
+		$pv = json_decode($b, true);
+		check('importación previsualiza 3 tallas/colores nuevas', $pv && !empty($pv['ok']) && (int)$pv['crear'] === 3 && !empty($pv['modo_variantes']), substr($b, 0, 200));
+		list($c, $b) = http('POST', "$base/ajax/importar.php?op=importar&tipo=articulos", array('token' => $pv ? $pv['token'] : '', 'actualizar_existentes' => 1, 'crear_categorias' => 0, 'actualizar_stock' => 1));
+		$casaca = (int)dbValue("SELECT idarticulo FROM articulo WHERE nombre=?", array($nombreCasaca), 0);
+		if ($casaca > 0) { $ids['articulos_ropa'][] = $casaca; }
+		$nVar = (int)dbValue("SELECT COUNT(*) FROM articulo_variante WHERE idarticulo=? AND condicion=1", array($casaca), 0);
+		$stCas = round((float)dbValue("SELECT stock FROM articulo WHERE idarticulo=?", array($casaca), 0), 3);
+		$pL = round((float)dbValue("SELECT precio_venta FROM articulo_variante WHERE idarticulo=? AND talla='L'", array($casaca), 0), 2);
+		check('importación crea el artículo con 3 tallas, stock 12 y precio propio en L', strpos($b, '"ok":true') !== false && $nVar === 3 && $stCas == 12 && abs($pL - 135) < 0.001, $b . " vars=$nVar stock=$stCas pL=$pL");
+
+		// Con otro rubro, un articulo con tallas sigue exigiendo talla/color
+		dbExec("UPDATE configuracion_empresa SET tipo_negocio='GENERAL'");
+		list($r, $b) = $ventaPolo(array(array(0, 1)));
+		check('rubro GENERAL: artículo con tallas sigue exigiendo talla/color', stripos($b, 'Elige la talla') !== false, $b);
+		list($r, $b) = $ventaPolo(array(array($idXL = $varId('XL', 'Negro'), 1)));
+		check('rubro GENERAL: vender una talla/color mantiene la suma (XL 2, total 15)', $r && !empty($r['ok']) && $varStock('XL', 'Negro') == 2 && $stockPolo() == 15, $b . ' stock=' . $stockPolo());
+		dbExec("UPDATE configuracion_empresa SET tipo_negocio=?", array($rubroOriginal));
+
 		echo "== Reportes\n";
 		list($c, $b) = http('GET', "$base/reportes/exFactura.php?id=$v2");
 		check('PDF factura', $c === 200 && substr($b, 0, 4) === '%PDF', substr($b, 0, 80));
@@ -475,6 +622,17 @@ try {
 		dbExec("DELETE FROM articulo_presentacion WHERE idarticulo=?", array($ids['articulo']));
 		dbExec("DELETE FROM ajuste_inventario WHERE idarticulo=?", array($ids['articulo']));
 		dbExec("DELETE FROM articulo WHERE idarticulo=?", array($ids['articulo']));
+	}
+	if (!empty($ids['cotizacion_ropa'])) {
+		dbExec("DELETE FROM detalle_cotizacion WHERE idcotizacion=?", array($ids['cotizacion_ropa']));
+		dbExec("DELETE FROM cotizacion WHERE idcotizacion=?", array($ids['cotizacion_ropa']));
+	}
+	if (!empty($ids['articulos_ropa'])) {
+		foreach ($ids['articulos_ropa'] as $idRopa) {
+			dbExec("DELETE FROM articulo_variante WHERE idarticulo=?", array($idRopa));
+			dbExec("DELETE FROM ajuste_inventario WHERE idarticulo=?", array($idRopa));
+			dbExec("DELETE FROM articulo WHERE idarticulo=?", array($idRopa));
+		}
 	}
 	if (!empty($ids['articulo_ab'])) {
 		dbExec("DELETE FROM lote_movimiento WHERE idlote IN (SELECT idlote FROM lote WHERE idarticulo=?)", array($ids['articulo_ab']));

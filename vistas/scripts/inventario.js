@@ -37,6 +37,22 @@ function cargarResumen(){
 	});
 }
 
+// Articulo con tallas/colores: el ajuste se hace sobre una combinacion
+function cargarVariantesAjuste(){
+	var $opt = $("#aj_articulo option:selected");
+	var $grupo = $("#grupoVarianteAjuste"), $sel = $("#aj_idvariante");
+	$sel.html("");
+	if (!$opt.val() || !(parseInt($opt.data("variantes"), 10) > 0)) { $grupo.hide(); return; }
+	$.get("../ajax/inventario.php?op=variantesArticulo", { idarticulo: $opt.val() }, function(resp){
+		var r = appParseJson(resp, null);
+		$sel.append('<option value="0">— Elige talla / color —</option>');
+		((r && r.variantes) || []).forEach(function(v){
+			$sel.append($("<option>").val(v.idvariante).attr("data-stock", v.stock).text(v.etiqueta + " · stock " + window.appCantidad(v.stock)));
+		});
+		$grupo.show();
+	});
+}
+
 // En una salida, lista los lotes del articulo para dar de baja uno concreto
 function cargarLotesSalida(){
 	var $sel = $("#aj_idlote");
@@ -63,6 +79,8 @@ function abrirAjuste(tipo){
 	$("#aj_cantidad, #aj_costo, #aj_obs, #aj_lote_codigo, #aj_lote_vence").val("");
 	$("#aj_idlote").html('<option value="0">Automático: primero lo vencido y lo que vence antes</option>');
 	$(".lote-entrada").toggle(tipo === "ENTRADA");
+	$("#grupoVarianteAjuste").hide();
+	$("#aj_idvariante").html("");
 	$(".lote-salida").toggle(tipo === "SALIDA");
 	$("#aj_articulo").val("").selectpicker("refresh");
 	$("#aj_info").text("Selecciona un artículo para ver su stock actual.");
@@ -103,6 +121,7 @@ function init(){
 			if (!$("#aj_costo").val()) { $("#aj_costo").attr("placeholder", money($opt.data("costo"))); }
 		}
 		cargarLotesSalida();
+		cargarVariantesAjuste();
 		actualizarPreview();
 	});
 	$("#aj_cantidad").on("input", actualizarPreview);
@@ -115,6 +134,7 @@ function init(){
 	$("#formAjuste").on("submit", function(e){
 		e.preventDefault();
 		if (!$("#aj_articulo").val()) { appNotify("warning", "Selecciona un artículo."); return; }
+		if ($("#grupoVarianteAjuste").is(":visible") && !(parseInt($("#aj_idvariante").val(), 10) > 0)) { appNotify("warning", "Elige la talla y el color."); return; }
 		if ((parseFloat($("#aj_cantidad").val()) || 0) <= 0) { appNotify("warning", "La cantidad debe ser mayor que cero."); return; }
 		appSetLoading("#btnGuardarAjuste", true);
 		$.post("../ajax/inventario.php?op=registrar", $(this).serialize(), function(resp){

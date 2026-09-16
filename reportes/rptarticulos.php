@@ -85,7 +85,7 @@ while ($reg= $rspta->fetch_object()) {
 	$nombre=$reg->nombre;
 	$categoria= $reg->categoria;
 	$codigo=$reg->codigo;
-	$stock=$reg->stock;
+	$stock=formatearCantidad($reg->stock);
 	$descripcion=$reg->descripcion;
 
 	$pdf->SetFont('Arial','',10);

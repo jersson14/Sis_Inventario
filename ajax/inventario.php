@@ -12,7 +12,7 @@ switch ($op) {
 		$rs = $inventario->articulosActivos();
 		if ($rs) {
 			while ($reg = $rs->fetch_object()) {
-				echo '<option value="' . (int)$reg->idarticulo . '" data-stock="' . round((float)$reg->stock, 3) . '" data-unidad="' . e($reg->unidad) . '" data-fraccion="' . ((negocioTiene('fracciones') && (int)$reg->permite_fraccion === 1) ? '1' : '0') . '" data-costo="' . number_format((float)$reg->precio_compra, 2, '.', '') . '">'
+				echo '<option value="' . (int)$reg->idarticulo . '" data-stock="' . round((float)$reg->stock, 3) . '" data-unidad="' . e($reg->unidad) . '" data-fraccion="' . ((negocioTiene('fracciones') && (int)$reg->permite_fraccion === 1) ? '1' : '0') . '" data-variantes="' . (int)$reg->variantes . '" data-costo="' . number_format((float)$reg->precio_compra, 2, '.', '') . '">'
 					. e($reg->nombre) . ($reg->codigo !== '' ? ' (' . e($reg->codigo) . ')' : '') . '</option>';
 			}
 		}
@@ -46,12 +46,23 @@ switch ($op) {
 			$idarticulo, (int)$_SESSION['idusuario'], $tipo, $motivo, $cantidad, $costo, $observacion,
 			enteroSeguro(isset($_POST['idlote']) ? $_POST['idlote'] : 0),
 			isset($_POST['lote_codigo']) ? limpiarCadena($_POST['lote_codigo']) : '',
-			isset($_POST['lote_vencimiento']) ? trim((string)$_POST['lote_vencimiento']) : ''
+			isset($_POST['lote_vencimiento']) ? trim((string)$_POST['lote_vencimiento']) : '',
+			enteroSeguro(isset($_POST['idvariante']) ? $_POST['idvariante'] : 0)
 		);
 		if (!empty($r['ok'])) {
 			registrarAuditoria('inventario', 'ajuste_' . strtolower($tipo), $motivo . ' x' . $cantidad . ' ' . (isset($r['articulo']) ? $r['articulo'] : ('#' . $idarticulo)));
 		}
 		responderJson($r);
+		break;
+
+	// Tallas y colores de un articulo (el ajuste se hace sobre una combinacion)
+	case 'variantesArticulo':
+		require_once "../modelos/Variante.php";
+		$lista = array();
+		foreach (Variante::deArticulo(enteroSeguro(isset($_GET['idarticulo']) ? $_GET['idarticulo'] : 0)) as $v) {
+			$lista[] = array('idvariante' => (int)$v['idvariante'], 'etiqueta' => html_entity_decode(Variante::etiqueta($v['talla'], $v['color']), ENT_QUOTES, 'UTF-8'), 'stock' => round((float)$v['stock'], 3));
+		}
+		responderJson(array('ok' => true, 'variantes' => $lista));
 		break;
 
 	// Lotes con stock de un articulo (para elegir de cual sale una baja)

@@ -13,6 +13,7 @@
 require_once "../config/Conexion.php";
 require_once "../config/negocio.php";   // fracciones y presentaciones
 require_once "../modelos/Lote.php";      // lotes y vencimientos
+require_once "../modelos/Variante.php";  // tallas y colores
 
 class Ingreso{
 
@@ -151,7 +152,7 @@ class Ingreso{
 	 * Devuelve array {ok, message} o
 	 * {ok:true, idingreso, tipo_comprobante, serie_comprobante, num_comprobante, total, caja_registrada, cuenta_pagar}.
 	 */
-	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta,$idpresentacion = array(),$loteCodigo = array(),$loteVencimiento = array()){
+	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta,$idpresentacion = array(),$loteCodigo = array(),$loteVencimiento = array(),$idvariante = array()){
 		$idproveedor = (int)$idproveedor;
 		$idusuario = (int)$idusuario;
 
@@ -190,6 +191,9 @@ class Ingreso{
 		if (!is_array($loteVencimiento)) {
 			$loteVencimiento = array();
 		}
+		if (!is_array($idvariante)) {
+			$idvariante = array();
+		}
 		$usaLotes = Lote::activo();
 
 		// Cabecera
@@ -220,8 +224,13 @@ class Ingreso{
 		$total = 0.0;
 		$n = count($idarticulo);
 		$fraccion = articulosPermitenFraccion($idarticulo);
+		$conVariantes = Variante::articulosConVariantes($idarticulo);
 		for ($i = 0; $i < $n; $i++) {
 			$idArticuloActual = (int)$idarticulo[$i];
+			$variante = Variante::resolverDetalle($idArticuloActual, isset($idvariante[$i]) ? $idvariante[$i] : 0, $conVariantes);
+			if (is_string($variante)) {
+				return $this->error($variante);
+			}
 			$presentacion = resolverPresentacionDetalle($idArticuloActual, isset($idpresentacion[$i]) ? $idpresentacion[$i] : 0);
 			if ($presentacion === false) {
 				return $this->error("Una de las presentaciones del detalle no es valida o fue desactivada");
@@ -253,6 +262,7 @@ class Ingreso{
 
 			$articulosAfectados[$idArticuloActual] = true;
 			$detalles[] = array(
+				"idvariante"=>$variante ? (int)$variante["idvariante"] : null,
 				"lote_codigo"=>$codigoLote,
 				"lote_vencimiento"=>$vence,
 				"idarticulo"=>$idArticuloActual,
@@ -349,8 +359,8 @@ class Ingreso{
 			// Detalle (el trigger suma el stock) + precios de referencia del articulo
 			foreach ($detalles as $d) {
 				$ok = dbExec(
-					"INSERT INTO detalle_ingreso (idingreso,idarticulo,idpresentacion,cantidad,factor,precio_compra,precio_venta) VALUES (?,?,?,?,?,?,?)",
-					array($idingreso, $d["idarticulo"], $d["idpresentacion"], $d["cantidad"], $d["factor"], $d["precio_compra"], $d["precio_venta"])
+					"INSERT INTO detalle_ingreso (idingreso,idarticulo,idpresentacion,idvariante,cantidad,factor,precio_compra,precio_venta) VALUES (?,?,?,?,?,?,?,?)",
+					array($idingreso, $d["idarticulo"], $d["idpresentacion"], $d["idvariante"], $d["cantidad"], $d["factor"], $d["precio_compra"], $d["precio_venta"])
 				);
 				if (!$ok) {
 					$mensajeError = "No se pudo registrar el detalle del ingreso";
@@ -513,6 +523,12 @@ class Ingreso{
 				}
 			}
 
+			$porVariante = Variante::reversionIngreso($idingreso, 'anular');
+			if (is_string($porVariante)) {
+				$mensajeError = $porVariante;
+				return false;
+			}
+
 			$consumidos = Lote::lotesConsumidosDeIngreso($idingreso);
 			if (count($consumidos) > 0) {
 				$mensajeError = "No se puede anular: parte del lote de " . $consumidos[0]["nombre"] . ($consumidos[0]["codigo_lote"] ? " (" . $consumidos[0]["codigo_lote"] . ")" : "") . " ya salio por venta o ajuste";
@@ -530,6 +546,12 @@ class Ingreso{
 			foreach ($detalle as $d) {
 				if (!dbExec("UPDATE articulo SET stock=stock-? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
 					$mensajeError = "No se pudo revertir el stock de los articulos";
+					return false;
+				}
+			}
+			foreach ($porVariante as $pv) {
+				if (!Variante::moverStock($pv["idvariante"], -(float)$pv["cantidad"])) {
+					$mensajeError = "No se pudo revertir el stock de las tallas/colores";
 					return false;
 				}
 			}
@@ -663,9 +685,20 @@ class Ingreso{
 						return false;
 					}
 				}
+				$porVariante = Variante::reversionIngreso($idingreso, 'eliminar');
+				if (is_string($porVariante)) {
+					$mensajeError = $porVariante;
+					return false;
+				}
 				foreach ($detalle as $d) {
 					if (!dbExec("UPDATE articulo SET stock=stock-? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
 						$mensajeError = "No se pudo revertir el stock de los articulos";
+						return false;
+					}
+				}
+				foreach ($porVariante as $pv) {
+					if (!Variante::moverStock($pv["idvariante"], -(float)$pv["cantidad"])) {
+						$mensajeError = "No se pudo revertir el stock de las tallas/colores";
 						return false;
 					}
 				}
@@ -720,13 +753,14 @@ class Ingreso{
 	/** @return mysqli_result|false */
 	public function listarDetalle($idingreso){
 		return dbQuery(
-			"SELECT di.idingreso,di.idarticulo,a.nombre,IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad,di.cantidad,di.factor,di.precio_compra,di.precio_venta,
+			"SELECT di.idingreso,di.idarticulo,CONCAT(a.nombre, IFNULL(CONCAT(' (', NULLIF(CONCAT_WS(' / ', NULLIF(av.talla,''), NULLIF(av.color,'')),''), ')'),'')) AS nombre,IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad,di.cantidad,di.factor,di.precio_compra,di.precio_venta,
 				(SELECT GROUP_CONCAT(CONCAT(IFNULL(l.codigo_lote,'s/c'),' vence ',IFNULL(DATE_FORMAT(l.fecha_vencimiento,'%d/%m/%Y'),'—')) SEPARATOR ', ')
 				 FROM lote l WHERE l.idingreso=di.idingreso AND l.idarticulo=di.idarticulo) AS lotes
 			 FROM detalle_ingreso di
 			 INNER JOIN articulo a ON di.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
 			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=di.idpresentacion
+			 LEFT JOIN articulo_variante av ON av.idvariante=di.idvariante
 			 WHERE di.idingreso=?",
 			array((int)$idingreso)
 		);
@@ -796,12 +830,13 @@ class Ingreso{
 	/** @return mysqli_result|false */
 	public function ingresodetalles($idingreso){
 		return dbQuery(
-			"SELECT a.nombre AS articulo, IFNULL(ap.codigo, a.codigo) AS codigo, IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad, d.cantidad, d.factor, d.precio_compra, d.precio_venta,
+			"SELECT CONCAT(a.nombre, IFNULL(CONCAT(' (', NULLIF(CONCAT_WS(' / ', NULLIF(av.talla,''), NULLIF(av.color,'')),''), ')'),'')) AS articulo, COALESCE(av.codigo, ap.codigo, a.codigo) AS codigo, IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad, d.cantidad, d.factor, d.precio_compra, d.precio_venta,
 				(d.cantidad*d.precio_compra) AS subtotal
 			 FROM detalle_ingreso d
 			 INNER JOIN articulo a ON d.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
 			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=d.idpresentacion
+			 LEFT JOIN articulo_variante av ON av.idvariante=d.idvariante
 			 WHERE d.idingreso=?",
 			array((int)$idingreso)
 		);

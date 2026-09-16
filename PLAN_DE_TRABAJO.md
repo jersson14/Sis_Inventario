@@ -89,18 +89,19 @@ Hallazgos críticos del código heredado:
 
 ## Registro de avances
 
-## Fase 5 — Perfiles por rubro (en curso)
+## Fase 5 — Perfiles por rubro ✅
 
 Un solo sistema que se adapta al giro del cliente. El código pregunta por la **capacidad**, no por el rubro (`negocioTiene('lotes')`), para poder combinar rubros nuevos sin tocar los módulos.
 
 - ✅ **Perfil base**: columna `tipo_negocio`, `config/negocio.php` (capacidades y textos por rubro), selector en Configuración → Empresa, elección en el instalador, `window.appNegocio` / `appNegocioTiene()` en el frontend
 - ✅ **Abarrotes** (migración `20260917_abarrotes.sql`): lotes con código y vencimiento al comprar o por ajuste de entrada; salida FEFO en ventas y ajustes con trazabilidad por lote; lo vencido no se vende; anular/eliminar devuelve a los mismos lotes y bloquea compras con lotes consumidos; pantalla **Vencimientos** con baja de lotes; alertas en campana y escritorio con días configurables; lotes en la ficha del artículo
 - ✅ **Ferretería** (migración `20260916_ferreteria.sql`): cantidades con decimales según la unidad de medida (`permite_fraccion`); presentaciones con equivalencia, precio y código de barras propios (venta, compra, cotización, ticket/PDF, kardex y reportes en unidades base); precio por mayor por escalas aplicado automáticamente en venta y cotización; ajustes e importación con decimales
-- ⬜ **Ropa**: variantes talla/color con stock propio (afecta artículo, compra, venta, kardex, inventario, importación, etiquetas y reportes)
+- ✅ **Ropa** (migración `20260918_ropa.sql`): tallas y colores con stock, código de barras y precio propios; generador de combinaciones en la ficha; temporada y colección; venta/compra/cotización/ajustes por talla/color con tope de stock por combinación; anular y eliminar devuelven a la combinación; kardex, comprobantes y listados muestran la talla/color; etiquetas por combinación; importación con columnas Talla y Color; alertas de combinaciones agotadas
 
 | Fecha | Avance |
 |-------|--------|
 | 2026-09-11 | Diagnóstico completo; infraestructura de seguridad; migración v2 aplicada; refactor de backend (28 archivos) a consultas preparadas |
+| 2026-09-18 | Rubro ropa completo: variantes talla/color con stock propio en todo el circuito, importación y etiquetas; kardex con decimales y costo por factor corregidos; smoke a 163 comprobaciones + bancos JS (18 + 13) |
 | 2026-09-17 | Rubro abarrotes completo: lotes, vencimientos, FEFO, bajas y alertas; corrección de transacción en ajustes (un rechazo tras escribir ya no confirma el stock); smoke a 136 comprobaciones |
 | 2026-09-16 | Rubro ferretería completo: fracciones, presentaciones/equivalencias y precio por mayor en artículos, ventas, compras, cotizaciones, ajustes, importación, comprobantes y reportes; triggers con factor; smoke a 111 comprobaciones + banco de pruebas JS del detalle (18) |
 | 2026-09-15 (noche) | Responsive verificado en 360–1024 px (sin desbordes); **perfil de negocio**: migración `20260915_perfil_negocio.sql`, `config/negocio.php` con capacidades por rubro, selector en Configuración e instalador |

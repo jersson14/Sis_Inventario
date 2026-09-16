@@ -131,6 +131,67 @@ function leerEscalasPost($permiteFraccion) {
 	return array(true, $filas);
 }
 
+/**
+ * Lee y valida las tallas/colores del formulario. Devuelve array(true, filas)
+ * o array(false, mensaje). El stock solo se toma para variantes nuevas.
+ */
+function leerVariantesPost($articulo, $idarticulo, $codigoBase, $permiteFraccion) {
+	$ids      = isset($_POST['var_id']) && is_array($_POST['var_id']) ? $_POST['var_id'] : array();
+	$tallas   = isset($_POST['var_talla']) && is_array($_POST['var_talla']) ? $_POST['var_talla'] : array();
+	$colores  = isset($_POST['var_color']) && is_array($_POST['var_color']) ? $_POST['var_color'] : array();
+	$codigos  = isset($_POST['var_codigo']) && is_array($_POST['var_codigo']) ? $_POST['var_codigo'] : array();
+	$stocks   = isset($_POST['var_stock']) && is_array($_POST['var_stock']) ? $_POST['var_stock'] : array();
+	$minimos  = isset($_POST['var_stock_minimo']) && is_array($_POST['var_stock_minimo']) ? $_POST['var_stock_minimo'] : array();
+	$precios  = isset($_POST['var_precio']) && is_array($_POST['var_precio']) ? $_POST['var_precio'] : array();
+
+	$filas = array();
+	$vistas = array();
+	$vistosCodigo = array();
+	foreach ($tallas as $i => $tallaRaw) {
+		$talla = Variante::textoCorto(limpiarCadena($tallaRaw), 20);
+		$color = Variante::textoCorto(limpiarCadena(isset($colores[$i]) ? $colores[$i] : ''), 30);
+		$codigo = limpiarCadena(isset($codigos[$i]) ? $codigos[$i] : '');
+		if ($talla === '' && $color === '') {
+			if ($codigo !== '') {
+				return array(false, 'Hay un código de talla/color sin talla ni color');
+			}
+			continue;
+		}
+		$etiqueta = Variante::etiqueta($talla, $color);
+		$clave = mb_strtolower($talla . '|' . $color);
+		if (isset($vistas[$clave])) {
+			return array(false, 'La combinación ' . $etiqueta . ' está repetida');
+		}
+		$vistas[$clave] = true;
+		if ($codigo !== '') {
+			if (mb_strlen($codigo) > 50) {
+				return array(false, 'El código de ' . $etiqueta . ' supera 50 caracteres');
+			}
+			if ($codigo === $codigoBase || isset($vistosCodigo[$codigo])) {
+				return array(false, 'El código ' . $codigo . ' se repite dentro del artículo');
+			}
+			if ($articulo->codigoEnUso($codigo, $idarticulo)) {
+				return array(false, 'El código ' . $codigo . ' ya lo usa otro artículo');
+			}
+			$vistosCodigo[$codigo] = true;
+		}
+		$precio = decimalSeguro(isset($precios[$i]) ? $precios[$i] : 0, 2, 0);
+		if ($precio < 0) {
+			return array(false, 'El precio de ' . $etiqueta . ' no puede ser negativo');
+		}
+		$filas[] = array(
+			'idvariante' => enteroSeguro(isset($ids[$i]) ? $ids[$i] : 0),
+			'talla' => $talla,
+			'color' => $color,
+			'codigo' => $codigo,
+			'stock_inicial' => cantidadSegura(isset($stocks[$i]) ? $stocks[$i] : 0, $permiteFraccion),
+			'stock_minimo' => cantidadSegura(isset($minimos[$i]) ? $minimos[$i] : 0, $permiteFraccion),
+			'precio_venta' => $precio
+		);
+	}
+	return array(true, $filas);
+}
+
 $op = isset($_GET["op"]) ? $_GET["op"] : '';
 
 switch ($op) {
@@ -185,6 +246,16 @@ switch ($op) {
 		// Presentaciones y precio por mayor: solo si el rubro los usa. Si no, se dejan intactos.
 		$usaPresentaciones = negocioTiene('equivalencias') && isset($_POST['pres_enviadas']);
 		$usaEscalas = negocioTiene('precio_mayor') && isset($_POST['escalas_enviadas']);
+		$usaVariantes = Variante::activo() && isset($_POST['var_enviadas']);
+		$usaTemporada = negocioTiene('temporada');
+		$temporada = $usaTemporada ? Variante::textoCorto(limpiarCadena(isset($_POST['temporada']) ? $_POST['temporada'] : ''), 40) : '';
+		$coleccion = $usaTemporada ? Variante::textoCorto(limpiarCadena(isset($_POST['coleccion']) ? $_POST['coleccion'] : ''), 40) : '';
+		$variantes = array();
+		if ($usaVariantes) {
+			list($okVar, $resVar) = leerVariantesPost($articulo, $idarticulo, $codigo, $stockFraccion);
+			if (!$okVar) { echo $resVar; break; }
+			$variantes = $resVar;
+		}
 		$presentaciones = array();
 		$escalas = array();
 		if ($usaPresentaciones) {
@@ -200,7 +271,7 @@ switch ($op) {
 
 		$esNuevo = $idarticulo <= 0;
 		$errorGuardado = '';
-		$idGuardado = dbTransaccion(function () use ($articulo, $esNuevo, $idarticulo, $idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen, $usaPresentaciones, $presentaciones, $usaEscalas, $escalas, &$errorGuardado) {
+		$idGuardado = dbTransaccion(function () use ($articulo, $esNuevo, $idarticulo, $idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen, $usaPresentaciones, $presentaciones, $usaEscalas, $escalas, $usaVariantes, $variantes, $usaTemporada, $temporada, $coleccion, &$errorGuardado) {
 			if ($esNuevo) {
 				$id = $articulo->insertarId($idcategoria, $idunidad, $codigo, $nombre, $stock, $stock_minimo, $precio_compra, $precio_venta, $descripcion, $imagen);
 				if ($id <= 0) { $errorGuardado = "No se pudo registrar los datos"; return false; }
@@ -220,6 +291,17 @@ switch ($op) {
 			if ($usaEscalas && !$articulo->guardarEscalas($id, $escalas)) {
 				$errorGuardado = "No se pudieron guardar los precios por mayor"; return false;
 			}
+			if ($usaVariantes) {
+				$resVar = Variante::sincronizar($id, $variantes);
+				if ($resVar !== true) { $errorGuardado = $resVar; return false; }
+			}
+			// Con tallas/colores el stock del articulo es la suma de sus variantes, en cualquier rubro
+			if (!Variante::recalcularArticulo($id) || !Lote::ajustarAlStock($id)) {
+				$errorGuardado = "No se pudo actualizar el stock del artículo"; return false;
+			}
+			if ($usaTemporada && !$articulo->guardarTemporada($id, $temporada, $coleccion)) {
+				$errorGuardado = "No se pudo guardar la temporada"; return false;
+			}
 			return $id;
 		});
 
@@ -230,6 +312,7 @@ switch ($op) {
 		$extra = '';
 		if ($usaPresentaciones) { $extra .= ' · ' . count($presentaciones) . ' presentación(es)'; }
 		if ($usaEscalas) { $extra .= ' · ' . count($escalas) . ' precio(s) por mayor'; }
+		if ($usaVariantes) { $extra .= ' · ' . count($variantes) . ' talla(s)/color(es)'; }
 		if ($esNuevo) {
 			registrarAuditoria('almacen', 'crear_articulo', 'Articulo creado: ' . $nombre . ($codigo !== '' ? ' (' . $codigo . ')' : '') . $extra);
 			echo "Datos registrados correctamente";
@@ -266,6 +349,12 @@ switch ($op) {
 			$rspta["presentaciones"] = negocioTiene('equivalencias') ? $articulo->presentaciones($rspta["idarticulo"]) : array();
 			$rspta["escalas"] = negocioTiene('precio_mayor') ? $articulo->escalas($rspta["idarticulo"]) : array();
 			$rspta["lotes"] = Lote::activo() ? Lote::deArticulo($rspta["idarticulo"]) : array();
+			$rspta["variantes"] = Variante::deArticulo($rspta["idarticulo"]);
+			foreach ($rspta["variantes"] as &$vr) {
+				$vr["talla"] = html_entity_decode((string)$vr["talla"], ENT_QUOTES, 'UTF-8');
+				$vr["color"] = html_entity_decode((string)$vr["color"], ENT_QUOTES, 'UTF-8');
+			}
+			unset($vr);
 			$rspta["precio_compra"] = number_format((float)$rspta["precio_compra"], 2, '.', '');
 			$rspta["precio_venta"] = number_format((float)$rspta["precio_venta"], 2, '.', '');
 		}
@@ -289,6 +378,28 @@ switch ($op) {
 				);
 			}
 		}
+		// Cada talla/color tambien lleva su etiqueta con su codigo y precio propios
+		$vars = dbAll(
+			"SELECT v.idvariante, v.idarticulo, v.talla, v.color, v.codigo, v.stock, v.stock_minimo,
+				IF(v.precio_venta>0, v.precio_venta, a.precio_venta) AS precio_venta, a.nombre, c.nombre AS categoria
+			 FROM articulo_variante v
+			 INNER JOIN articulo a ON a.idarticulo=v.idarticulo
+			 LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
+			 WHERE v.condicion=1 AND a.condicion=1
+			 ORDER BY a.nombre, v.orden, v.idvariante"
+		);
+		foreach ($vars as $v) {
+			$lista[] = array(
+				'idarticulo' => (int)$v['idarticulo'],
+				'idvariante' => (int)$v['idvariante'],
+				'nombre' => html_entity_decode((string)$v['nombre'] . ' ' . Variante::etiqueta($v['talla'], $v['color']), ENT_QUOTES, 'UTF-8'),
+				'categoria' => html_entity_decode((string)$v['categoria'], ENT_QUOTES, 'UTF-8'),
+				'codigo' => (string)$v['codigo'],
+				'precio_venta' => round((float)$v['precio_venta'], 2),
+				'stock' => round((float)$v['stock'], 3),
+				'stock_minimo' => round((float)$v['stock_minimo'], 3)
+			);
+		}
 		responderJson($lista);
 		break;
 
@@ -311,11 +422,14 @@ switch ($op) {
 				$img = nombreArchivoSeguro($reg->imagen);
 				$srcImg = ($img !== '' ) ? '../files/articulos/' . e($img) : '../public/img/default-50x50.gif';
 
+				$extraNombre = array();
+				if ((int)$reg->variantes > 0) { $extraNombre[] = (int)$reg->variantes . ' talla(s)/color(es)'; }
+				if (!empty($reg->temporada)) { $extraNombre[] = e($reg->temporada) . (!empty($reg->coleccion) ? ' · ' . e($reg->coleccion) : ''); }
 				$data[] = array(
 					"0" => ($reg->condicion)
 						? '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-danger btn-xs" title="Desactivar" onclick="desactivar(' . $id . ')"><i class="fa fa-ban"></i></button>'
 						: '<button class="btn btn-warning btn-xs" title="Editar" onclick="mostrar(' . $id . ')"><i class="fa fa-pencil"></i></button> <button class="btn btn-success btn-xs" title="Activar" onclick="activar(' . $id . ')"><i class="fa fa-check"></i></button>',
-					"1" => e($reg->nombre),
+					"1" => e($reg->nombre) . ($extraNombre ? '<br><small class="text-soft">' . implode(' · ', $extraNombre) . '</small>' : ''),
 					"2" => e($reg->categoria),
 					"3" => e($reg->abreviatura),
 					"4" => e($reg->codigo),

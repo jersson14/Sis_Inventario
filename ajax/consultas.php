@@ -176,9 +176,9 @@ switch ($op) {
 				$data[] = array(
 					"0" => e($reg->codigo),
 					"1" => e($reg->articulo),
-					"2" => number_format((float)$reg->entrada, 0) . " " . e($reg->unidad),
-					"3" => number_format((float)$reg->salida, 0) . " " . e($reg->unidad),
-					"4" => number_format((float)$reg->saldo, 0) . " " . e($reg->unidad),
+					"2" => formatearCantidad($reg->entrada) . " " . e($reg->unidad),
+					"3" => formatearCantidad($reg->salida) . " " . e($reg->unidad),
+					"4" => formatearCantidad($reg->saldo) . " " . e($reg->unidad),
 					"5" => number_format((float)$reg->costo_promedio, 2),
 					"6" => number_format((float)$reg->valor_stock, 2)
 				);

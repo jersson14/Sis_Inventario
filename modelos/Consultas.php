@@ -17,6 +17,7 @@
  */
 require_once "../config/Conexion.php";
 require_once "../modelos/Lote.php";
+require_once "../modelos/Variante.php";
 
 class Consultas
 {
@@ -567,6 +568,15 @@ class Consultas
 			$row['lotes_por_vencer'] = $lr['por_vencer'];
 			$row['lotes_por_vencer_valor'] = $lr['por_vencer_valor'];
 			$row['dias_alerta_vencimiento'] = $lr['dias'];
+		}
+		// Tallas y colores agotados o bajo su minimo (rubro ropa)
+		$row['usa_variantes'] = Variante::activo() ? 1 : 0;
+		$row['variantes_agotadas'] = 0;
+		$row['variantes_bajo_minimo'] = 0;
+		if ($row['usa_variantes']) {
+			$vr = Variante::resumenAlertas();
+			$row['variantes_agotadas'] = $vr['agotadas'];
+			$row['variantes_bajo_minimo'] = $vr['bajo_minimo'];
 		}
 		return $row;
 	}

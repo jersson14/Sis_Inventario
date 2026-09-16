@@ -23,7 +23,8 @@ switch ($op) {
 			isset($_POST['cantidad']) ? $_POST['cantidad'] : array(),
 			isset($_POST['precio']) ? $_POST['precio'] : array(),
 			isset($_POST['descuento']) ? $_POST['descuento'] : array(),
-			isset($_POST['idpresentacion']) ? $_POST['idpresentacion'] : array()
+			isset($_POST['idpresentacion']) ? $_POST['idpresentacion'] : array(),
+			isset($_POST['idvariante']) ? $_POST['idvariante'] : array()
 		);
 		if (!empty($r['ok'])) {
 			registrarAuditoria('cotizaciones', $id > 0 ? 'editar' : 'crear', 'Cotización ' . $r['numero'] . ' total ' . number_format((float)$r['total'], 2));
@@ -82,7 +83,7 @@ switch ($op) {
 		$rs = $cot->detalles($id);
 		if ($rs) {
 			while ($d = $rs->fetch_assoc()) {
-				$c['items'][] = array('idarticulo' => (int)$d['idarticulo'], 'idpresentacion' => (int)$d['idpresentacion'], 'nombre' => $d['nombre'], 'codigo' => $d['codigo'], 'unidad' => $d['unidad'], 'stock' => round((float)$d['stock'], 3), 'cantidad' => round((float)$d['cantidad'], 3), 'precio' => round((float)$d['precio'], 2), 'descuento' => round((float)$d['descuento'], 2), 'subtotal' => round((float)$d['subtotal'], 2));
+				$c['items'][] = array('idarticulo' => (int)$d['idarticulo'], 'idpresentacion' => (int)$d['idpresentacion'], 'idvariante' => (int)$d['idvariante'], 'nombre' => $d['nombre'], 'codigo' => $d['codigo'], 'unidad' => $d['unidad'], 'stock' => round((float)$d['stock'], 3), 'cantidad' => round((float)$d['cantidad'], 3), 'precio' => round((float)$d['precio'], 2), 'descuento' => round((float)$d['descuento'], 2), 'subtotal' => round((float)$d['subtotal'], 2));
 			}
 		}
 		responderJson($c);
@@ -151,8 +152,14 @@ switch ($op) {
 		require_once "../modelos/Articulo.php";
 		$articulo = new Articulo();
 		$codigo = isset($_POST['codigo']) ? limpiarCadena($_POST['codigo']) : '';
-		$pres = $articulo->buscarPresentacionPorCodigo($codigo);
-		if ($pres) {
+		$var = Variante::buscarPorCodigo($codigo);
+		$pres = $var ? null : $articulo->buscarPresentacionPorCodigo($codigo);
+		$idVar = 0;
+		if ($var) {
+			$ficha = $articulo->fichaOperacion($var['idarticulo']);
+			$idPres = 0;
+			$idVar = (int)$var['idvariante'];
+		} elseif ($pres) {
 			$ficha = $articulo->fichaOperacion($pres['idarticulo']);
 			$idPres = (int)$pres['idpresentacion'];
 		} else {
@@ -163,6 +170,7 @@ switch ($op) {
 		if (!$ficha) { responderJson(array('ok' => false, 'message' => 'No se encontró un artículo con ese código')); }
 		$ficha['ok'] = true;
 		$ficha['idpresentacion'] = $idPres;
+		$ficha['idvariante'] = $idVar;
 		responderJson($ficha);
 		break;
 

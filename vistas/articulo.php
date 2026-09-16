@@ -67,6 +67,21 @@ if (usuarioTienePermiso('almacen')) {
             <label for="idunidad">Unidad de medida <span class="req">*</span></label>
             <select name="idunidad" id="idunidad" class="form-control selectpicker" data-live-search="true" data-width="100%" required></select>
           </div>
+<?php if (negocioTiene('temporada')): ?>
+          <div class="form-group col-lg-6 col-md-6 col-xs-12">
+            <label for="temporada">Temporada</label>
+            <input class="form-control" type="text" name="temporada" id="temporada" maxlength="40" placeholder="Ej. Verano 2026" list="listaTemporadas">
+            <datalist id="listaTemporadas">
+<?php foreach (dbAll("SELECT DISTINCT temporada FROM articulo WHERE temporada IS NOT NULL AND temporada<>'' ORDER BY temporada") as $tp): ?>
+              <option value="<?php echo e(html_entity_decode($tp['temporada'], ENT_QUOTES, 'UTF-8')); ?>">
+<?php endforeach; ?>
+            </datalist>
+          </div>
+          <div class="form-group col-lg-6 col-md-6 col-xs-12">
+            <label for="coleccion">Colección / marca</label>
+            <input class="form-control" type="text" name="coleccion" id="coleccion" maxlength="40" placeholder="Ej. Casual, Escolar">
+          </div>
+<?php endif; ?>
           <div class="form-group col-lg-12 col-md-12 col-xs-12">
             <label for="descripcion">Descripción</label>
             <input class="form-control" type="text" name="descripcion" id="descripcion" maxlength="256" placeholder="Detalles, marca, presentación…">
@@ -99,6 +114,27 @@ if (usuarioTienePermiso('almacen')) {
             <span class="help-block" id="margenAyuda">Margen: —</span>
           </div>
 
+<?php if (negocioTiene('variantes')): ?>
+          <div class="form-section-title">Tallas y colores</div>
+          <input type="hidden" name="var_enviadas" value="1">
+          <div class="col-xs-12 bloque-editable">
+            <p class="text-soft" style="margin-top:0">Cada combinación lleva su propio stock y código de barras. El stock del artículo es la suma de todas. El stock inicial solo se indica al crear la combinación; después se mueve con compras, ventas y ajustes.</p>
+            <div class="generador-variantes">
+              <div class="form-group"><label for="gen_tallas">Tallas</label><input type="text" class="form-control" id="gen_tallas" placeholder="S, M, L, XL"></div>
+              <div class="form-group"><label for="gen_colores">Colores</label><input type="text" class="form-control" id="gen_colores" placeholder="Negro, Blanco, Azul"></div>
+              <button type="button" class="btn btn-default" onclick="generarVariantes()" title="Crear todas las combinaciones de tallas y colores"><i class="fa fa-th"></i> Generar combinaciones</button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-bordered tabla-editable" id="tblVariantes">
+                <thead><tr><th style="width:110px">Talla</th><th style="width:150px">Color</th><th>Código de barras</th><th style="width:120px">Stock</th><th style="width:100px">Mínimo</th><th style="width:120px">Precio</th><th style="width:48px"></th></tr></thead>
+                <tbody></tbody>
+                <tfoot><tr><th colspan="3" class="text-right">Stock total</th><th id="varStockTotal">0</th><th colspan="3"></th></tr></tfoot>
+              </table>
+            </div>
+            <button type="button" class="btn btn-default btn-sm" onclick="agregarVariante()" title="Agregar una talla/color"><i class="fa fa-plus"></i> Agregar talla/color</button>
+            <span class="help-block">Precio en 0 = usa el precio de venta del artículo.</span>
+          </div>
+<?php endif; ?>
 <?php if (negocioTiene('equivalencias')): ?>
           <div class="form-section-title">Presentaciones y empaques</div>
           <input type="hidden" name="pres_enviadas" value="1">

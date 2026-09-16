@@ -61,6 +61,10 @@ if (usuarioTienePermiso('inventario') || usuarioTienePermiso('almacen')) {
           <select name="idarticulo" id="aj_articulo" class="form-control selectpicker" data-live-search="true" data-width="100%" data-size="8" required></select>
           <span class="help-block" id="aj_info">Selecciona un artículo para ver su stock actual.</span>
         </div>
+        <div class="form-group" id="grupoVarianteAjuste" style="display:none">
+          <label for="aj_idvariante">Talla / color <span class="req">*</span></label>
+          <select name="idvariante" id="aj_idvariante" class="form-control"></select>
+        </div>
         <div class="row">
           <div class="form-group col-xs-6"><label>Cantidad <span class="req">*</span></label><input type="number" step="1" min="1" class="form-control input-lg" name="cantidad" id="aj_cantidad" required></div>
           <div class="form-group col-xs-6"><label>Costo unitario</label><input type="number" step="0.01" min="0" class="form-control" name="costo_unitario" id="aj_costo" placeholder="Precio de compra"><span class="help-block">Vacío = costo del artículo.</span></div>

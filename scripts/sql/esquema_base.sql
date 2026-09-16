@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS `ajuste_inventario`;
 CREATE TABLE `ajuste_inventario` (
   `idajuste` int(11) NOT NULL AUTO_INCREMENT,
   `idarticulo` int(11) NOT NULL,
+  `idvariante` int(11) DEFAULT NULL,
   `idusuario` int(11) NOT NULL,
   `tipo` varchar(10) NOT NULL COMMENT 'ENTRADA | SALIDA',
   `motivo` varchar(40) NOT NULL COMMENT 'CONTEO, MERMA, VENCIMIENTO, DEVOLUCION_CLIENTE, DEVOLUCION_PROVEEDOR, ROBO, DONACION, USO_INTERNO, INICIAL, OTRO',
@@ -40,6 +41,8 @@ CREATE TABLE `articulo` (
   `precio_compra` decimal(11,2) NOT NULL DEFAULT 0.00,
   `precio_venta` decimal(11,2) NOT NULL DEFAULT 0.00,
   `descripcion` varchar(256) DEFAULT NULL,
+  `temporada` varchar(40) DEFAULT NULL,
+  `coleccion` varchar(40) DEFAULT NULL,
   `imagen` varchar(50) DEFAULT NULL,
   `condicion` tinyint(4) DEFAULT 1,
   `fecha_creacion` datetime NOT NULL DEFAULT current_timestamp(),
@@ -207,6 +210,7 @@ CREATE TABLE `detalle_ingreso` (
   `idingreso` int(11) NOT NULL,
   `idarticulo` int(11) NOT NULL,
   `idpresentacion` int(11) DEFAULT NULL,
+  `idvariante` int(11) DEFAULT NULL,
   `cantidad` decimal(14,3) NOT NULL,
   `factor` decimal(14,3) NOT NULL DEFAULT 1.000,
   `precio_compra` decimal(11,2) NOT NULL,
@@ -219,8 +223,10 @@ CREATE TABLE `detalle_ingreso` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
 CREATE TRIGGER `tr_updStockIngreso` AFTER INSERT ON `detalle_ingreso` FOR EACH ROW BEGIN
-UPDATE articulo SET stock=stock + (NEW.cantidad * NEW.factor)
-WHERE articulo.idarticulo = NEW.idarticulo;
+UPDATE articulo a
+LEFT JOIN articulo_variante v ON v.idvariante = NEW.idvariante AND v.idarticulo = NEW.idarticulo
+SET a.stock = a.stock + (NEW.cantidad * NEW.factor), v.stock = v.stock + (NEW.cantidad * NEW.factor)
+WHERE a.idarticulo = NEW.idarticulo;
 END;
 
 DROP TABLE IF EXISTS `detalle_venta`;
@@ -230,6 +236,7 @@ CREATE TABLE `detalle_venta` (
   `idventa` int(11) NOT NULL,
   `idarticulo` int(11) NOT NULL,
   `idpresentacion` int(11) DEFAULT NULL,
+  `idvariante` int(11) DEFAULT NULL,
   `cantidad` decimal(14,3) NOT NULL,
   `factor` decimal(14,3) NOT NULL DEFAULT 1.000,
   `precio_venta` decimal(11,2) NOT NULL,
@@ -242,8 +249,10 @@ CREATE TABLE `detalle_venta` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
 CREATE TRIGGER `tr_udpStockVenta` AFTER INSERT ON `detalle_venta` FOR EACH ROW BEGIN
-UPDATE articulo SET stock = stock - (NEW.cantidad * NEW.factor)
-WHERE articulo.idarticulo = NEW.idarticulo;
+UPDATE articulo a
+LEFT JOIN articulo_variante v ON v.idvariante = NEW.idvariante AND v.idarticulo = NEW.idarticulo
+SET a.stock = a.stock - (NEW.cantidad * NEW.factor), v.stock = v.stock - (NEW.cantidad * NEW.factor)
+WHERE a.idarticulo = NEW.idarticulo;
 END;
 
 DROP TABLE IF EXISTS `ingreso`;
@@ -455,6 +464,7 @@ CREATE TABLE IF NOT EXISTS `detalle_cotizacion` (
   `idcotizacion` INT(11) NOT NULL,
   `idarticulo` INT(11) NOT NULL,
   `idpresentacion` INT(11) DEFAULT NULL,
+  `idvariante` INT(11) DEFAULT NULL,
   `cantidad` DECIMAL(14,3) NOT NULL,
   `factor` DECIMAL(14,3) NOT NULL DEFAULT 1.000,
   `precio` DECIMAL(11,2) NOT NULL,
@@ -525,6 +535,23 @@ CREATE TABLE IF NOT EXISTS `lote_movimiento` (
   CONSTRAINT `fk_lotemov_lote` FOREIGN KEY (`idlote`) REFERENCES `lote` (`idlote`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE IF NOT EXISTS `articulo_variante` (
+  `idvariante` INT(11) NOT NULL AUTO_INCREMENT,
+  `idarticulo` INT(11) NOT NULL,
+  `talla` VARCHAR(20) NOT NULL DEFAULT '',
+  `color` VARCHAR(30) NOT NULL DEFAULT '',
+  `codigo` VARCHAR(50) DEFAULT NULL,
+  `stock` DECIMAL(14,3) NOT NULL DEFAULT 0.000,
+  `stock_minimo` DECIMAL(14,3) NOT NULL DEFAULT 0.000,
+  `precio_venta` DECIMAL(11,2) NOT NULL DEFAULT 0.00,
+  `orden` INT(11) NOT NULL DEFAULT 0,
+  `condicion` TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`idvariante`),
+  UNIQUE KEY `uq_variante_articulo_talla_color` (`idarticulo`, `talla`, `color`),
+  KEY `idx_variante_codigo` (`codigo`),
+  CONSTRAINT `fk_variante_articulo` FOREIGN KEY (`idarticulo`) REFERENCES `articulo` (`idarticulo`) ON DELETE CASCADE ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 -- ------------------------------------------------------------------
 -- Datos semilla
 -- ------------------------------------------------------------------
@@ -536,6 +563,6 @@ INSERT IGNORE INTO `categoria` (`idcategoria`,`nombre`,`descripcion`,`condicion`
 
 INSERT IGNORE INTO `configuracion_empresa` (`idconfig`,`nombre_comercial`,`razon_social`,`ruc`,`direccion`,`telefono`,`celular`,`correo`,`web`,`logo`,`color_primario`,`color_secundario`,`serie_boleta`,`serie_factura`,`serie_ticket`,`impuesto_default`,`moneda`,`mensaje_ticket`) VALUES (1,'Mi Tienda','','','','','','','','','#0f766e','#f59e0b','B001','F001','T001',18.00,'PEN','Gracias por su compra');
 
-INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql'),('20260913_cotizaciones.sql'),('20260915_perfil_negocio.sql'),('20260916_ferreteria.sql'),('20260917_abarrotes.sql');
+INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql'),('20260913_cotizaciones.sql'),('20260915_perfil_negocio.sql'),('20260916_ferreteria.sql'),('20260917_abarrotes.sql'),('20260918_ropa.sql');
 
 SET FOREIGN_KEY_CHECKS=1;

@@ -105,7 +105,7 @@ function cargarDesdeCotizacion(id){
 		(r.items || []).forEach(function(it){
 			cadena = cadena.then(function(){
 				if (it.stock <= 0) { sinStock.push(it.nombre); return; }
-				return agregarArticulo(it.idarticulo, it.idpresentacion || 0, { cantidad: it.cantidad, precio: Number(it.precio), descuento: it.descuento, silencioso: true });
+				return agregarArticulo(it.idarticulo, it.idpresentacion || 0, { cantidad: it.cantidad, precio: Number(it.precio), descuento: it.descuento, idvariante: it.idvariante || 0, silencioso: true });
 			});
 		});
 		cadena.then(function(){
@@ -424,10 +424,15 @@ function agregarFicha(f, idpresentacion, opciones){
 	var pres = presentacionDeFicha(f, idpresentacion);
 	var idPres = pres ? pres.idpresentacion : 0;
 	if (f.stock <= 0) { appNotify("warning", f.stock_vencido > 0 ? "El stock de " + f.nombre + " está vencido: dale de baja en Vencimientos." : "Este artículo no tiene stock disponible."); return; }
+	// Talla/color: la del codigo escaneado o la pedida; si no, el cajero la elige en la fila
+	var variante = varianteDeFicha(f, opciones.idvariante || f.idvariante);
+	var idVar = variante ? variante.idvariante : 0;
+	if (variante && variante.stock <= 0) { appNotify("warning", f.nombre + " " + variante.etiqueta + " no tiene stock."); return; }
 
-	// Si ya esta en la venta con la misma presentacion, se suma a esa fila
+	// Si ya esta en la venta con la misma presentacion y talla/color, se suma a esa fila
 	var $existente = $("#detalles tbody tr.filas").filter(function(){
-		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres;
+		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres &&
+			(parseInt($(this).find("[name='idvariante[]']").val(), 10) || 0) === idVar;
 	}).first();
 	if ($existente.length) {
 		var $cant = $existente.find("[name='cantidad[]']");
@@ -448,6 +453,8 @@ function agregarFicha(f, idpresentacion, opciones){
 			}).join("") + '</select>';
 	}
 
+	var selectorVariante = htmlSelectorVariante(f, idVar, true);
+
 	var fila = $('<tr class="filas" id="fila' + cont + '"></tr>');
 	fila.attr({
 		"data-idarticulo": f.idarticulo,
@@ -459,8 +466,8 @@ function agregarFicha(f, idpresentacion, opciones){
 	fila.data("ficha", f);
 	fila.html(
 		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
-		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '">' +
-			'<strong>' + appEscapeHtml(f.nombre) + '</strong>' + opcionesPres + '<small class="text-soft d-block">Stock: ' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) +
+		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><input type="hidden" name="idvariante[]" value="' + idVar + '">' +
+			'<strong>' + appEscapeHtml(f.nombre) + '</strong>' + selectorVariante + opcionesPres + '<small class="text-soft d-block">Stock: <span class="stock-fila">' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) + '</span>' +
 			(f.escalas && f.escalas.length ? ' · <span class="text-success" title="Tiene precio por mayor"><i class="fa fa-tags"></i> por mayor</span>' : '') +
 			textoVencimiento(f) + '</small></td>' +
 		'<td><span class="unidad-fila"></span></td>' +
@@ -477,9 +484,11 @@ function agregarFicha(f, idpresentacion, opciones){
 	}
 	ajustarPasoCantidad(fila);
 	etiquetaUnidadFila(fila);
+	actualizarStockFila(fila);
 	modificarSubtotales();
 	$('#myModal').modal('hide');
 	resaltarFila(fila);
+	if (selectorVariante && !idVar) { fila.find(".sel-variante").focus(); }
 	if (precioAutomatico(fila) <= 0 && typeof opciones.precio !== "number") { appNotify("warning", "El artículo no tiene precio de venta: ingrésalo en la fila.", 5000); }
 	if (!opciones.silencioso) { setTimeout(function(){ $("#codigo_rapido").focus(); }, 50); }
 }
@@ -496,6 +505,71 @@ function textoVencimiento(f){
 		html += ' · <span class="text-danger" title="No se puede vender"><i class="fa fa-ban"></i> ' + window.appCantidad(f.stock_vencido) + ' vencido</span>';
 	}
 	return html;
+}
+
+// ---------- Tallas y colores ----------
+
+function varianteDeFicha(f, idvariante){
+	var id = parseInt(idvariante, 10) || 0;
+	for (var i = 0; i < (f.variantes || []).length; i++) {
+		if (f.variantes[i].idvariante === id) { return f.variantes[i]; }
+	}
+	return null;
+}
+
+// Selector de talla/color de la fila (vacio si el articulo no tiene variantes)
+function htmlSelectorVariante(f, idVar, mostrarStock){
+	if (!f.variantes || !f.variantes.length) { return ""; }
+	return '<select class="form-control input-sm sel-variante" onchange="cambiarVariante(this)" title="Talla y color">' +
+		'<option value="0">— Elige talla / color —</option>' +
+		f.variantes.map(function(v){
+			var extra = mostrarStock ? (v.stock > 0 ? " · " + window.appCantidad(v.stock) : " · agotado") : "";
+			return '<option value="' + v.idvariante + '"' + (v.idvariante === idVar ? " selected" : "") + (mostrarStock && v.stock <= 0 && v.idvariante !== idVar ? " disabled" : "") + '>' + appEscapeHtml(v.etiqueta) + extra + '</option>';
+		}).join("") + '</select>';
+}
+
+function filaVariante($tr){
+	return varianteDeFicha($tr.data("ficha") || {}, $tr.find("[name='idvariante[]']").val());
+}
+
+// El stock que limita la fila: el de la talla/color elegida, o el del articulo
+function stockFila($tr){
+	var v = filaVariante($tr);
+	return v ? v.stock : (parseFloat($tr.attr("data-stock")) || 0);
+}
+
+function claveStockFila($tr){
+	var v = filaVariante($tr);
+	return v ? "v" + v.idvariante : "a" + $tr.attr("data-idarticulo");
+}
+
+function actualizarStockFila($tr){
+	var v = filaVariante($tr);
+	$tr.find(".stock-fila").text(window.appCantidad(stockFila($tr)) + " " + (($tr.data("ficha") || {}).unidad || "und") + (v ? " de " + v.etiqueta : ""));
+}
+
+function cambiarVariante(select){
+	var $tr = $(select).closest("tr");
+	var id = parseInt($(select).val(), 10) || 0;
+	var f = $tr.data("ficha") || {};
+	// Si esa talla/color ya esta en otra fila, se suma alli
+	var $otra = $("#detalles tbody tr.filas").not($tr).filter(function(){
+		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && id > 0 &&
+			(parseInt($(this).find("[name='idvariante[]']").val(), 10) || 0) === id &&
+			$(this).find("[name='idpresentacion[]']").val() === $tr.find("[name='idpresentacion[]']").val();
+	}).first();
+	if ($otra.length) {
+		var $c = $otra.find("[name='cantidad[]']");
+		$c.val((parseFloat($c.val()) || 0) + (parseFloat($tr.find("[name='cantidad[]']").val()) || 1));
+		$tr.remove(); detalles--;
+		modificarSubtotales();
+		resaltarFila($otra);
+		return;
+	}
+	$tr.find("[name='idvariante[]']").val(id);
+	$tr.find("[name='precio_venta[]']").removeAttr("data-manual");
+	actualizarStockFila($tr);
+	modificarSubtotales();
 }
 
 function filaFactor($tr){
@@ -519,7 +593,8 @@ function precioAutomatico($tr){
 	var pres = presentacionDeFicha(f, $tr.find("[name='idpresentacion[]']").val());
 	if (pres) { return pres.precio_venta > 0 ? pres.precio_venta : (f.precio_venta || 0) * pres.factor; }
 	var cantidad = parseFloat($tr.find("[name='cantidad[]']").val()) || 0;
-	var precio = f.precio_venta || 0;
+	var v = filaVariante($tr);
+	var precio = v ? v.precio_venta : (f.precio_venta || 0);
 	(f.escalas || []).forEach(function(es){ if (cantidad + 0.0005 >= es.cantidad_minima) { precio = es.precio; } });
 	return precio;
 }
@@ -561,11 +636,11 @@ function modificarSubtotales(){
 		var $desc = $tr.find("[name='descuento[]']");
 		var fraccion = filaPermiteFraccion($tr);
 		var factor = filaFactor($tr);
-		var idArt = $tr.attr("data-idarticulo");
-		var stock = parseFloat($tr.attr("data-stock")) || 0;
+		var idArt = claveStockFila($tr);
+		var stock = stockFila($tr);
 
 		var cantidad = window.appNormalizarCantidad($cant.val(), fraccion, fraccion ? 0.001 : 1);
-		// Stock restante para esta fila, descontando lo que ya usan las filas anteriores del mismo articulo
+		// Stock restante para esta fila, descontando lo que ya usan las filas anteriores del mismo articulo (o talla/color)
 		var usado = usadoPorArticulo[idArt] || 0;
 		var maxFila = (stock - usado) / factor;
 		maxFila = fraccion ? Math.floor(maxFila * 1000 + 0.0005) / 1000 : Math.floor(maxFila + 0.0005);
@@ -596,11 +671,12 @@ function validarStockDetalleAntesGuardar(){
 	$("#detalles tbody tr.filas").each(function(){
 		var $tr = $(this);
 		var cantidad = parseFloat($tr.find("[name='cantidad[]']").val()) || 0;
-		var idArt = $tr.attr("data-idarticulo");
+		var idArt = claveStockFila($tr);
+		if ($tr.find(".sel-variante").length && !filaVariante($tr)) { appNotify("warning", "Elige la talla y el color de " + ($tr.data("ficha") || {}).nombre + "."); $tr.find(".sel-variante").focus(); ok = false; return false; }
 		if (cantidad <= 0) { appNotify("warning", "Hay un artículo con cantidad inválida."); ok = false; return false; }
 		if (parseFloat($tr.find("[name='precio_venta[]']").val() || 0) < 0) { appNotify("warning", "Hay un precio negativo."); ok = false; return false; }
 		usado[idArt] = (usado[idArt] || 0) + cantidad * filaFactor($tr);
-		if (usado[idArt] > (parseFloat($tr.attr("data-stock")) || 0) + 0.0005) {
+		if (usado[idArt] > stockFila($tr) + 0.0005) {
 			appNotify("warning", "Hay un artículo con cantidad mayor al stock disponible."); ok = false; return false;
 		}
 	});
@@ -667,7 +743,7 @@ function buscarCodigoRapido(codigo, callback){
 		var r = appParseJson(resp, null);
 		if (!r) { appNotify("error", "No se pudo buscar el artículo."); }
 		else if (!r.ok) { appNotify("warning", r.message || "No se encontró el artículo"); }
-		else { agregarFicha(r, r.idpresentacion || 0); }
+		else { agregarFicha(r, r.idpresentacion || 0, { idvariante: r.idvariante || 0 }); }
 		$("#codigo_rapido").focus();
 		if (typeof callback === "function") { callback(); }
 	}).fail(function(){ if (typeof callback === "function") { callback(); } });

@@ -2501,6 +2501,23 @@ a.kpi-card:focus {
 /* --------------------------------------------------------------------
    Presentaciones y precio por mayor
    -------------------------------------------------------------------- */
+.generador-variantes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--bg-app);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.generador-variantes .form-group {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
 .bloque-editable {
   margin-bottom: 22px;
 }

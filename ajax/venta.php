@@ -30,11 +30,12 @@ switch ($op) {
 			$arrPrecioVenta = (isset($_POST["precio_venta"]) && is_array($_POST["precio_venta"])) ? $_POST["precio_venta"] : array();
 			$arrDescuento   = (isset($_POST["descuento"]) && is_array($_POST["descuento"])) ? $_POST["descuento"] : array();
 			$arrPresentacion = (isset($_POST["idpresentacion"]) && is_array($_POST["idpresentacion"])) ? $_POST["idpresentacion"] : array();
+			$arrVariante     = (isset($_POST["idvariante"]) && is_array($_POST["idvariante"])) ? $_POST["idvariante"] : array();
 
 			$rspta = $venta->insertar(
 				$idcliente, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
-				$arrIdArticulo, $arrCantidad, $arrPrecioVenta, $arrDescuento, $arrPresentacion
+				$arrIdArticulo, $arrCantidad, $arrPrecioVenta, $arrDescuento, $arrPresentacion, $arrVariante
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('ventas', 'crear', "Venta " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));
@@ -287,6 +288,7 @@ switch ($op) {
 		}
 		$ficha["ok"] = true;
 		$ficha["idpresentacion"] = 0;
+		$ficha["idvariante"] = 0;
 		echo json_encode($ficha, JSON_UNESCAPED_UNICODE);
 		break;
 
@@ -294,10 +296,15 @@ switch ($op) {
 		$codigo = isset($_POST['codigo']) ? limpiarCadena($_POST['codigo']) : '';
 		require_once "../modelos/Articulo.php";
 		$articulo = new Articulo();
-		// Primero el codigo exacto de una presentacion (Caja x100 tiene su propio codigo de barras)
-		$pres = $articulo->buscarPresentacionPorCodigo($codigo);
+		// Primero el codigo exacto de una talla/color o de una presentacion; luego el del articulo
+		$var = Variante::buscarPorCodigo($codigo);
+		$pres = $var ? null : $articulo->buscarPresentacionPorCodigo($codigo);
 		$idPresentacion = 0;
-		if ($pres) {
+		$idVariante = 0;
+		if ($var) {
+			$idArticulo = (int)$var['idarticulo'];
+			$idVariante = (int)$var['idvariante'];
+		} elseif ($pres) {
 			$idArticulo = (int)$pres['idarticulo'];
 			$idPresentacion = (int)$pres['idpresentacion'];
 		} else {
@@ -315,6 +322,7 @@ switch ($op) {
 		}
 		$ficha["ok"] = true;
 		$ficha["idpresentacion"] = $idPresentacion;
+		$ficha["idvariante"] = $idVariante;
 		echo json_encode($ficha, JSON_UNESCAPED_UNICODE);
 		break;
 

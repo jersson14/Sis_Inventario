@@ -186,6 +186,8 @@ function guardaryeditar(e){
 	if (!($("#idproveedor").val() || "").toString().trim()) { appNotify("warning", "Selecciona un proveedor antes de guardar."); return; }
 	if (detalles <= 0) { appNotify("warning", "Agrega al menos un artículo a la compra."); return; }
 	if ($("#tipo_pago").val() === "CREDITO" && !$("#fecha_vencimiento").val()) { appNotify("warning", "Indica la fecha de vencimiento del crédito."); return; }
+	var sinVariante = $("#detalles tbody tr.filas").filter(function(){ return $(this).find(".sel-variante").length && !(parseInt($(this).find("[name='idvariante[]']").val(), 10) > 0); }).first();
+	if (sinVariante.length) { appNotify("warning", "Elige la talla y el color de " + (sinVariante.data("ficha") || {}).nombre + "."); sinVariante.find(".sel-variante").focus(); return; }
 	var precios = document.getElementsByName("precio_compra[]");
 	for (var i = 0; i < precios.length; i++) { if (parseFloat(precios[i].value || 0) < 0) { appNotify("warning", "Hay un precio negativo."); return; } }
 	appSetLoading("#btnGuardar", true);
@@ -283,8 +285,10 @@ function presentacionDeFicha(f, idpresentacion){
 function agregarFicha(f, idpresentacion){
 	var pres = presentacionDeFicha(f, idpresentacion);
 	var idPres = pres ? pres.idpresentacion : 0;
+	// Con tallas/colores se elige en la fila; una fila nueva empieza sin elegir
 	var $existente = $("#detalles tbody tr.filas").filter(function(){
-		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres;
+		return parseInt($(this).attr("data-idarticulo"), 10) === f.idarticulo && (parseInt($(this).find("[name='idpresentacion[]']").val(), 10) || 0) === idPres &&
+			!(f.variantes && f.variantes.length);
 	}).first();
 	if ($existente.length) {
 		var $cant = $existente.find("[name='cantidad[]']");
@@ -307,7 +311,7 @@ function agregarFicha(f, idpresentacion){
 	fila.data("ficha", f);
 	fila.html(
 		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
-		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><strong>' + appEscapeHtml(f.nombre) + '</strong>' + selector +
+		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><input type="hidden" name="idvariante[]" value="0"><strong>' + appEscapeHtml(f.nombre) + '</strong>' + selectorVariante(f) + selector +
 			'<small class="text-soft d-block">Stock: ' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) + '</small>' +
 			camposLote() + '</td>' +
 		'<td><span class="unidad-fila"></span></td>' +
@@ -323,6 +327,15 @@ function agregarFicha(f, idpresentacion){
 	modificarSubtotales();
 	$('#myModal').modal('hide');
 	setTimeout(function(){ fila.find("input[name='cantidad[]']").focus().select(); }, 300);
+}
+
+// Talla/color de la fila: obligatoria si el articulo las tiene
+function selectorVariante(f){
+	if (!f.variantes || !f.variantes.length) { return ""; }
+	return '<select class="form-control input-sm sel-variante" onchange="$(this).closest(\'tr\').find(\'[name=&quot;idvariante[]&quot;]\').val(this.value)" title="Talla y color">' +
+		'<option value="0">— Elige talla / color —</option>' +
+		f.variantes.map(function(v){ return '<option value="' + v.idvariante + '">' + appEscapeHtml(v.etiqueta) + ' · stock ' + window.appCantidad(v.stock) + '</option>'; }).join("") +
+		'</select>';
 }
 
 // Lote y vencimiento por linea (rubros con control de vencimientos)

@@ -113,26 +113,27 @@ class ProCenter
         $sql = "SELECT * FROM (
           SELECT i.fecha_hora,
             'INGRESO' AS tipo,
-            CONCAT(i.tipo_comprobante,' ',i.serie_comprobante,'-',i.num_comprobante) AS documento,
+            CONCAT(i.tipo_comprobante,' ',i.serie_comprobante,'-',i.num_comprobante, IFNULL(CONCAT(' · ', NULLIF(CONCAT_WS(' / ', NULLIF(vi.talla,''), NULLIF(vi.color,'')),'')),'')) AS documento,
             IFNULL(p.nombre,'-') AS tercero,
             di.cantidad*di.factor AS entrada,
             0.000 AS salida,
-            di.precio_compra AS costo,
+            di.precio_compra/di.factor AS costo,
             di.precio_venta AS precio_ref
           FROM detalle_ingreso di
           INNER JOIN ingreso i ON i.idingreso=di.idingreso
           LEFT JOIN persona p ON p.idpersona=i.idproveedor
+          LEFT JOIN articulo_variante vi ON vi.idvariante=di.idvariante
           WHERE $whereIngreso
 
           UNION ALL
 
           SELECT v.fecha_hora,
             'VENTA' AS tipo,
-            CONCAT(v.tipo_comprobante,' ',v.serie_comprobante,'-',v.num_comprobante) AS documento,
+            CONCAT(v.tipo_comprobante,' ',v.serie_comprobante,'-',v.num_comprobante, IFNULL(CONCAT(' · ', NULLIF(CONCAT_WS(' / ', NULLIF(vv.talla,''), NULLIF(vv.color,'')),'')),'')) AS documento,
             IFNULL(p.nombre,'-') AS tercero,
             0.000 AS entrada,
             dv.cantidad*dv.factor AS salida,
-            IFNULL((SELECT di2.precio_compra
+            IFNULL((SELECT di2.precio_compra/di2.factor
               FROM detalle_ingreso di2
               INNER JOIN ingreso i2 ON i2.idingreso=di2.idingreso
               WHERE di2.idarticulo=dv.idarticulo AND i2.estado='Aceptado' AND i2.fecha_hora<=v.fecha_hora
@@ -142,13 +143,14 @@ class ProCenter
           INNER JOIN venta v ON v.idventa=dv.idventa
           INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
           LEFT JOIN persona p ON p.idpersona=v.idcliente
+          LEFT JOIN articulo_variante vv ON vv.idvariante=dv.idvariante
           WHERE $whereVenta
 
           UNION ALL
 
           SELECT aj.fecha_hora,
             IF(aj.tipo='ENTRADA','AJUSTE +','AJUSTE -') AS tipo,
-            CONCAT('AJUSTE #',aj.idajuste,' ',aj.motivo) AS documento,
+            CONCAT('AJUSTE #',aj.idajuste,' ',aj.motivo, IFNULL(CONCAT(' · ', NULLIF(CONCAT_WS(' / ', NULLIF(va.talla,''), NULLIF(va.color,'')),'')),'')) AS documento,
             IFNULL(u.nombre,'-') AS tercero,
             IF(aj.tipo='ENTRADA',aj.cantidad,0) AS entrada,
             IF(aj.tipo='SALIDA',aj.cantidad,0) AS salida,
@@ -156,6 +158,7 @@ class ProCenter
             0 AS precio_ref
           FROM ajuste_inventario aj
           LEFT JOIN usuario u ON u.idusuario=aj.idusuario
+          LEFT JOIN articulo_variante va ON va.idvariante=aj.idvariante
           WHERE $whereAjuste
         ) k
         ORDER BY k.fecha_hora ASC";

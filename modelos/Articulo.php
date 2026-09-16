@@ -3,6 +3,7 @@
 require_once "../config/Conexion.php";
 require_once "../config/negocio.php";
 require_once "../modelos/Lote.php";
+require_once "../modelos/Variante.php";
 
 class Articulo{
 
@@ -146,15 +147,21 @@ class Articulo{
 		return true;
 	}
 
-	// ¿El codigo lo usa otro articulo o una presentacion de otro articulo?
+	// ¿El codigo lo usa otro articulo, o una presentacion o talla/color de otro articulo?
 	public function codigoEnUso($codigo, $excluirArticulo = 0){
 		$n = (int)dbValue(
 			"SELECT (SELECT COUNT(*) FROM articulo WHERE codigo=? AND idarticulo<>?)
-			      + (SELECT COUNT(*) FROM articulo_presentacion WHERE codigo=? AND idarticulo<>? AND condicion=1)",
-			array((string)$codigo, (int)$excluirArticulo, (string)$codigo, (int)$excluirArticulo),
+			      + (SELECT COUNT(*) FROM articulo_presentacion WHERE codigo=? AND idarticulo<>? AND condicion=1)
+			      + (SELECT COUNT(*) FROM articulo_variante WHERE codigo=? AND idarticulo<>? AND condicion=1)",
+			array((string)$codigo, (int)$excluirArticulo, (string)$codigo, (int)$excluirArticulo, (string)$codigo, (int)$excluirArticulo),
 			0
 		);
 		return $n > 0;
+	}
+
+	// Temporada y coleccion (rubro ropa)
+	public function guardarTemporada($idarticulo, $temporada, $coleccion){
+		return dbExec("UPDATE articulo SET temporada=?, coleccion=? WHERE idarticulo=?", array($temporada !== '' ? $temporada : null, $coleccion !== '' ? $coleccion : null, (int)$idarticulo));
 	}
 
 	public function desactivar($idarticulo){
@@ -167,7 +174,7 @@ class Articulo{
 
 	// Devuelve la fila del articulo (array asociativo) o null.
 	public function mostrar($idarticulo){
-		$sql="SELECT idarticulo,idcategoria,idunidad,codigo,nombre,stock,stock_minimo,precio_compra,precio_venta,descripcion,imagen,condicion,fecha_creacion,fecha_actualizacion
+		$sql="SELECT idarticulo,idcategoria,idunidad,codigo,nombre,stock,stock_minimo,precio_compra,precio_venta,descripcion,temporada,coleccion,imagen,condicion,fecha_creacion,fecha_actualizacion
 			FROM articulo WHERE idarticulo=?";
 		return dbRow($sql, array((int)$idarticulo));
 	}
@@ -187,7 +194,8 @@ class Articulo{
 	// Listado completo (mysqli_result, sin datos externos).
 	public function listar(){
 		$sql="SELECT a.idarticulo,a.idcategoria,a.idunidad,c.nombre as categoria,u.nombre as unidad,u.abreviatura,a.codigo,a.nombre,a.stock,a.stock_minimo,
-			a.precio_compra,a.precio_venta,a.descripcion,a.imagen,a.condicion
+			a.precio_compra,a.precio_venta,a.descripcion,a.temporada,a.coleccion,a.imagen,a.condicion,
+			(SELECT COUNT(*) FROM articulo_variante v WHERE v.idarticulo=a.idarticulo AND v.condicion=1) AS variantes
 			FROM articulo a
 			INNER JOIN categoria c ON a.idcategoria=c.idcategoria
 			LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
@@ -281,7 +289,20 @@ class Articulo{
 			}
 		}
 		$stock = round((float)$a['stock'], 3);
+		// Tallas y colores: cada una con su stock y su precio efectivo
+		$variantes = array();
+		foreach (Variante::deArticulo($a['idarticulo']) as $v) {
+			$variantes[] = array(
+				'idvariante' => (int)$v['idvariante'],
+				'talla' => html_entity_decode((string)$v['talla'], ENT_QUOTES, 'UTF-8'),
+				'color' => html_entity_decode((string)$v['color'], ENT_QUOTES, 'UTF-8'),
+				'etiqueta' => html_entity_decode(Variante::etiqueta($v['talla'], $v['color']), ENT_QUOTES, 'UTF-8'),
+				'stock' => round((float)$v['stock'], 3),
+				'precio_venta' => (float)$v['precio_venta'] > 0 ? round((float)$v['precio_venta'], 2) : round((float)$a['precio_venta'], 2)
+			);
+		}
 		return array(
+			'variantes' => $variantes,
 			'idarticulo' => (int)$a['idarticulo'],
 			'codigo' => (string)$a['codigo'],
 			'stock_total' => $stock,

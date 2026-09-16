@@ -6,6 +6,7 @@
 require_once "../config/Conexion.php";
 require_once "../config/negocio.php";
 require_once "../modelos/Lote.php";
+require_once "../modelos/Variante.php";
 
 class Inventario
 {
@@ -28,7 +29,8 @@ class Inventario
 
 	public function articulosActivos()
 	{
-		return dbQuery("SELECT a.idarticulo, a.nombre, IFNULL(a.codigo,'') AS codigo, a.stock, a.precio_compra, IFNULL(u.abreviatura,'und') AS unidad, IFNULL(u.permite_fraccion,0) AS permite_fraccion
+		return dbQuery("SELECT a.idarticulo, a.nombre, IFNULL(a.codigo,'') AS codigo, a.stock, a.precio_compra, IFNULL(u.abreviatura,'und') AS unidad, IFNULL(u.permite_fraccion,0) AS permite_fraccion,
+			(SELECT COUNT(*) FROM articulo_variante v WHERE v.idarticulo=a.idarticulo AND v.condicion=1) AS variantes
 			FROM articulo a
 			LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
 			WHERE a.condicion=1
@@ -46,7 +48,7 @@ class Inventario
 	/**
 	 * Registra un ajuste. Devuelve array(ok, message, stock_nuevo).
 	 */
-	public function registrar($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion, $idlote = 0, $loteCodigo = '', $loteVencimiento = '')
+	public function registrar($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion, $idlote = 0, $loteCodigo = '', $loteVencimiento = '', $idvariante = 0)
 	{
 		$idarticulo = (int)$idarticulo;
 		$idusuario = (int)$idusuario;
@@ -75,6 +77,13 @@ class Inventario
 			return array('ok' => false, 'message' => 'El costo no puede ser negativo.');
 		}
 		$usaLotes = Lote::activo();
+		// Articulo con tallas/colores: el ajuste es de una combinacion concreta
+		$conVariantes = Variante::articulosConVariantes(array($idarticulo));
+		$variante = Variante::resolverDetalle($idarticulo, $idvariante, $conVariantes);
+		if (is_string($variante)) {
+			return array('ok' => false, 'message' => $variante . '.');
+		}
+		$idvariante = $variante ? (int)$variante['idvariante'] : null;
 		$idlote = $usaLotes && $tipo === 'SALIDA' ? (int)$idlote : 0;
 		$loteCodigo = $usaLotes && $tipo === 'ENTRADA' ? Lote::codigoValido($loteCodigo) : '';
 		$loteVencimiento = $usaLotes && $tipo === 'ENTRADA' ? Lote::fechaValida($loteVencimiento) : '';
@@ -83,7 +92,7 @@ class Inventario
 		}
 
 		$errorLote = '';
-		$resultado = dbTransaccion(function () use ($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion, $usaLotes, $idlote, $loteCodigo, $loteVencimiento, &$errorLote) {
+		$resultado = dbTransaccion(function () use ($idarticulo, $idusuario, $tipo, $motivo, $cantidad, $costo_unitario, $observacion, $usaLotes, $idlote, $loteCodigo, $loteVencimiento, $idvariante, &$errorLote) {
 			$art = dbRow("SELECT idarticulo, nombre, stock, precio_compra, condicion FROM articulo WHERE idarticulo=? FOR UPDATE", array($idarticulo));
 			if (!$art) {
 				return array('ok' => false, 'message' => 'El artículo no existe.');
@@ -98,14 +107,23 @@ class Inventario
 				return array('ok' => false, 'message' => 'No puedes retirar más de lo que hay en stock (' . formatearCantidad($stockAnterior) . ').');
 			}
 			$costo = $costo_unitario > 0 ? $costo_unitario : (float)$art['precio_compra'];
+			if ($idvariante !== null && $tipo === 'SALIDA') {
+				$stockVar = (float)dbValue("SELECT stock FROM articulo_variante WHERE idvariante=? FOR UPDATE", array($idvariante), 0);
+				if ($stockVar + 0.0005 < $cantidad) {
+					return array('ok' => false, 'message' => 'Esa talla/color solo tiene ' . formatearCantidad($stockVar) . ' en stock.');
+				}
+			}
 
-			$id = dbInsert("INSERT INTO ajuste_inventario(idarticulo, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion, fecha_hora)
-				VALUES(?,?,?,?,?,?,?,?,?,NOW())",
-				array($idarticulo, $idusuario, $tipo, $motivo, (float)$cantidad, $stockAnterior, $stockNuevo, $costo, $observacion));
+			$id = dbInsert("INSERT INTO ajuste_inventario(idarticulo, idvariante, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion, fecha_hora)
+				VALUES(?,?,?,?,?,?,?,?,?,?,NOW())",
+				array($idarticulo, $idvariante, $idusuario, $tipo, $motivo, (float)$cantidad, $stockAnterior, $stockNuevo, $costo, $observacion));
 			if ($id <= 0) {
 				return false;
 			}
 			if (!dbExec("UPDATE articulo SET stock=? WHERE idarticulo=?", array($stockNuevo, $idarticulo))) {
+				return false;
+			}
+			if ($idvariante !== null && !Variante::moverStock($idvariante, $delta)) {
 				return false;
 			}
 
@@ -160,9 +178,10 @@ class Inventario
 			$params[] = (int)$idarticulo;
 		}
 		$sql = "SELECT aj.idajuste, aj.fecha_hora, aj.tipo, aj.motivo, aj.cantidad, aj.stock_anterior, aj.stock_nuevo, aj.costo_unitario, aj.observacion,
-			a.nombre AS articulo, IFNULL(a.codigo,'') AS codigo, IFNULL(um.abreviatura,'und') AS unidad, u.nombre AS usuario
+			CONCAT(a.nombre, IFNULL(CONCAT(' (', NULLIF(CONCAT_WS(' / ', NULLIF(av.talla,''), NULLIF(av.color,'')),''), ')'),'')) AS articulo, COALESCE(av.codigo, a.codigo, '') AS codigo, IFNULL(um.abreviatura,'und') AS unidad, u.nombre AS usuario
 			FROM ajuste_inventario aj
 			INNER JOIN articulo a ON a.idarticulo=aj.idarticulo
+			LEFT JOIN articulo_variante av ON av.idvariante=aj.idvariante
 			LEFT JOIN unidad_medida um ON um.idunidad=a.idunidad
 			INNER JOIN usuario u ON u.idusuario=aj.idusuario
 			WHERE " . implode(" AND ", $where) . "

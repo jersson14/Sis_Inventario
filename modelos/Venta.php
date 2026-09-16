@@ -12,6 +12,7 @@
 require_once "../config/Conexion.php";
 require_once "../config/negocio.php";   // fracciones y presentaciones
 require_once "../modelos/Lote.php";      // lotes y vencimientos (FEFO)
+require_once "../modelos/Variante.php";  // tallas y colores
 
 class Venta{
 
@@ -150,7 +151,7 @@ class Venta{
 	 * Devuelve array {ok, message} o
 	 * {ok:true, idventa, tipo_comprobante, serie_comprobante, num_comprobante, total, alertas, caja_registrada, cuenta_cobrar}.
 	 */
-	public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_venta,$descuento,$idpresentacion = array()){
+	public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_venta,$descuento,$idpresentacion = array(),$idvariante = array()){
 		$idcliente = (int)$idcliente;
 		$idusuario = (int)$idusuario;
 
@@ -183,6 +184,9 @@ class Venta{
 		if (!is_array($idpresentacion)) {
 			$idpresentacion = array();
 		}
+		if (!is_array($idvariante)) {
+			$idvariante = array();
+		}
 
 		// Cabecera
 		$fecha_hora = $this->normalizarFechaHora($fecha_hora);
@@ -213,8 +217,15 @@ class Venta{
 		$total = 0.0;
 		$n = count($idarticulo);
 		$fraccion = articulosPermitenFraccion($idarticulo);
+		$conVariantes = Variante::articulosConVariantes($idarticulo);
+		$cantidadesVariante = array();
 		for ($i = 0; $i < $n; $i++) {
 			$idArticuloActual = (int)$idarticulo[$i];
+			$variante = Variante::resolverDetalle($idArticuloActual, isset($idvariante[$i]) ? $idvariante[$i] : 0, $conVariantes);
+			if (is_string($variante)) {
+				return $this->error($variante);
+			}
+			$idVarianteActual = $variante ? (int)$variante["idvariante"] : null;
 			$presentacion = resolverPresentacionDetalle($idArticuloActual, isset($idpresentacion[$i]) ? $idpresentacion[$i] : 0);
 			if ($presentacion === false) {
 				return $this->error("Una de las presentaciones del detalle no es valida o fue desactivada");
@@ -247,8 +258,12 @@ class Venta{
 				$cantidadesSolicitadas[$idArticuloActual] = 0.0;
 			}
 			$cantidadesSolicitadas[$idArticuloActual] = round($cantidadesSolicitadas[$idArticuloActual] + ($cantidadActual * $factorActual), 3);
+			if ($idVarianteActual !== null) {
+				$cantidadesVariante[$idVarianteActual] = round((isset($cantidadesVariante[$idVarianteActual]) ? $cantidadesVariante[$idVarianteActual] : 0) + ($cantidadActual * $factorActual), 3);
+			}
 			$detalles[] = array(
 				"idarticulo"=>$idArticuloActual,
+				"idvariante"=>$idVarianteActual,
 				"idpresentacion"=>$idPresentacionActual,
 				"factor"=>$factorActual,
 				"cantidad"=>$cantidadActual,
@@ -281,7 +296,7 @@ class Venta{
 		);
 		$mensajeError = '';
 
-		$resultado = dbTransaccion(function($cx) use ($ctx, $detalles, $cantidadesSolicitadas, &$mensajeError) {
+		$resultado = dbTransaccion(function($cx) use ($ctx, $detalles, $cantidadesSolicitadas, $cantidadesVariante, &$mensajeError) {
 			$tipo = $ctx["tipo_comprobante"];
 			$serie = $ctx["serie_comprobante"];
 			$num = $ctx["num_comprobante"];
@@ -330,6 +345,21 @@ class Venta{
 					$erroresStock[] = $stockActual[$idArt]["nombre"] . " (disponible: " . formatearCantidad(max($stockDisp - $vencido, 0)) . ($vencido > 0 ? ", vencido: " . formatearCantidad($vencido) : "") . ", solicitado: " . formatearCantidad($cantSolicitada) . ")";
 				}
 			}
+			// Stock por talla/color
+			if (count($cantidadesVariante) > 0) {
+				$idsVar = array_keys($cantidadesVariante);
+				$filasVar = dbAll(
+					"SELECT v.idvariante, v.talla, v.color, v.stock, a.nombre FROM articulo_variante v INNER JOIN articulo a ON a.idarticulo=v.idarticulo
+					 WHERE v.idvariante IN (" . implode(",", array_fill(0, count($idsVar), "?")) . ") FOR UPDATE",
+					$idsVar
+				);
+				foreach ($filasVar as $fv) {
+					$pedido = $cantidadesVariante[(int)$fv["idvariante"]];
+					if (round((float)$fv["stock"], 3) + 0.0005 < $pedido) {
+						$erroresStock[] = $fv["nombre"] . " " . Variante::etiqueta($fv["talla"], $fv["color"]) . " (disponible: " . formatearCantidad(max((float)$fv["stock"], 0)) . ", solicitado: " . formatearCantidad($pedido) . ")";
+					}
+				}
+			}
 			if (count($erroresStock) > 0) {
 				$mensajeError = "Stock insuficiente: " . implode("; ", $erroresStock);
 				return false;
@@ -359,8 +389,8 @@ class Venta{
 			$usaLotes = Lote::activo();
 			foreach ($detalles as $d) {
 				$iddetalle = dbInsert(
-					"INSERT INTO detalle_venta (idventa,idarticulo,idpresentacion,cantidad,factor,precio_venta,descuento) VALUES (?,?,?,?,?,?,?)",
-					array($idventa, $d["idarticulo"], $d["idpresentacion"], $d["cantidad"], $d["factor"], $d["precio_venta"], $d["descuento"])
+					"INSERT INTO detalle_venta (idventa,idarticulo,idpresentacion,idvariante,cantidad,factor,precio_venta,descuento) VALUES (?,?,?,?,?,?,?,?)",
+					array($idventa, $d["idarticulo"], $d["idpresentacion"], $d["idvariante"], $d["cantidad"], $d["factor"], $d["precio_venta"], $d["descuento"])
 				);
 				if ($iddetalle <= 0) {
 					$mensajeError = "No se pudo registrar el detalle de la venta";
@@ -517,10 +547,14 @@ class Venta{
 			}
 
 			// Devolver stock (y a los mismos lotes de los que salio)
-			$detalle = dbAll("SELECT idarticulo,(cantidad*factor) AS cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
+			$detalle = dbAll("SELECT idarticulo,idvariante,(cantidad*factor) AS cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
 			foreach ($detalle as $d) {
 				if (!dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
 					$mensajeError = "No se pudo devolver el stock de los articulos";
+					return false;
+				}
+				if (!empty($d["idvariante"]) && !Variante::moverStock($d["idvariante"], (float)$d["cantidad"])) {
+					$mensajeError = "No se pudo devolver el stock de la talla/color";
 					return false;
 				}
 			}
@@ -627,10 +661,14 @@ class Venta{
 
 			// Stock: solo si la venta seguia vigente (una anulada ya lo devolvio)
 			if ($venta["estado"] !== "Anulado") {
-				$detalle = dbAll("SELECT idarticulo,(cantidad*factor) AS cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
+				$detalle = dbAll("SELECT idarticulo,idvariante,(cantidad*factor) AS cantidad FROM detalle_venta WHERE idventa=?", array($idventa));
 				foreach ($detalle as $d) {
 					if (!dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
 						$mensajeError = "No se pudo devolver el stock de los articulos";
+						return false;
+					}
+					if (!empty($d["idvariante"]) && !Variante::moverStock($d["idvariante"], (float)$d["cantidad"])) {
+						$mensajeError = "No se pudo devolver el stock de la talla/color";
 						return false;
 					}
 				}
@@ -696,12 +734,13 @@ class Venta{
 	/** @return mysqli_result|false */
 	public function listarDetalle($idventa){
 		return dbQuery(
-			"SELECT dv.idventa,dv.idarticulo,a.nombre,IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad,dv.cantidad,dv.factor,dv.precio_venta,dv.descuento,
+			"SELECT dv.idventa,dv.idarticulo,CONCAT(a.nombre, IFNULL(CONCAT(' (', NULLIF(CONCAT_WS(' / ', NULLIF(av.talla,''), NULLIF(av.color,'')),''), ')'),'')) AS nombre,IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad,dv.cantidad,dv.factor,dv.precio_venta,dv.descuento,
 				(dv.cantidad*dv.precio_venta-dv.descuento) AS subtotal
 			 FROM detalle_venta dv
 			 INNER JOIN articulo a ON dv.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
 			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=dv.idpresentacion
+			 LEFT JOIN articulo_variante av ON av.idvariante=dv.idvariante
 			 WHERE dv.idventa=?",
 			array((int)$idventa)
 		);
@@ -771,12 +810,13 @@ class Venta{
 	/** @return mysqli_result|false */
 	public function ventadetalles($idventa){
 		return dbQuery(
-			"SELECT a.nombre AS articulo, IFNULL(ap.codigo, a.codigo) AS codigo, IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad, d.cantidad, d.factor, d.precio_venta, d.descuento,
+			"SELECT CONCAT(a.nombre, IFNULL(CONCAT(' (', NULLIF(CONCAT_WS(' / ', NULLIF(av.talla,''), NULLIF(av.color,'')),''), ')'),'')) AS articulo, COALESCE(av.codigo, ap.codigo, a.codigo) AS codigo, IFNULL(ap.nombre, IFNULL(u.abreviatura,'und')) AS unidad, d.cantidad, d.factor, d.precio_venta, d.descuento,
 				(d.cantidad*d.precio_venta-d.descuento) AS subtotal
 			 FROM detalle_venta d
 			 INNER JOIN articulo a ON d.idarticulo=a.idarticulo
 			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
 			 LEFT JOIN articulo_presentacion ap ON ap.idpresentacion=d.idpresentacion
+			 LEFT JOIN articulo_variante av ON av.idvariante=d.idvariante
 			 WHERE d.idventa=?",
 			array((int)$idventa)
 		);

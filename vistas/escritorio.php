@@ -145,6 +145,9 @@ if (usuarioTienePermiso('escritorio')) {
     <div class="alert-cards">
       <a href="procenter.php" class="alert-card <?php echo $al('articulos_agotados') > 0 ? 'is-danger' : 'is-success'; ?>"><div class="alert-ico"><i class="fa fa-ban"></i></div><div><strong><?php echo (int)$al('articulos_agotados'); ?></strong><span>Artículos agotados</span></div></a>
       <a href="procenter.php" class="alert-card <?php echo $al('articulos_bajo_minimo') > 0 ? 'is-warning' : 'is-success'; ?>"><div class="alert-ico"><i class="fa fa-exclamation-triangle"></i></div><div><strong><?php echo (int)$al('articulos_bajo_minimo'); ?></strong><span>Bajo stock mínimo</span></div></a>
+<?php if ((int)$al('usa_variantes') === 1): ?>
+      <a href="articulo.php" class="alert-card <?php echo $al('variantes_agotadas') > 0 ? 'is-danger' : ($al('variantes_bajo_minimo') > 0 ? 'is-warning' : 'is-success'); ?>"><div class="alert-ico"><i class="fa fa-tags"></i></div><div><strong><?php echo (int)$al('variantes_agotadas'); ?> talla(s)/color(es)</strong><span>agotados · <?php echo (int)$al('variantes_bajo_minimo'); ?> bajo el mínimo</span></div></a>
+<?php endif; ?>
 <?php if ((int)$al('usa_vencimientos') === 1): ?>
       <a href="vencimientos.php?estado=<?php echo $al('lotes_vencidos') > 0 ? 'VENCIDO' : 'POR_VENCER'; ?>" class="alert-card <?php echo $al('lotes_vencidos') > 0 ? 'is-danger' : ($al('lotes_por_vencer') > 0 ? 'is-warning' : 'is-success'); ?>"><div class="alert-ico"><i class="fa fa-calendar-times-o"></i></div><div><strong><?php echo (int)$al('lotes_vencidos'); ?> vencido(s)</strong><span><?php echo (int)$al('lotes_por_vencer'); ?> por vencer en <?php echo (int)$al('dias_alerta_vencimiento'); ?> días</span></div></a>
 <?php endif; ?>

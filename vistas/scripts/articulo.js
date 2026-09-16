@@ -36,7 +36,9 @@ function limpiar(){
 	$("#formTitulo").text("Nuevo artículo");
 	$("#stock").prop("readonly", false);
 	$("#stockAyuda").hide();
-	$("#tblPresentaciones tbody, #tblEscalas tbody, #tblLotesArticulo tbody").empty();
+	$("#tblPresentaciones tbody, #tblEscalas tbody, #tblLotesArticulo tbody, #tblVariantes tbody").empty();
+	$("#temporada, #coleccion, #gen_tallas, #gen_colores").val("");
+	actualizarStockVariantes();
 	$("#tituloLotes, #bloqueLotes").hide();
 	aplicarUnidadBase();
 	calcularMargen();
@@ -57,6 +59,77 @@ function aplicarUnidadBase(){
 	var u = unidadSeleccionada();
 	$(".unidad-base-txt").text(u.abrev);
 	$("#formulario .input-cantidad").attr("step", u.fraccion ? "0.001" : "1");
+}
+
+// ---------- Tallas y colores ----------
+
+function agregarVariante(datos){
+	datos = datos || {};
+	var existente = parseInt(datos.idvariante, 10) > 0;
+	var u = unidadSeleccionada();
+	var paso = u.fraccion ? "0.001" : "1";
+	var fila = $('<tr></tr>');
+	fila.html(
+		'<td><input type="hidden" name="var_id[]" value="' + (parseInt(datos.idvariante, 10) || 0) + '"><input class="form-control" type="text" name="var_talla[]" maxlength="20" placeholder="M" value="' + appEscapeHtml(datos.talla || "") + '"></td>' +
+		'<td><input class="form-control" type="text" name="var_color[]" maxlength="30" placeholder="Negro" value="' + appEscapeHtml(datos.color || "") + '"></td>' +
+		'<td><input class="form-control" type="text" name="var_codigo[]" maxlength="50" placeholder="Opcional" value="' + appEscapeHtml(datos.codigo || "") + '"></td>' +
+		// Existente: stock de solo lectura (se mueve con compras/ventas/ajustes). Nueva: stock inicial.
+		(existente
+			? '<td><input type="hidden" name="var_stock[]" value="0"><input class="form-control var-stock-actual" type="text" readonly value="' + window.appCantidad(datos.stock) + '" data-valor="' + Number(datos.stock || 0) + '" title="Se mueve con compras, ventas y ajustes"></td>'
+			: '<td><input class="form-control var-stock-nuevo" type="number" step="' + paso + '" min="0" name="var_stock[]" value="' + (datos.stock_inicial || 0) + '" title="Stock inicial" oninput="actualizarStockVariantes()"></td>') +
+		'<td><input class="form-control" type="number" step="' + paso + '" min="0" name="var_stock_minimo[]" value="' + Number(datos.stock_minimo || 0) + '"></td>' +
+		'<td><input class="form-control" type="number" step="0.01" min="0" name="var_precio[]" value="' + Number(datos.precio_venta || 0).toFixed(2) + '"></td>' +
+		'<td class="text-center"><button type="button" class="btn btn-danger btn-xs btn-icon" title="Quitar talla/color" onclick="quitarVariante(this)"><i class="fa fa-trash"></i></button></td>'
+	);
+	$("#tblVariantes tbody").append(fila);
+	actualizarStockVariantes();
+	return fila;
+}
+
+function quitarVariante(boton){
+	var $tr = $(boton).closest("tr");
+	var stock = parseFloat($tr.find(".var-stock-actual").attr("data-valor") || 0);
+	if (stock > 0) {
+		appNotify("warning", "Esta talla/color todavía tiene " + window.appCantidad(stock) + " en stock. Retíralo con un ajuste de salida antes de quitarla.", 6000);
+		return;
+	}
+	$tr.remove();
+	actualizarStockVariantes();
+}
+
+// Crea las combinaciones talla x color que aun no esten en la tabla
+function generarVariantes(){
+	var partir = function(txt){ return $.map(String(txt || "").split(","), function(t){ t = $.trim(t); return t ? t : null; }); };
+	var tallas = partir($("#gen_tallas").val()), colores = partir($("#gen_colores").val());
+	if (!tallas.length && !colores.length) { appNotify("warning", "Escribe al menos una talla o un color, separados por comas."); return; }
+	if (!tallas.length) { tallas = [""]; }
+	if (!colores.length) { colores = [""]; }
+	var existentes = {};
+	$("#tblVariantes tbody tr").each(function(){
+		existentes[($(this).find("[name='var_talla[]']").val() + "|" + $(this).find("[name='var_color[]']").val()).toLowerCase()] = true;
+	});
+	var nuevas = 0;
+	tallas.forEach(function(t){ colores.forEach(function(c){
+		if (existentes[(t + "|" + c).toLowerCase()]) { return; }
+		agregarVariante({ talla: t, color: c });
+		nuevas++;
+	}); });
+	appNotify(nuevas ? "success" : "info", nuevas ? nuevas + " combinación(es) agregada(s). Indica el stock inicial de cada una." : "Esas combinaciones ya estaban en la tabla.");
+}
+
+// Con tallas/colores el stock del articulo no se escribe: es la suma
+function actualizarStockVariantes(){
+	var filas = $("#tblVariantes tbody tr").length;
+	var total = 0;
+	$("#tblVariantes tbody tr").each(function(){
+		total += parseFloat($(this).find(".var-stock-actual").attr("data-valor") || $(this).find(".var-stock-nuevo").val() || 0);
+	});
+	$("#varStockTotal").text(window.appCantidad(total));
+	if (filas > 0) {
+		$("#stock").val(Math.round(total * 1000) / 1000).prop("readonly", true).attr("title", "Suma de las tallas y colores");
+	} else if ($("#tblVariantes").length) {
+		$("#stock").prop("readonly", false).removeAttr("title");
+	}
 }
 
 // ---------- Lotes (solo lectura) ----------
@@ -221,6 +294,9 @@ function mostrar(idarticulo){
 		(data.presentaciones || []).forEach(function(p){ agregarPresentacion(p); });
 		(data.escalas || []).forEach(function(es){ agregarEscala(es); });
 		mostrarLotes(data);
+		$("#temporada").val(data.temporada ? $("<textarea/>").html(data.temporada).text() : "");
+		$("#coleccion").val(data.coleccion ? $("<textarea/>").html(data.coleccion).text() : "");
+		(data.variantes || []).forEach(function(v){ agregarVariante(v); });
 		$("#precio_compra").val(parseFloat(data.precio_compra || 0).toFixed(2));
 		$("#precio_venta").val(parseFloat(data.precio_venta || 0).toFixed(2));
 		$("#descripcion").val(data.descripcion);

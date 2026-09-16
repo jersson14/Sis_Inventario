@@ -160,6 +160,14 @@
         items.push({ cls: "bell-warning", ico: "fa-exclamation-triangle", href: "procenter.php", t: r.articulos_bajo_minimo + " artículo(s) bajo el mínimo", s: "Revisa compras sugeridas" });
         total += Number(r.articulos_bajo_minimo);
       }
+      if (Number(r.variantes_agotadas) > 0) {
+        items.push({ cls: "bell-danger", ico: "fa-tags", href: "articulo.php", t: r.variantes_agotadas + " talla(s)/color(es) agotado(s)", s: "Revisa qué reponer" });
+        total += Number(r.variantes_agotadas);
+      }
+      if (Number(r.variantes_bajo_minimo) > 0) {
+        items.push({ cls: "bell-warning", ico: "fa-tags", href: "articulo.php", t: r.variantes_bajo_minimo + " talla(s)/color(es) bajo el mínimo", s: "Stock por combinación" });
+        total += Number(r.variantes_bajo_minimo);
+      }
       if (Number(r.lotes_vencidos) > 0) {
         items.push({ cls: "bell-danger", ico: "fa-calendar-times-o", href: "vencimientos.php?estado=VENCIDO", t: r.lotes_vencidos + " lote(s) vencido(s)", s: money(r.lotes_vencidos_valor) + " sin poder venderse · dar de baja" });
         total += Number(r.lotes_vencidos);

@@ -3,7 +3,8 @@ var tokenImport = "";
 var previewActual = null;
 
 var COLUMNAS = {
-	articulos: [["nombre", "Nombre", true], ["codigo", "Código", false], ["categoria", "Categoría", false], ["unidad", "Unidad", false], ["stock", "Stock", false], ["stock_minimo", "Stock mínimo", false], ["precio_compra", "P. compra", false], ["precio_venta", "P. venta", false], ["descripcion", "Descripción", false]],
+	articulos: [["nombre", "Nombre", true], ["codigo", "Código", false], ["categoria", "Categoría", false], ["unidad", "Unidad", false], ["stock", "Stock", false], ["stock_minimo", "Stock mínimo", false], ["precio_compra", "P. compra", false], ["precio_venta", "P. venta", false], ["descripcion", "Descripción", false]]
+		.concat(window.appNegocioTiene && window.appNegocioTiene("variantes") ? [["talla", "Talla", false], ["color", "Color", false]] : []),
 	clientes: [["nombre", "Nombre", true], ["tipo_documento", "Tipo doc.", false], ["num_documento", "N° documento", false], ["direccion", "Dirección", false], ["telefono", "Teléfono", false], ["email", "Email", false]],
 	proveedores: [["nombre", "Nombre", true], ["tipo_documento", "Tipo doc.", false], ["num_documento", "N° documento", false], ["direccion", "Dirección", false], ["telefono", "Teléfono", false], ["email", "Email", false]]
 };

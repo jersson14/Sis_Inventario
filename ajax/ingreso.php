@@ -32,11 +32,12 @@ switch ($op) {
 			$arrPresentacion = (isset($_POST["idpresentacion"]) && is_array($_POST["idpresentacion"])) ? $_POST["idpresentacion"] : array();
 			$arrLoteCodigo   = (isset($_POST["lote_codigo"]) && is_array($_POST["lote_codigo"])) ? array_map('limpiarCadena', $_POST["lote_codigo"]) : array();
 			$arrLoteVence    = (isset($_POST["lote_vencimiento"]) && is_array($_POST["lote_vencimiento"])) ? $_POST["lote_vencimiento"] : array();
+			$arrVariante     = (isset($_POST["idvariante"]) && is_array($_POST["idvariante"])) ? $_POST["idvariante"] : array();
 
 			$rspta = $ingreso->insertar(
 				$idproveedor, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
-				$arrIdArticulo, $arrCantidad, $arrPrecioCompra, $arrPrecioVenta, $arrPresentacion, $arrLoteCodigo, $arrLoteVence
+				$arrIdArticulo, $arrCantidad, $arrPrecioCompra, $arrPrecioVenta, $arrPresentacion, $arrLoteCodigo, $arrLoteVence, $arrVariante
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('compras', 'crear', "Ingreso " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));

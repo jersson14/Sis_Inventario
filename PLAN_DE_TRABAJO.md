@@ -105,6 +105,7 @@ Un solo sistema que se adapta al giro del cliente. El código pregunta por la **
 | Fecha | Avance |
 |-------|--------|
 | 2026-09-11 | Diagnóstico completo; infraestructura de seguridad; migración v2 aplicada; refactor de backend (28 archivos) a consultas preparadas |
+| 2026-09-19 | Botón Editar de artículos no abría ("No se pudo cargar el artículo", error presente desde v2.0): `appParseJson` volvía a parsear respuestas que jQuery ya entregaba como objeto; corregido en la función compartida. Auditoría en navegador de todos los botones (filas, cabeceras, ficha de artículo, etiquetas, caja) y listados de ventas/compras ordenados por fecha real |
 | 2026-09-18 (noche) | Capturas del README desde una demo desechable; raíz del repo limpia; corrección del kardex (ordenaba la fecha como texto y el saldo quedaba desordenado) |
 | 2026-09-18 (tarde) | Documentación al día: README (rubros, módulos, pruebas), guía de despliegue (actualización y cambios de esquema) y manual de uso para el cliente |
 | 2026-09-18 | Rubro ropa completo: variantes talla/color con stock propio en todo el circuito, importación y etiquetas; kardex con decimales y costo por factor corregidos; smoke a 163 comprobaciones + bancos JS (18 + 13) |

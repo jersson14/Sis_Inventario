@@ -238,8 +238,9 @@ function listar(){
 		},
 		"bDestroy": true,
 		"iDisplayLength": 10,
+		// Lo ultimo vendido primero, ordenando por la fecha real
 		"order": [[1, "desc"]],
-		"columnDefs": [{ "orderable": false, "targets": [0] }]
+		"columnDefs": [{ "orderable": false, "targets": [0] }, { "targets": [1], "render": window.appOrdenPorDato }]
 	}).DataTable();
 }
 

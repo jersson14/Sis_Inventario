@@ -95,7 +95,26 @@
     if (window.confirm(mensaje) && typeof callback === "function") { callback(); }
   };
 
+  /**
+   * Para columnDefs.render de DataTables: si la celda trae data-orden (fecha ISO),
+   * ordena por ese valor. Sin esto "30/08" queda antes que "16/09" al comparar texto.
+   */
+  window.appOrdenPorDato = function (data, type) {
+    if (type === "sort" || type === "type") {
+      var m = /data-orden="([^"]+)"/.exec(String(data == null ? "" : data));
+      return m ? m[1] : data;
+    }
+    return data;
+  };
+
+  /**
+   * Convierte la respuesta del servidor en objeto. Si el servidor envia la
+   * cabecera JSON, jQuery ya entrega un objeto: se devuelve tal cual. Antes se
+   * volvia a pasar por JSON.parse, fallaba y los botones mostraban
+   * "No se pudo cargar…" aunque el servidor respondiera bien.
+   */
   window.appParseJson = function (texto, fallback) {
+    if (texto !== null && typeof texto === "object") { return texto; }
     try { return JSON.parse(texto); } catch (e) { return fallback === undefined ? null : fallback; }
   };
 

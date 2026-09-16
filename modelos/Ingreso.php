@@ -801,13 +801,13 @@ class Ingreso{
 		$filtro = count($where) > 0 ? " WHERE " . implode(" AND ", $where) : "";
 
 		return dbQuery(
-			"SELECT i.idingreso,DATE_FORMAT(i.fecha_hora,'%d/%m/%Y %H:%i') AS fecha,i.idproveedor,p.nombre AS proveedor,
+			"SELECT i.idingreso,DATE_FORMAT(i.fecha_hora,'%d/%m/%Y %H:%i') AS fecha,DATE_FORMAT(i.fecha_hora,'%Y-%m-%d %H:%i:%s') AS fecha_orden,i.idproveedor,p.nombre AS proveedor,
 				u.idusuario,u.nombre AS usuario,i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado,
 				i.tipo_pago,i.medio_pago,i.fecha_vencimiento
 			 FROM ingreso i
 			 INNER JOIN persona p ON i.idproveedor=p.idpersona
 			 INNER JOIN usuario u ON i.idusuario=u.idusuario" . $filtro . "
-			 ORDER BY i.idingreso DESC",
+			 ORDER BY i.fecha_hora DESC, i.idingreso DESC",
 			$params
 		);
 	}

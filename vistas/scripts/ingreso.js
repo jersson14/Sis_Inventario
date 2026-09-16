@@ -159,8 +159,9 @@ function listar(){
 			},
 			dataType: "json", error: function(e){ console.log(e.responseText); }
 		},
+		// Lo ultimo comprado primero, ordenando por la fecha real
 		"bDestroy": true, "iDisplayLength": 10, "order": [[1, "desc"]],
-		"columnDefs": [{ "orderable": false, "targets": [0] }]
+		"columnDefs": [{ "orderable": false, "targets": [0] }, { "targets": [1], "render": window.appOrdenPorDato }]
 	}).DataTable();
 }
 

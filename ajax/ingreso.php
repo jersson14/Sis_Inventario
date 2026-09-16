@@ -146,7 +146,7 @@ switch ($op) {
 
 				$data[] = array(
 					"0"=>$botones,
-					"1"=>e($reg->fecha),
+					"1"=>'<span data-orden="' . e($reg->fecha_orden) . '-' . str_pad((string)$id, 10, '0', STR_PAD_LEFT) . '">' . e($reg->fecha) . '</span>',
 					"2"=>e($reg->proveedor),
 					"3"=>e($reg->usuario),
 					"4"=>e($reg->tipo_comprobante),

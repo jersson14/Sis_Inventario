@@ -781,13 +781,13 @@ class Venta{
 		$filtro = count($where) > 0 ? " WHERE " . implode(" AND ", $where) : "";
 
 		return dbQuery(
-			"SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') AS fecha,v.idcliente,p.nombre AS cliente,
+			"SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') AS fecha,DATE_FORMAT(v.fecha_hora,'%Y-%m-%d %H:%i:%s') AS fecha_orden,v.idcliente,p.nombre AS cliente,
 				u.idusuario,u.nombre AS usuario,v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado,
 				v.tipo_pago,v.medio_pago,v.fecha_vencimiento
 			 FROM venta v
 			 INNER JOIN persona p ON v.idcliente=p.idpersona
 			 INNER JOIN usuario u ON v.idusuario=u.idusuario" . $filtro . "
-			 ORDER BY v.idventa DESC",
+			 ORDER BY v.fecha_hora DESC, v.idventa DESC",
 			$params
 		);
 	}

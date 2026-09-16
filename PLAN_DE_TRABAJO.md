@@ -75,9 +75,9 @@ Hallazgos críticos del código heredado:
 - ✅ Instalador web `instalar.php` + esquema base `scripts/sql/esquema_base.sql` (crea BD, admin bcrypt, `config/local.php`, `instalar.lock`)
 - ✅ Datos de demo `scripts/sql/demo.sql` (ferretería: 14 artículos, 7 personas, 3 compras, 7 ventas, crédito, caja, ajuste)
 - ✅ Prueba de humo automatizada `scripts/smoke.php` (login/CSRF, 21 vistas, 19 endpoints, flujo caja→venta→crédito→abono→ajuste→compra→anulaciones, PDFs; limpia todo)
-- ⬜ Limpieza del repo: quitar `liquidacion_beneficios_*.txt` (archivo personal ajeno al proyecto), dumps `.sql` sueltos y `1776716532.jpeg` en raíz (decisión del dueño)
+- ✅ Limpieza del repo: los volcados `.sql` sueltos se movieron a `files/backups/dumps_antiguos/` (nunca estuvieron versionados); los otros archivos ya no existían
 - ✅ Documentación actualizada: README con rubros y módulos nuevos, `docs/DESPLIEGUE.md` con la actualización 2.0 → 2.0.5 y qué cambia en la BD, y **manual de uso** para el cliente final (`docs/MANUAL.md`)
-- ⬜ Capturas de pantalla del README (generarlas sobre una instalación con `demo.sql`, no con datos de un cliente)
+- ✅ Capturas de pantalla del README (landing, escritorio, punto de venta, artículos y kardex), tomadas de una instalación de demostración desechable
 - ⬜ Datos de demostración por rubro (hoy `demo.sql` solo trae una ferretería)
 - ⬜ Prueba de extremo a extremo hecha por el dueño (crear artículo, comprar, vender, anular, imprimir)
 - ⬜ Commit y push de la versión (pendiente de revisión del dueño)
@@ -105,6 +105,7 @@ Un solo sistema que se adapta al giro del cliente. El código pregunta por la **
 | Fecha | Avance |
 |-------|--------|
 | 2026-09-11 | Diagnóstico completo; infraestructura de seguridad; migración v2 aplicada; refactor de backend (28 archivos) a consultas preparadas |
+| 2026-09-18 (noche) | Capturas del README desde una demo desechable; raíz del repo limpia; corrección del kardex (ordenaba la fecha como texto y el saldo quedaba desordenado) |
 | 2026-09-18 (tarde) | Documentación al día: README (rubros, módulos, pruebas), guía de despliegue (actualización y cambios de esquema) y manual de uso para el cliente |
 | 2026-09-18 | Rubro ropa completo: variantes talla/color con stock propio en todo el circuito, importación y etiquetas; kardex con decimales y costo por factor corregidos; smoke a 163 comprobaciones + bancos JS (18 + 13) |
 | 2026-09-17 | Rubro abarrotes completo: lotes, vencimientos, FEFO, bajas y alertas; corrección de transacción en ajustes (un rechazo tras escribir ya no confirma el stock); smoke a 136 comprobaciones |

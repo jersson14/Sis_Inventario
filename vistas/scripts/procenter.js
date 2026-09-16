@@ -52,7 +52,8 @@ function construirKardex(data) {
     var costoTxt = window.appMoney ? window.appMoney(parseFloat(r.costo || 0), 2) : ("S/ " + parseFloat(r.costo || 0).toFixed(2));
     var precioRefTxt = window.appMoney ? window.appMoney(parseFloat(r.precio_ref || 0), 2) : ("S/ " + parseFloat(r.precio_ref || 0).toFixed(2));
     body += "<tr>" +
-      "<td>" + r.fecha + "</td>" +
+      // data-order con la fecha ISO: si no, DataTables ordena el texto dd/mm y el saldo pierde sentido
+      "<td data-order='" + (r.fecha_orden || "") + "'>" + r.fecha + "</td>" +
       "<td><span class='label " + (r.tipo === "INGRESO" ? "bg-aqua" : "bg-green") + "'>" + r.tipo + "</span></td>" +
       "<td>" + r.documento + "</td>" +
       "<td>" + r.tercero + "</td>" +

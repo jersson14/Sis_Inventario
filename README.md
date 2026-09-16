@@ -185,10 +185,28 @@ Cambia la contraseña desde **Mi perfil** tras ingresar.
 
 ## Capturas de pantalla
 
-> *Pendientes.* Para generarlas sin exponer datos reales de un cliente: instala una copia
-> limpia, carga `scripts/sql/demo.sql` y captura desde ahí. La herramienta
-> `scripts/qa_snapshots.php` guarda el HTML renderizado de las vistas (crea y borra un
-> usuario temporal) y sirve para revisar la interfaz en distintos anchos de pantalla.
+*Tomadas de una instalación de demostración (`scripts/sql/demo.sql`): la ferretería, los
+clientes y las ventas son ficticios.*
+
+**Landing pública**
+
+![Landing](docs/img/landing.png)
+
+**Escritorio** — KPIs del periodo, alertas y gráficos
+
+![Escritorio](docs/img/escritorio.png)
+
+**Punto de venta** — venta por caja (empaque), por kilo y por metro en el mismo ticket
+
+![Punto de venta](docs/img/punto-de-venta.png)
+
+**Artículos** — catálogo con stock, precios y códigos de barras
+
+![Artículos](docs/img/articulos.png)
+
+**Kardex** — entradas, salidas y saldo por artículo
+
+![Kardex](docs/img/kardex.png)
 
 ---
 

@@ -73,6 +73,7 @@ switch ($op) {
 
                 $data[] = array(
                     'fecha' => date('d/m/Y H:i', strtotime($reg->fecha_hora)),
+                    'fecha_orden' => date('Y-m-d H:i:s', strtotime($reg->fecha_hora)),
                     'tipo' => $reg->tipo,
                     'documento' => $reg->documento,
                     'tercero' => $reg->tercero,

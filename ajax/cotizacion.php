@@ -10,6 +10,23 @@ $op = isset($_GET['op']) ? $_GET['op'] : '';
 switch ($op) {
 	case 'guardar':
 		$id = enteroSeguro(isset($_POST['idcotizacion']) ? $_POST['idcotizacion'] : 0);
+		// Sin "Cambiar precios y descuentos" se cotiza al precio de lista; al
+		// editar se respetan las lineas que ya tenia la cotizacion
+		if (!usuarioTienePermiso('precios')) {
+			require_once "../modelos/Articulo.php";
+			$msgPrecio = (new Articulo())->validarPreciosDeLista(
+				isset($_POST['idarticulo']) ? $_POST['idarticulo'] : array(),
+				isset($_POST['idpresentacion']) ? $_POST['idpresentacion'] : array(),
+				isset($_POST['idvariante']) ? $_POST['idvariante'] : array(),
+				isset($_POST['cantidad']) ? $_POST['cantidad'] : array(),
+				isset($_POST['precio']) ? $_POST['precio'] : array(),
+				isset($_POST['descuento']) ? $_POST['descuento'] : array(),
+				$id > 0 ? $cot->lineasPrecio($id) : array()
+			);
+			if ($msgPrecio !== '') {
+				responderJson(array('ok' => false, 'message' => $msgPrecio));
+			}
+		}
 		$r = $cot->guardar(
 			$id,
 			enteroSeguro(isset($_POST['idcliente']) ? $_POST['idcliente'] : 0),

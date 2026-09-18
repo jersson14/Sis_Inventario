@@ -146,6 +146,11 @@ switch ($op) {
             echo 'El impuesto debe estar entre 0 y 100.';
             break;
         }
+        // Se escribe en porcentaje: 0.18 quedaria como un IGV de 0.18 %
+        if ($impuesto > 0 && $impuesto < 1) {
+            echo 'El impuesto se escribe en porcentaje: 18, no 0.18.';
+            break;
+        }
 
         $moneda = strtoupper(trim((string)(isset($_POST['moneda']) ? $_POST['moneda'] : 'PEN')));
         if (!in_array($moneda, $MONEDAS, true)) {
@@ -172,7 +177,13 @@ switch ($op) {
             'moneda' => $moneda,
             'tipo_negocio' => normalizarPerfilNegocio(isset($_POST['tipo_negocio']) ? $_POST['tipo_negocio'] : ''),
             'dias_alerta_vencimiento' => max(1, min(365, enteroSeguro(isset($_POST['dias_alerta_vencimiento']) ? $_POST['dias_alerta_vencimiento'] : 30) ?: 30)),
-            'mensaje_ticket' => substr(limpiarCadena(isset($_POST['mensaje_ticket']) ? $_POST['mensaje_ticket'] : ''), 0, 160)
+            'mensaje_ticket' => substr(limpiarCadena(isset($_POST['mensaje_ticket']) ? $_POST['mensaje_ticket'] : ''), 0, 160),
+            'ticket_ancho' => enteroSeguro(isset($_POST['ticket_ancho']) ? $_POST['ticket_ancho'] : 80) === 58 ? 58 : 80,
+            'ticket_auto_imprimir' => !empty($_POST['ticket_auto_imprimir']) ? 1 : 0,
+            'ticket_logo' => !empty($_POST['ticket_logo']) ? 1 : 0,
+            'ticket_cabecera' => mb_substr(limpiarCadena(isset($_POST['ticket_cabecera']) ? $_POST['ticket_cabecera'] : ''), 0, 200, 'UTF-8'),
+            'ticket_copias' => max(1, min(3, enteroSeguro(isset($_POST['ticket_copias']) ? $_POST['ticket_copias'] : 1))),
+            'arqueo_ciego' => !empty($_POST['arqueo_ciego']) ? 1 : 0
         );
 
         $rspta = $empresa->guardar($data);

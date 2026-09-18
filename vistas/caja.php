@@ -38,7 +38,7 @@ if (usuarioTienePermiso('caja') || usuarioTienePermiso('ventas')) {
         <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12"><div class="kpi-card kpi-dark"><div class="kpi-icon"><i class="fa fa-unlock"></i></div><div class="kpi-meta"><span>Caja abierta</span><strong id="kpiApertura">—</strong><small id="kpiAperturaFecha"></small></div></div></div>
         <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12"><div class="kpi-card kpi-sales"><div class="kpi-icon"><i class="fa fa-arrow-down"></i></div><div class="kpi-meta"><span>Ingresos</span><strong id="kpiIngresos">—</strong><small id="kpiMovs"></small></div></div></div>
         <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12"><div class="kpi-card kpi-month"><div class="kpi-icon"><i class="fa fa-arrow-up"></i></div><div class="kpi-meta"><span>Egresos</span><strong id="kpiEgresos">—</strong></div></div></div>
-        <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12"><div class="kpi-card kpi-profit"><div class="kpi-icon"><i class="fa fa-calculator"></i></div><div class="kpi-meta"><span>Saldo según sistema</span><strong id="kpiSistema">—</strong><small>Apertura + ingresos − egresos</small></div></div></div>
+        <div class="col-lg-3 col-md-6 col-sm-6 col-xs-12"><div class="kpi-card kpi-profit"><div class="kpi-icon"><i class="fa fa-calculator"></i></div><div class="kpi-meta"><span>Efectivo esperado en caja</span><strong id="kpiSistema">—</strong><small id="kpiOtrosMedios">Apertura + efectivo que entró − efectivo que salió</small></div></div></div>
       </div>
       <div class="row">
         <div class="col-lg-4 col-md-5 col-xs-12">
@@ -106,7 +106,7 @@ if (usuarioTienePermiso('caja') || usuarioTienePermiso('ventas')) {
         <div class="form-group"><label>Concepto <span class="req">*</span></label><input type="text" class="form-control" name="concepto" id="mov_concepto" maxlength="120" placeholder="Ej. Pago de movilidad" required></div>
         <div class="row">
           <div class="form-group col-xs-6"><label>Monto <span class="req">*</span></label><input type="number" step="0.01" min="0.01" class="form-control" name="monto" id="mov_monto" required></div>
-          <div class="form-group col-xs-6"><label>Medio</label><select class="form-control" name="medio_pago" id="mov_medio"><option value="EFECTIVO">Efectivo</option><option value="TARJETA">Tarjeta</option><option value="TRANSFERENCIA">Transferencia</option><option value="YAPE">Yape</option><option value="PLIN">Plin</option><option value="OTRO">Otro</option></select></div>
+          <div class="form-group col-xs-6"><label>Medio</label><select class="form-control" name="medio_pago" id="mov_medio"><option value="EFECTIVO">Efectivo</option><option value="DEPOSITO">Depósito en cuenta</option><option value="TARJETA">Tarjeta</option><option value="TRANSFERENCIA">Transferencia</option><option value="YAPE">Yape</option><option value="PLIN">Plin</option><option value="OTRO">Otro</option></select></div>
         </div>
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-default" data-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary" id="btnConfirmarMov"><i class="fa fa-plus"></i> Registrar</button></div>
@@ -120,7 +120,7 @@ if (usuarioTienePermiso('caja') || usuarioTienePermiso('ventas')) {
     <form id="formCerrarCaja" autocomplete="off">
       <div class="modal-header"><button type="button" class="close" data-dismiss="modal">&times;</button><h4 class="modal-title"><i class="fa fa-lock"></i> Cerrar caja (arqueo)</h4></div>
       <div class="modal-body">
-        <div class="alert alert-info" style="font-size:13px">Saldo según sistema: <strong id="cierreSistema">—</strong>. Cuenta el efectivo real y regístralo; el sistema calculará la diferencia.</div>
+        <div class="alert alert-info" style="font-size:13px">Efectivo esperado: <strong id="cierreSistema">—</strong>. Cuenta solo los billetes y monedas del cajón; Yape, tarjeta, transferencias y depósitos no se cuentan aquí (<span id="cierreOtros">—</span>). El sistema calcula la diferencia.</div>
         <div class="form-group"><label>Monto real contado <span class="req">*</span></label><input type="number" step="0.01" min="0" class="form-control input-lg" name="monto_cierre_real" id="monto_cierre_real" placeholder="0.00" required></div>
         <div class="form-group"><label>Observación de cierre</label><input type="text" class="form-control" name="observacion" id="obs_cierre" maxlength="200" placeholder="Opcional"></div>
       </div>

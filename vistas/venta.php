@@ -13,12 +13,12 @@ if (usuarioTienePermiso('ventas')) {
       <div>
         <div class="breadcrumb-app"><a href="escritorio.php">Inicio</a> <i class="fa fa-chevron-right"></i> Ventas <i class="fa fa-chevron-right"></i> Punto de venta</div>
         <h1><span class="page-icon"><i class="fa fa-shopping-cart"></i></span> Ventas</h1>
-        <p>Registra ventas al contado o al crédito, imprime comprobantes y controla tu caja.</p>
+        <p>Registra ventas al contado o al crédito, imprime el ticket y controla tu caja.</p>
       </div>
       <div class="page-actions" id="accionesListado">
         <div class="chip chip-primary" id="chipResumenDia" title="Ventas aceptadas de hoy"><i class="fa fa-calendar-check-o"></i> Hoy: <span>—</span></div>
         <a href="caja.php" class="btn btn-default" title="Ir a caja diaria"><i class="fa fa-money"></i> Caja</a>
-        <button class="btn btn-primary" onclick="mostrarform(true)" id="btnagregar"><i class="fa fa-plus"></i> Nueva venta <small style="opacity:.7">(Alt+V)</small></button>
+        <button class="btn btn-primary" onclick="mostrarform(true)" id="btnagregar"><i class="fa fa-desktop"></i> Abrir punto de venta <small style="opacity:.7">(Alt+V)</small></button>
       </div>
     </div>
 
@@ -76,144 +76,86 @@ if (usuarioTienePermiso('ventas')) {
       </div>
     </div>
 
-    <!-- FORMULARIO POS -->
-    <div id="formularioregistros">
+    <!-- PUNTO DE VENTA (pantalla completa) -->
+    <div id="formularioregistros" class="caja-pantalla">
       <form action="" name="formulario" id="formulario" method="POST" autocomplete="off">
         <input type="hidden" name="idventa" id="idventa">
         <input type="hidden" name="idcotizacion" id="idcotizacion" value="">
-        <div class="pos-layout">
-          <div class="pos-main">
-            <div class="box">
-              <div class="box-header with-border">
-                <h3 class="box-title"><i class="fa fa-cart-plus"></i> Nueva venta</h3>
-                <div class="box-tools">
-                  <button class="btn btn-default btn-sm" onclick="cancelarform()" type="button" id="btnCancelarTop"><i class="fa fa-arrow-left"></i> Volver al listado</button>
-                </div>
+        <input type="hidden" name="total_venta" id="total_venta">
+
+        <div class="caja-topbar">
+          <div class="caja-topbar-titulo"><span class="page-icon"><i class="fa fa-desktop"></i></span> Punto de venta</div>
+          <div class="chip chip-primary" id="chipResumenDiaPos" title="<?php echo puedeVerTodasLasVentas() ? 'Ventas aceptadas de hoy' : 'Tus ventas aceptadas de hoy'; ?>"><i class="fa fa-calendar-check-o"></i> Hoy: <span>—</span></div>
+          <div class="pos-caja" id="posCaja"></div>
+          <div class="caja-topbar-acciones">
+            <span class="caja-usuario hidden-xs"><i class="fa fa-user-circle"></i> <?php echo e($_SESSION['nombre']); ?></span>
+            <button type="button" class="btn btn-default btn-sm btn-pantalla-completa" onclick="appAlternarPantallaCompleta()" title="Pantalla completa (F11)"><i class="fa fa-expand"></i></button>
+            <button type="button" class="btn btn-default btn-sm" onclick="cancelarform()" title="Volver al listado de ventas (Esc)"><i class="fa fa-list"></i> Ventas</button>
+          </div>
+        </div>
+
+        <div class="pos-app">
+          <!-- Catalogo -->
+          <section class="pos-catalogo" aria-label="Productos">
+            <div class="pos-buscar">
+              <i class="fa fa-barcode"></i>
+              <input type="text" class="form-control input-lg" id="codigo_rapido" placeholder="Escanea el código o busca por nombre (F3)" autocomplete="off" aria-label="Buscar producto">
+              <button class="btn btn-success btn-lg" type="button" id="btnBuscarCodigo" title="Agregar por código (Enter)"><i class="fa fa-plus"></i><span class="hidden-xs"> Agregar</span></button>
+            </div>
+            <div class="pos-categorias" id="posCategorias" role="tablist" aria-label="Categorías"></div>
+            <div class="pos-grid" id="posGrid">
+              <div class="pos-grid-vacio"><i class="fa fa-spinner fa-spin"></i> Cargando productos…</div>
+            </div>
+            <div class="pos-grid-pie" id="posGridPie"></div>
+          </section>
+
+          <!-- Ticket en curso -->
+          <aside class="pos-ticket" aria-label="Venta en curso">
+            <div class="pos-ultima" id="posUltimaVenta" style="display:none"></div>
+
+            <div class="pos-ticket-cab">
+              <div class="pos-cliente">
+                <select name="idcliente" id="idcliente" class="form-control selectpicker" data-live-search="true" data-width="100%" data-size="8" required></select>
+                <button type="button" class="btn btn-default" id="btnNuevoCliente" data-toggle="modal" data-target="#modalClienteVenta" title="Registrar cliente rápido"><i class="fa fa-user-plus"></i></button>
               </div>
-              <div class="box-body">
-                <div class="row">
-                  <div class="form-group col-lg-7 col-md-7 col-xs-12">
-                    <label for="idcliente">Cliente <span class="req">*</span></label>
-                    <div class="input-group" style="display:flex;gap:6px;">
-                      <select name="idcliente" id="idcliente" class="form-control selectpicker" data-live-search="true" data-width="100%" data-size="8" required></select>
-                      <button type="button" class="btn btn-default" id="btnNuevoCliente" data-toggle="modal" data-target="#modalClienteVenta" title="Registrar cliente rápido" style="flex:0 0 auto;"><i class="fa fa-user-plus"></i></button>
-                    </div>
-                  </div>
-                  <div class="form-group col-lg-5 col-md-5 col-xs-12">
-                    <label for="fecha_hora">Fecha y hora <span class="req">*</span></label>
-                    <input class="form-control" type="datetime-local" name="fecha_hora" id="fecha_hora" required>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="form-group col-lg-3 col-md-3 col-sm-6 col-xs-12">
-                    <label for="tipo_comprobante">Comprobante</label>
-                    <select name="tipo_comprobante" id="tipo_comprobante" class="form-control">
-                      <option value="Boleta">Boleta</option>
-                      <option value="Factura">Factura</option>
-                      <option value="Ticket">Ticket</option>
-                    </select>
-                  </div>
-                  <div class="form-group col-lg-2 col-md-2 col-sm-3 col-xs-6">
-                    <label for="serie_comprobante">Serie</label>
-                    <input class="form-control" type="text" name="serie_comprobante" id="serie_comprobante" maxlength="7" placeholder="B001">
-                  </div>
-                  <div class="form-group col-lg-3 col-md-3 col-sm-3 col-xs-6">
-                    <label for="num_comprobante">Número <small class="text-soft">(auto)</small></label>
-                    <input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Automático">
-                  </div>
-                  <div class="form-group col-lg-2 col-md-2 col-sm-6 col-xs-6">
-                    <label for="impuesto">Impuesto %</label>
-                    <input class="form-control" type="number" step="0.01" min="0" max="100" name="impuesto" id="impuesto" value="0">
-                  </div>
-                  <div class="form-group col-lg-2 col-md-2 col-sm-6 col-xs-6">
-                    <label>&nbsp;</label>
-                    <button id="btnAgregarArt" type="button" class="btn btn-catalog-open w-100" data-toggle="modal" data-target="#myModal" title="Abrir catálogo (F2)"><i class="fa fa-th-large"></i> Catálogo</button>
-                  </div>
-                </div>
-
-                <div class="form-group">
-                  <label for="codigo_rapido"><i class="fa fa-barcode"></i> Código de barras / código del producto</label>
-                  <div class="input-group">
-                    <input type="text" class="form-control" id="codigo_rapido" placeholder="Escanea o escribe el código y presiona Enter" autocomplete="off">
-                    <span class="input-group-btn">
-                      <button class="btn btn-success" type="button" id="btnBuscarCodigo"><i class="fa fa-plus"></i> Agregar</button>
-                    </span>
-                  </div>
-                </div>
-
-                <div class="table-responsive">
-                  <table id="detalles" class="table table-bordered table-hover">
-                    <thead>
-                      <tr>
-                        <th style="width:52px"></th>
-                        <th class="col-articulo">Artículo</th>
-                        <th style="width:70px">Unidad</th>
-                        <th style="width:104px">Cantidad</th>
-                        <th style="width:112px">Precio</th>
-                        <th style="width:104px">Dscto.</th>
-                        <th style="width:124px" class="text-right">Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody></tbody>
-                    <tfoot>
-                      <tr>
-                        <th colspan="6" class="text-right">TOTAL</th>
-                        <th class="text-right"><h4 id="total" class="mb-0"><?php echo e(formatearMoneda(0)); ?></h4><input type="hidden" name="total_venta" id="total_venta"></th>
-                      </tr>
-                    </tfoot>
-                  </table>
-                  <div class="empty-state" id="detalleVacio">
-                    <i class="fa fa-barcode"></i>
-                    <strong>Aún no hay artículos</strong>
-                    Escanea un código, escribe el código del producto o abre el catálogo (F2).
-                  </div>
+              <div class="pos-comprobante" role="group" aria-label="Tipo de comprobante">
+                <button type="button" class="active" data-comprobante="Boleta">Boleta</button>
+                <button type="button" data-comprobante="Factura">Factura</button>
+                <button type="button" data-comprobante="Ticket">Ticket</button>
+                <button type="button" class="pos-mas" data-toggle="collapse" data-target="#posMasDatos" aria-expanded="false" title="Serie, número, fecha e impuesto"><i class="fa fa-sliders"></i></button>
+              </div>
+              <input type="hidden" name="tipo_comprobante" id="tipo_comprobante" value="Boleta">
+              <div class="collapse" id="posMasDatos">
+                <div class="pos-mas-grid">
+                  <div><label for="serie_comprobante">Serie</label><input class="form-control input-sm" type="text" name="serie_comprobante" id="serie_comprobante" maxlength="7" placeholder="B001"></div>
+                  <div><label for="num_comprobante">Número <small class="text-soft">(automático)</small></label><input class="form-control input-sm" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Automático" readonly title="El número lo asigna el sistema en orden, sin saltos"></div>
+                  <div><label for="impuesto">IGV %</label><input class="form-control input-sm" type="number" step="0.01" min="0" max="100" name="impuesto" id="impuesto" value="0" readonly title="Boleta y factura usan el IGV configurado en Empresa; la nota de venta no desglosa IGV"></div>
+                  <div class="pos-mas-fecha"><label for="fecha_hora">Fecha y hora</label><input class="form-control input-sm" type="datetime-local" name="fecha_hora" id="fecha_hora" required></div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <aside class="pos-side">
-            <div class="pos-summary">
-              <div class="pos-summary-title">Resumen de la venta</div>
-              <div class="pos-total" id="posTotal"><?php echo e(formatearMoneda(0)); ?></div>
-              <div class="pos-row"><span>Artículos</span><span id="ventasItemsSeleccionados">0</span></div>
-              <div class="pos-row"><span>Unidades</span><span id="posUnidades">0</span></div>
-              <div class="pos-row"><span>Descuentos</span><span id="posDescuentos"><?php echo e($simbolo); ?> 0.00</span></div>
+            <div class="pos-carrito">
+              <table id="detalles" class="table tabla-carrito">
+                <tbody></tbody>
+              </table>
+              <div class="empty-state" id="detalleVacio">
+                <i class="fa fa-shopping-basket"></i>
+                <strong>Carrito vacío</strong>
+                Toca un producto o escanea su código.
+              </div>
+            </div>
 
-              <div style="margin-top:14px">
-                <div class="pos-summary-title">Forma de pago</div>
-                <div class="pago-toggle">
-                  <button type="button" class="btn btn-default btn-sm active" data-pago="CONTADO"><i class="fa fa-money"></i> Contado</button>
-                  <button type="button" class="btn btn-default btn-sm" data-pago="CREDITO"><i class="fa fa-calendar"></i> Crédito</button>
-                </div>
-                <input type="hidden" name="tipo_pago" id="tipo_pago" value="CONTADO">
+            <div class="pos-totales">
+              <div class="pos-tot-fila"><span>Artículos</span><span><span id="ventasItemsSeleccionados">0</span> · <span id="posUnidades">0</span> und</span></div>
+              <div class="pos-tot-fila" id="filaDescuentos" style="display:none"><span>Descuentos</span><span id="posDescuentos"><?php echo e($simbolo); ?> 0.00</span></div>
+              <div class="pos-tot-fila" id="filaIgv" style="display:none"><span>IGV incluido</span><span id="posIgv"><?php echo e($simbolo); ?> 0.00</span></div>
+              <div class="pos-tot-total"><span>Total</span><span id="posTotal"><?php echo e(formatearMoneda(0)); ?></span></div>
+              <div class="pos-tot-acciones">
+                <button class="btn btn-default btn-lg" type="button" onclick="vaciarCarrito()" id="btnCancelar" title="Vaciar el carrito"><i class="fa fa-trash-o"></i></button>
+                <button class="btn btn-success btn-lg btn-cobrar" type="button" id="btnGuardar" onclick="abrirCobro()"><i class="fa fa-money"></i> Cobrar <span id="btnCobrarTotal"></span> <small>(F4)</small></button>
               </div>
-              <div style="margin-top:10px" id="grupoMedioPago">
-                <label style="color:#cbd5e1;font-size:12px">Medio de pago</label>
-                <select name="medio_pago" id="medio_pago" class="form-control input-sm">
-                  <option value="EFECTIVO">Efectivo</option>
-                  <option value="TARJETA">Tarjeta</option>
-                  <option value="TRANSFERENCIA">Transferencia</option>
-                  <option value="YAPE">Yape</option>
-                  <option value="PLIN">Plin</option>
-                  <option value="OTRO">Otro</option>
-                </select>
-              </div>
-              <div style="margin-top:10px;display:none" id="grupoVencimiento">
-                <label style="color:#cbd5e1;font-size:12px">Fecha de vencimiento del crédito</label>
-                <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control input-sm">
-                <small style="color:#94a3b8">Se creará una cuenta por cobrar automáticamente.</small>
-              </div>
-              <div style="margin-top:10px">
-                <label style="color:#cbd5e1;font-size:12px">Observación</label>
-                <input type="text" name="observacion" id="observacion" class="form-control input-sm" maxlength="200" placeholder="Opcional">
-              </div>
-
-              <button class="btn btn-success btn-lg" type="submit" id="btnGuardar"><i class="fa fa-check"></i> Registrar venta <small>(F4)</small></button>
-              <button class="btn btn-default" onclick="cancelarform()" type="button" id="btnCancelar"><i class="fa fa-times"></i> Cancelar</button>
-              <div class="pos-shortcuts">
-                <kbd>F2</kbd> catálogo &nbsp; <kbd>Ctrl+B</kbd> código &nbsp; <kbd>F4</kbd> guardar &nbsp; <kbd>Esc</kbd> cancelar
-              </div>
+              <div class="pos-shortcuts"><kbd>F3</kbd> buscar &nbsp; <kbd>F4</kbd> cobrar &nbsp; <kbd>+</kbd>/<kbd>-</kbd> cantidad del último &nbsp; <kbd>Esc</kbd> salir</div>
             </div>
           </aside>
         </div>
@@ -222,30 +164,104 @@ if (usuarioTienePermiso('ventas')) {
   </section>
 </div>
 
-<!-- Modal catálogo -->
-<div class="modal fade modal-catalog" id="myModal" tabindex="-1" role="dialog" aria-hidden="true">
-  <div class="modal-dialog">
+<!-- Modal de cobro: sus campos pertenecen a #formulario (atributo form) -->
+<div class="modal fade modal-cobro" id="modalCobro" tabindex="-1" role="dialog" aria-labelledby="cobroTitulo" aria-hidden="true">
+  <div class="modal-dialog" role="document">
     <div class="modal-content">
-      <div class="modal-header catalog-modal-header">
-        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-        <h4 class="modal-title"><i class="fa fa-th-large"></i> Catálogo de artículos</h4>
-        <p class="catalog-subtitle">Haz clic en "Agregar" o escribe para buscar por nombre, código o categoría</p>
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+        <h4 class="modal-title" id="cobroTitulo"><i class="fa fa-money"></i> Cobrar</h4>
       </div>
       <div class="modal-body">
-        <div class="catalog-info-row">
-          <div class="catalog-tip"><i class="fa fa-lightbulb-o"></i> Si un producto ya está en la venta, al agregarlo de nuevo se incrementa su cantidad.</div>
-          <div class="catalog-counter"><span id="ventasItemsSeleccionadosModal">0</span> artículos en la venta</div>
+        <div class="cobro-total">
+          <small>Total a cobrar</small>
+          <strong id="cobroTotal"><?php echo e(formatearMoneda(0)); ?></strong>
         </div>
-        <table id="tblarticulos" class="table table-striped table-bordered table-hover" style="width:100%">
-          <thead><tr><th>Agregar</th><th>Nombre</th><th>Categoría</th><th>Unidad</th><th>Código</th><th>Stock</th><th>Precio</th><th>Imagen</th></tr></thead>
-          <tbody></tbody>
-        </table>
+
+        <div class="pago-toggle cobro-tipo">
+          <button type="button" class="btn btn-default active" data-pago="CONTADO"><i class="fa fa-money"></i> Contado</button>
+          <button type="button" class="btn btn-default" data-pago="CREDITO"><i class="fa fa-calendar"></i> Crédito</button>
+        </div>
+        <input type="hidden" name="tipo_pago" id="tipo_pago" value="CONTADO" form="formulario">
+
+        <div id="grupoMedioPago">
+          <div class="medio-grid" data-target="#medio_pago">
+            <button type="button" class="active" data-medio="EFECTIVO"><i class="fa fa-money"></i>Efectivo</button>
+            <button type="button" data-medio="YAPE"><i class="fa fa-mobile"></i>Yape</button>
+            <button type="button" data-medio="PLIN"><i class="fa fa-mobile"></i>Plin</button>
+            <button type="button" data-medio="TARJETA"><i class="fa fa-credit-card"></i>Tarjeta</button>
+            <button type="button" data-medio="TRANSFERENCIA"><i class="fa fa-exchange"></i>Transferencia</button>
+            <button type="button" data-medio="DEPOSITO"><i class="fa fa-university"></i>Depósito</button>
+          </div>
+          <input type="hidden" name="medio_pago" id="medio_pago" value="EFECTIVO" form="formulario">
+
+          <div id="grupoEfectivo">
+            <label for="monto_recibido">Recibido del cliente</label>
+            <input type="number" step="0.01" min="0" class="form-control input-lg cobro-recibido" name="monto_recibido" id="monto_recibido" form="formulario" placeholder="Monto exacto" inputmode="decimal">
+            <div class="cobro-rapidos" id="cobroRapidos"></div>
+            <div class="cobro-vuelto" id="cobroVuelto"><span>Vuelto</span><strong>—</strong></div>
+          </div>
+          <div id="grupoOperacion" style="display:none">
+            <label for="num_operacion">N° de operación <small class="text-soft">(opcional)</small></label>
+            <input type="text" class="form-control input-lg" name="num_operacion" id="num_operacion" form="formulario" maxlength="40" placeholder="Del voucher o de la app">
+          </div>
+        </div>
+
+        <div id="grupoVencimiento" style="display:none">
+          <label for="fecha_vencimiento">Fecha de vencimiento del crédito</label>
+          <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control input-lg" form="formulario">
+          <small class="text-soft">Se creará una cuenta por cobrar a nombre del cliente.</small>
+        </div>
+
+        <div class="form-group cobro-obs">
+          <label for="observacion">Observación</label>
+          <input type="text" name="observacion" id="observacion" class="form-control" maxlength="200" placeholder="Opcional" form="formulario">
+        </div>
+
+        <div class="checkbox cobro-imprimir">
+          <label><input type="checkbox" id="chkImprimirTicket"> <i class="fa fa-print"></i> Imprimir ticket al cobrar</label>
+        </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-default" type="button" data-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-default btn-lg" data-dismiss="modal">Volver</button>
+        <button type="button" class="btn btn-success btn-lg" id="btnConfirmarCobro" onclick="confirmarCobro()"><i class="fa fa-check"></i> Confirmar cobro <small>(Enter)</small></button>
       </div>
     </div>
   </div>
+</div>
+
+<!-- Abrir caja sin salir del punto de venta -->
+<div class="modal fade" id="modalAbrirCajaPos" tabindex="-1" role="dialog" aria-labelledby="tituloAbrirCajaPos">
+  <div class="modal-dialog modal-sm" role="document"><div class="modal-content">
+    <form id="formAbrirCajaPos" autocomplete="off">
+      <div class="modal-header"><button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">&times;</button><h4 class="modal-title" id="tituloAbrirCajaPos"><i class="fa fa-unlock"></i> Abrir caja</h4></div>
+      <div class="modal-body">
+        <p class="text-soft" style="margin-top:0">Para vender necesitas tu caja abierta: así cada venta al contado entra a tu cierre.</p>
+        <div class="form-group"><label for="pos_monto_apertura">Efectivo inicial en el cajón <span class="req">*</span></label><input type="number" step="0.01" min="0" class="form-control input-lg" name="monto_apertura" id="pos_monto_apertura" placeholder="0.00" required inputmode="decimal"></div>
+        <div class="form-group"><label for="pos_obs_apertura">Observación</label><input type="text" class="form-control" name="observacion" id="pos_obs_apertura" maxlength="200" placeholder="Opcional"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-default" data-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-success" id="btnAbrirCajaPos"><i class="fa fa-unlock"></i> Abrir caja</button></div>
+    </form>
+  </div></div>
+</div>
+
+<!-- Anular con autorizacion de un encargado (usuarios sin permiso de anular) -->
+<div class="modal fade" id="modalAutorizarAnulacion" tabindex="-1" role="dialog" aria-labelledby="tituloAutorizarAnulacion">
+  <div class="modal-dialog" role="document" style="max-width:440px"><div class="modal-content">
+    <form id="formAutorizarAnulacion" autocomplete="off">
+      <input type="hidden" id="aut_idventa">
+      <div class="modal-header"><button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">&times;</button><h4 class="modal-title" id="tituloAutorizarAnulacion"><i class="fa fa-ban"></i> Anular venta <span id="autDocumento"></span></h4></div>
+      <div class="modal-body">
+        <p class="text-soft" style="margin-top:0">El stock vuelve al inventario y, si tu caja sigue abierta, se descuenta el cobro. Un encargado debe autorizarlo con su usuario y clave.</p>
+        <div class="form-group"><label for="aut_motivo">Motivo <span class="req">*</span></label><input type="text" class="form-control" id="aut_motivo" maxlength="150" placeholder="Ej.: cliente devolvió el producto" required></div>
+        <div class="row">
+          <div class="form-group col-sm-6"><label for="aut_login">Usuario del encargado <span class="req">*</span></label><input type="text" class="form-control" id="aut_login" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" required></div>
+          <div class="form-group col-sm-6"><label for="aut_clave">Clave <span class="req">*</span></label><input type="password" class="form-control" id="aut_clave" maxlength="64" autocomplete="new-password" required></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-default" data-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-danger" id="btnAutorizarAnulacion"><i class="fa fa-ban"></i> Autorizar y anular</button></div>
+    </form>
+  </div></div>
 </div>
 
 <!-- Modal cliente rápido -->
@@ -293,7 +309,8 @@ if (usuarioTienePermiso('ventas')) {
         </div>
       </div>
       <div class="modal-footer">
-        <a id="detImprimir" href="#" target="_blank" class="btn btn-info"><i class="fa fa-print"></i> Imprimir comprobante</a>
+        <button type="button" id="detTicket" class="btn btn-default"><i class="fa fa-print"></i> Ticket</button>
+        <a id="detImprimir" href="#" target="_blank" class="btn btn-info"><i class="fa fa-file-pdf-o"></i> PDF A4</a>
         <button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>
       </div>
     </div>
@@ -305,4 +322,5 @@ if (usuarioTienePermiso('ventas')) {
 }
 require 'footer.php';
 ?>
+<script src="../public/js/app-pos.js?v=<?php echo e(APP_VERSION); ?>"></script>
 <script src="scripts/venta.js?v=<?php echo e(APP_VERSION); ?>"></script>

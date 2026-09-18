@@ -84,9 +84,23 @@ if ($esAdmin || $perfilPropio) {
                 <input type="hidden" name="imagenactual" id="imagenactual">
                 <img src="" alt="" class="img-preview" id="imagenmuestra">
               </div>
-              <div class="form-group col-lg-6 col-md-6 col-xs-12">
+              <?php if ($esAdmin && !$perfilPropio) { ?>
+              <div class="form-group col-xs-12">
+                <label>Rol <small class="text-soft">(marca los permisos típicos del puesto; después puedes ajustarlos uno por uno)</small></label>
+                <div class="rol-grid" id="rolPlantillas" role="group" aria-label="Plantillas de rol">
+                  <?php foreach (plantillasRol() as $claveRol => $rol) { ?>
+                  <button type="button" class="rol-card" data-rol="<?php echo e($claveRol); ?>" aria-pressed="false">
+                    <i class="fa <?php echo e($rol['icono']); ?>"></i>
+                    <strong><?php echo e($rol['nombre']); ?></strong>
+                    <small><?php echo e($rol['descripcion']); ?></small>
+                  </button>
+                  <?php } ?>
+                </div>
+              </div>
+              <?php } ?>
+              <div class="form-group col-xs-12">
                 <label>Permisos por módulo <?php echo $esAdmin ? '' : '<small class="text-soft">(solo un administrador puede cambiarlos)</small>'; ?></label>
-                <ul id="permisos" class="permisos-list"></ul>
+                <ul id="permisos" class="permisos-list permisos-detalle"></ul>
               </div>
               <div class="form-group col-xs-12 form-actions-row">
                 <button class="btn btn-primary" type="submit" id="btnGuardar"><i class="fa fa-save"></i> Guardar</button>
@@ -129,5 +143,14 @@ require 'footer.php';
 window.appPerfilMode = <?php echo $perfilPropio ? 'true' : 'false'; ?>;
 window.appPerfilId = <?php echo $perfilPropio ? $idSesion : 'null'; ?>;
 window.appEsAdmin = <?php echo $esAdmin ? 'true' : 'false'; ?>;
+// Plantillas de rol: cargo sugerido e ids de permiso que marcan
+window.appPlantillasRol = <?php
+  $mapaIds = mapaPermisos();
+  $plantillasJs = array();
+  foreach (plantillasRol() as $claveRol => $rol) {
+    $plantillasJs[$claveRol] = array('cargo' => $rol['cargo'], 'permisos' => array_map(function ($p) use ($mapaIds) { return $mapaIds[$p]; }, $rol['permisos']));
+  }
+  echo json_encode($plantillasJs, JSON_UNESCAPED_UNICODE);
+?>;
 </script>
 <script src="scripts/usuario.js?v=<?php echo e(APP_VERSION); ?>"></script>

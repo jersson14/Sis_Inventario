@@ -102,8 +102,60 @@ Un solo sistema que se adapta al giro del cliente. El código pregunta por la **
 - ✅ **Ferretería** (migración `20260916_ferreteria.sql`): cantidades con decimales según la unidad de medida (`permite_fraccion`); presentaciones con equivalencia, precio y código de barras propios (venta, compra, cotización, ticket/PDF, kardex y reportes en unidades base); precio por mayor por escalas aplicado automáticamente en venta y cotización; ajustes e importación con decimales
 - ✅ **Ropa** (migración `20260918_ropa.sql`): tallas y colores con stock, código de barras y precio propios; generador de combinaciones en la ficha; temporada y colección; venta/compra/cotización/ajustes por talla/color con tope de stock por combinación; anular y eliminar devuelven a la combinación; kardex, comprobantes y listados muestran la talla/color; etiquetas por combinación; importación con columnas Talla y Color; alertas de combinaciones agotadas
 
+## Fase 6 — Punto de venta, compras a pantalla completa y ticket térmico ✅ (v2.1.0)
+
+- ✅ **Modo caja**: el POS y la compra ocultan menú, cabecera y pie (`appModoCaja()` en `public/js/app-pos.js`) y ofrecen pantalla completa del navegador
+- ✅ **POS de ventas**: cuadrícula de productos con fotos, categorías y filtro por texto; `Enter`/lector de barras agrega (códigos de caja y talla/color vía servidor); carrito con `−`/`+`; ventana de cobro con medios en botones, efectivo recibido, billetes rápidos y **vuelto**; N° de operación para Yape/Plin/tarjeta/depósito; tras cobrar queda lista la siguiente venta con acceso a reimprimir
+- ✅ **Ticket térmico** (`reportes/exTicket.php`): 80 o 58 mm, negro puro, recibido/vuelto, N° de operación, copias, logo y textos configurables en *Empresa → Ticket e impresora*, ticket de prueba; se imprime solo en un iframe oculto al cobrar (preferencia por PC)
+- ✅ **Compras**: pantalla completa con cabecera compacta, buscador en línea (código exacto entra directo), detalle grande con `Enter` entre cantidad → precios → buscador, medios de pago en botones con **depósito en cuenta** (cuenta del proveedor y N° de operación) y **autoguardado** del borrador en la PC con aviso para continuar
+- ✅ Medio de pago `DEPOSITO` en ventas, compras, caja y cuentas; migración `20260919_pos_ticket.sql`; smoke a 173 comprobaciones
+- ✅ Cierre de caja: el efectivo esperado cuenta solo EFECTIVO (resuelto en la fase 7)
+- 💡 Apertura del cajón e impresión silenciosa sin depender del controlador ni de `--kiosk-printing` (agente local tipo QZ Tray con ESC/POS)
+- 💡 Pago mixto (parte efectivo, parte Yape) · 💡 Autoguardado también en el POS
+
+## Fase 7 — Roles, vendedor y marca en todo el sistema ✅ (v2.2.0)
+
+- ✅ **Roles** como plantillas de permisos en el formulario de usuario (Vendedor/cajero, Encargado, Almacenero, Compras, Administrador) y descripción de cada permiso
+- ✅ **Permisos al instante**: se releen en cada petición; quitar un permiso o desactivar al usuario lo saca sin esperar a que cierre sesión
+- ✅ **Vendedor**: entra directo al POS; solo ve sus ventas (listado, resumen, detalle, ticket y PDF); no anula (permiso nuevo 16 "Anular documentos", migración `20260920_roles_permisos.sql`); vende solo con caja abierta y la abre desde el POS; Cuentas por cobrar/pagar pasa a exigir su propio permiso
+- ✅ **Cierre de caja** corregido: el efectivo esperado cuenta solo EFECTIVO; Yape/tarjeta/transferencia/depósito se informan aparte
+- ✅ **Marca** centralizada (`config/marca.php`): logo, nombre y colores de la empresa en landing, login, panel, ticket y PDF; se quitó el logo de otra tienda que los PDF usaban cuando la empresa no tenía logo; logos WEBP convertidos para los PDF
+- ✅ Página de inicio según permisos (`paginaInicioUsuario()`); smoke a 199 comprobaciones (24 del rol vendedor)
+- ⬜ Revisar los permisos de los usuarios actuales: `luis2025` (cargo "venta") tiene todos los permisos, incluido administrador
+- ✅ Precio y descuento bloqueados para el vendedor, arqueo ciego y anulación con clave de encargado (fase 8)
+
+## Fase 8 — Controles del vendedor ✅ (v2.3.0)
+
+- ✅ Permiso 17 **"Cambiar precios y descuentos"**: sin él, venta y cotización solo aceptan el precio de lista (presentación, talla/color y precio por mayor calculados en el servidor igual que en el POS, ±1 céntimo de redondeo) y descuento 0; se respetan las líneas de una cotización vigente. En el POS y en cotizaciones el precio queda de solo lectura
+- ✅ **Anular con autorización**: sin "Anular documentos" se pide motivo + usuario y clave de un encargado; los fallos cuentan como intentos de login (bloqueo) y la auditoría guarda quién pidió, quién autorizó y el motivo. Botón en el listado y en la última venta del POS
+- ✅ **Arqueo ciego** (opción de empresa, activada): quien no es administrador no recibe del servidor totales, efectivo esperado ni diferencia (estado, cierre, historial, detalle, POS)
+- ✅ Migración `20260921_precios_arqueo.sql`; smoke a 207 comprobaciones
+
+## Próximas fases (propuesta)
+
+Detalle en [`docs/PLAN_FACTURACION_SUCURSALES.md`](docs/PLAN_FACTURACION_SUCURSALES.md):
+
+- ⬜ v2.4 Pago mixto (varios medios en una venta, adelanto en crédito)
+- ⬜ v2.5 Devoluciones parciales y notas de crédito
+- ⬜ v3.0 Facturación electrónica SUNAT con conectores por proveedor (cada empresa usa sus credenciales)
+- ⬜ v3.1 Multisucursal (stock, caja, series y vendedores por local; transferencias)
+
+### Antes de producción (pendiente del dueño)
+
+- ⬜ `config/local.php` con `APP_ENV => 'production'` y usuario de MySQL propio con contraseña (hoy: `root` sin contraseña, modo development)
+- ⬜ HTTPS, borrar `instalar.php`, backup automático diario (el último respaldo es del 16-sep)
+- ⬜ Revisar permisos reales: `luis2025` (cargo "venta") es administrador; `antonio2021` (vendedor, inactivo) recibió "Anular" y "Precios" por compatibilidad
+- ⬜ Probar con la ticketera y el cajón reales (papel, `--kiosk-printing`, apertura del cajón en el controlador)
+- ⬜ Un día de marcha blanca con un vendedor real (abrir caja, vender, anular con autorización, cerrar) antes de retirar el sistema anterior
+- ⬜ Commit, merge a `main` y respaldo antes de subir
+
 | Fecha | Avance |
 |-------|--------|
+| 2026-09-17 (v2.3.2) | Librerías de seguridad: jQuery 3.3.1 → 3.7.1 y Bootstrap 3.3.7 → 3.4.1 (fallas XSS conocidas corregidas); se cargan con `?v=` para que las cajas no usen la copia vieja en caché. Verificado en las 24 vistas, POS, compras y componentes (menús, modales, selectores, tooltips) sin errores |
+| 2026-09-17 (v2.3.1) | Preparación para facturación electrónica: la boleta lleva el IGV de la empresa (el servidor lo fija por tipo de comprobante), IGV antiguo 0.18 → 18 (migración `20260922_igv_correlativo.sql`), número de comprobante siempre automático y boletas/facturas no eliminables; smoke a 212 comprobaciones |
+| 2026-09-17 (cierre) | v2.3.0: precio de lista obligatorio sin permiso, anulación con clave de encargado y arqueo ciego; smoke a 207 comprobaciones y verificación en navegador |
+| 2026-09-17 (noche) | v2.2.0: roles con plantillas, rol vendedor (solo sus ventas, sin anular, caja obligatoria), permisos al instante, arqueo solo de efectivo y logo de la empresa en landing, login, panel, ticket y PDF; verificado en navegador y smoke a 199 comprobaciones |
+| 2026-09-17 | v2.1.0: POS con cuadrícula y cobro con vuelto, ticket térmico 80/58 mm configurable con impresión automática, compras a pantalla completa con buscador, depósito en cuenta y autoguardado; verificado en navegador (escritorio y 390 px) y smoke a 173 comprobaciones |
 | 2026-09-11 | Diagnóstico completo; infraestructura de seguridad; migración v2 aplicada; refactor de backend (28 archivos) a consultas preparadas |
 | 2026-09-19 | Botón Editar de artículos no abría ("No se pudo cargar el artículo", error presente desde v2.0): `appParseJson` volvía a parsear respuestas que jQuery ya entregaba como objeto; corregido en la función compartida. Auditoría en navegador de todos los botones (filas, cabeceras, ficha de artículo, etiquetas, caja) y listados de ventas/compras ordenados por fecha real |
 | 2026-09-18 (noche) | Capturas del README desde una demo desechable; raíz del repo limpia; corrección del kardex (ordenaba la fecha como texto y el saldo quedaba desordenado) |

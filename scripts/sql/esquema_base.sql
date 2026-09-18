@@ -160,6 +160,12 @@ CREATE TABLE `configuracion_empresa` (
   `dias_alerta_vencimiento` int(11) NOT NULL DEFAULT 30,
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `mensaje_ticket` varchar(160) NOT NULL DEFAULT 'Gracias por su compra',
+  `ticket_ancho` int(11) NOT NULL DEFAULT 80,
+  `ticket_auto_imprimir` tinyint(1) NOT NULL DEFAULT 1,
+  `ticket_logo` tinyint(1) NOT NULL DEFAULT 1,
+  `ticket_cabecera` varchar(200) DEFAULT NULL,
+  `ticket_copias` int(11) NOT NULL DEFAULT 1,
+  `arqueo_ciego` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`idconfig`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
@@ -269,6 +275,8 @@ CREATE TABLE `ingreso` (
   `impuesto` decimal(4,2) NOT NULL,
   `tipo_pago` varchar(20) NOT NULL DEFAULT 'CONTADO',
   `medio_pago` varchar(20) NOT NULL DEFAULT 'EFECTIVO',
+  `cuenta_pago` varchar(80) DEFAULT NULL,
+  `num_operacion` varchar(40) DEFAULT NULL,
   `total_compra` decimal(11,2) NOT NULL,
   `estado` varchar(20) NOT NULL,
   `observacion` varchar(200) DEFAULT NULL,
@@ -421,8 +429,10 @@ CREATE TABLE `venta` (
   `impuesto` decimal(4,2) DEFAULT NULL,
   `tipo_pago` varchar(20) NOT NULL DEFAULT 'CONTADO',
   `medio_pago` varchar(20) NOT NULL DEFAULT 'EFECTIVO',
+  `num_operacion` varchar(40) DEFAULT NULL,
   `idcaja` int(11) DEFAULT NULL,
   `total_venta` decimal(11,2) DEFAULT NULL,
+  `monto_recibido` decimal(11,2) DEFAULT NULL,
   `estado` varchar(20) DEFAULT NULL,
   `observacion` varchar(200) DEFAULT NULL,
   PRIMARY KEY (`idventa`),
@@ -555,7 +565,7 @@ CREATE TABLE IF NOT EXISTS `articulo_variante` (
 -- ------------------------------------------------------------------
 -- Datos semilla
 -- ------------------------------------------------------------------
-INSERT IGNORE INTO `permiso` (`idpermiso`,`nombre`) VALUES (1,'Escritorio'),(2,'Almacen'),(3,'Compras'),(4,'Ventas'),(5,'Acceso'),(6,'Consulta Compras'),(7,'Consulta Ventas'),(8,'Gestion Pro'),(9,'Empresa'),(10,'Centro Inteligente'),(11,'Cuentas CxC CxP'),(12,'Backup'),(13,'Centro Reportes'),(14,'Caja'),(15,'Ajustes Inventario');
+INSERT IGNORE INTO `permiso` (`idpermiso`,`nombre`) VALUES (1,'Escritorio'),(2,'Almacen'),(3,'Compras'),(4,'Ventas'),(5,'Acceso'),(6,'Consulta Compras'),(7,'Consulta Ventas'),(8,'Gestion Pro'),(9,'Empresa'),(10,'Centro Inteligente'),(11,'Cuentas CxC CxP'),(12,'Backup'),(13,'Centro Reportes'),(14,'Caja'),(15,'Ajustes Inventario'),(16,'Anular documentos'),(17,'Cambiar precios y descuentos');
 
 INSERT IGNORE INTO `unidad_medida` (`nombre`,`abreviatura`,`descripcion`,`permite_fraccion`,`condicion`) VALUES ('Unidad','und','Unidad individual',0,1),('Kilogramo','kg','Peso en kilogramo',1,1),('Gramo','g','Peso en gramo',1,1),('Litro','lt','Volumen en litro',1,1),('Mililitro','ml','Volumen en mililitro',1,1),('Metro','m','Longitud en metro',1,1),('Centimetro','cm','Longitud en centimetro',1,1),('Caja','caja','Presentacion en caja',0,1),('Paquete','paq','Presentacion en paquete',0,1),('Galon','gal','Volumen en galon',1,1);
 
@@ -563,6 +573,6 @@ INSERT IGNORE INTO `categoria` (`idcategoria`,`nombre`,`descripcion`,`condicion`
 
 INSERT IGNORE INTO `configuracion_empresa` (`idconfig`,`nombre_comercial`,`razon_social`,`ruc`,`direccion`,`telefono`,`celular`,`correo`,`web`,`logo`,`color_primario`,`color_secundario`,`serie_boleta`,`serie_factura`,`serie_ticket`,`impuesto_default`,`moneda`,`mensaje_ticket`) VALUES (1,'Mi Tienda','','','','','','','','','#0f766e','#f59e0b','B001','F001','T001',18.00,'PEN','Gracias por su compra');
 
-INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql'),('20260913_cotizaciones.sql'),('20260915_perfil_negocio.sql'),('20260916_ferreteria.sql'),('20260917_abarrotes.sql'),('20260918_ropa.sql');
+INSERT IGNORE INTO `migracion` (`archivo`) VALUES ('20260321_unidades_medida.sql'),('20260321_fase_comercial.sql'),('20260911_seguridad_inventario.sql'),('20260913_cotizaciones.sql'),('20260915_perfil_negocio.sql'),('20260916_ferreteria.sql'),('20260917_abarrotes.sql'),('20260918_ropa.sql'),('20260919_pos_ticket.sql'),('20260920_roles_permisos.sql'),('20260921_precios_arqueo.sql'),('20260922_igv_correlativo.sql');
 
 SET FOREIGN_KEY_CHECKS=1;

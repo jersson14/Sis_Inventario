@@ -13,6 +13,13 @@ function cargarEmpresa(){
 		if (!d || !d.idconfig) { return; }
 		var campos = ["nombre_comercial", "razon_social", "ruc", "direccion", "telefono", "celular", "correo", "web", "serie_boleta", "serie_factura", "serie_ticket", "serie_cotizacion", "impuesto_default", "moneda", "dias_alerta_vencimiento", "mensaje_ticket"];
 		campos.forEach(function(c){ if (typeof d[c] !== "undefined" && d[c] !== null) { $("#" + c).val($("<textarea/>").html(String(d[c])).text()); } });
+		// Ticket: los que faltan (BD sin migrar) quedan con sus valores por defecto
+		$("#ticket_ancho").val(String(d.ticket_ancho || 80));
+		$("#ticket_copias").val(String(d.ticket_copias || 1));
+		$("#ticket_cabecera").val($("<textarea/>").html(String(d.ticket_cabecera || "")).text());
+		$("#ticket_auto_imprimir").prop("checked", typeof d.ticket_auto_imprimir === "undefined" || String(d.ticket_auto_imprimir) === "1");
+		$("#ticket_logo").prop("checked", typeof d.ticket_logo === "undefined" || String(d.ticket_logo) === "1");
+		$("#arqueo_ciego").prop("checked", typeof d.arqueo_ciego === "undefined" || String(d.arqueo_ciego) === "1");
 		$("#color_primario").val(d.color_primario || "#0f766e");
 		$("#color_secundario").val(d.color_secundario || "#f59e0b");
 		$("#logoactual").val(d.logo || "");

@@ -18,20 +18,8 @@ require_once "../modelos/Articulo.php";
 $empresaModel = new Empresa();
 $empresa = $empresaModel->datosReporte();
 
-$logoPath = "";
-if (!empty($empresa["logo"])) {
-  $logoEmpresa = realpath(__DIR__."/../files/empresa/".$empresa["logo"]);
-  if ($logoEmpresa && file_exists($logoEmpresa)) {
-    $logoPath = $logoEmpresa;
-  }
-}
-if ($logoPath === "") {
-  if (file_exists(__DIR__."/logo1.jpeg")) {
-    $logoPath = __DIR__."/logo1.jpeg";
-  } elseif (file_exists(__DIR__."/logo.png")) {
-    $logoPath = __DIR__."/logo.png";
-  }
-}
+// Logo de la empresa (JPG/PNG; un WEBP se convierte). Sin logo, el PDF sale sin imagen.
+$logoPath = marcaRutaLogoPdf();
 
 //instanciamos la clase para generar el documento pdf
 $pdf=new PDF_MC_Table();

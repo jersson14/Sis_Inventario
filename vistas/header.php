@@ -18,69 +18,17 @@ enviarCabecerasSeguridad();
 $tituloPagina = isset($tituloPagina) ? $tituloPagina : 'Escritorio';
 $iconoPagina  = isset($iconoPagina) ? $iconoPagina : 'fa-dashboard';
 
-$brandNombre = PRO_NOMBRE;
-$brandSub = "";
-$brandLogo = "../public/img/brand-store.svg";
-$brandPrimary = "#0f766e";
-$brandPrimaryDark = "#0b4f4a";
-$brandSecondary = "#f59e0b";
-
-if (!function_exists('darkenHexColor')) {
-  function darkenHexColor($hex, $factor = 0.22) {
-    $hex = ltrim((string)$hex, '#');
-    if (strlen($hex) !== 6 || !ctype_xdigit($hex)) {
-      return '#0b4f4a';
-    }
-    $r = hexdec(substr($hex, 0, 2));
-    $g = hexdec(substr($hex, 2, 2));
-    $b = hexdec(substr($hex, 4, 2));
-    $r = max(0, (int)round($r * (1 - $factor)));
-    $g = max(0, (int)round($g * (1 - $factor)));
-    $b = max(0, (int)round($b * (1 - $factor)));
-    return sprintf("#%02x%02x%02x", $r, $g, $b);
-  }
-}
-if (!function_exists('decodeBrandText')) {
-  function decodeBrandText($text) {
-    $txt = (string)$text;
-    for ($i = 0; $i < 3; $i++) {
-      $dec = html_entity_decode($txt, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-      if ($dec === $txt) break;
-      $txt = $dec;
-    }
-    return trim($txt);
-  }
-}
-if (!function_exists('colorHexValido')) {
-  function colorHexValido($hex, $fallback) {
-    $hex = trim((string)$hex);
-    return preg_match('/^#[0-9a-fA-F]{6}$/', $hex) ? $hex : $fallback;
-  }
-}
-
-$cfg = dbRow("SELECT nombre_comercial, razon_social, logo, color_primario, color_secundario FROM configuracion_empresa ORDER BY idconfig ASC LIMIT 1");
-if ($cfg) {
-  if (!empty($cfg['nombre_comercial'])) {
-    $brandNombre = decodeBrandText($cfg['nombre_comercial']);
-  }
-  if (!empty($cfg['razon_social'])) {
-    $brandSub = decodeBrandText($cfg['razon_social']);
-    if (strcasecmp($brandSub, $brandNombre) === 0) {
-      $brandSub = "";
-    }
-  }
-  if (!empty($cfg['logo'])) {
-    $logoSeguro = nombreArchivoSeguro($cfg['logo']);
-    if ($logoSeguro !== '' && file_exists(__DIR__ . "/../files/empresa/" . $logoSeguro)) {
-      $brandLogo = "../files/empresa/" . $logoSeguro;
-    } elseif ($logoSeguro !== '' && file_exists(__DIR__ . "/" . $logoSeguro)) {
-      $brandLogo = $logoSeguro;
-    }
-  }
-  $brandPrimary = colorHexValido($cfg['color_primario'], $brandPrimary);
-  $brandPrimaryDark = darkenHexColor($brandPrimary, 0.25);
-  $brandSecondary = colorHexValido($cfg['color_secundario'], $brandSecondary);
-}
+// Marca de la empresa (logo, nombre, colores): config/marca.php
+$marca = marcaEmpresa();
+$brandNombre = $marca['nombre'];
+$brandSub = $marca['sub'];
+$brandLogo = marcaUrlLogo('../');
+$brandPrimary = $marca['primario'];
+$brandPrimaryDark = $marca['primario_oscuro'];
+$brandPrimarySoft = $marca['primario_suave'];
+$brandSecondary = $marca['secundario'];
+$brandSecondaryDark = $marca['secundario_oscuro'];
+$paginaInicio = paginaInicioUsuario();
 
 $avatarUsuario = "../public/img/avatar.png";
 if (!empty($_SESSION['imagen'])) {
@@ -90,8 +38,6 @@ if (!empty($_SESSION['imagen'])) {
   }
 }
 
-$rgb = sscanf(ltrim($brandPrimary, '#'), "%02x%02x%02x");
-$brandPrimarySoft = sprintf('rgba(%d,%d,%d,0.12)', $rgb[0], $rgb[1], $rgb[2]);
 
 $menu = array(
   array('tipo' => 'item', 'href' => 'escritorio.php', 'icono' => 'fa-dashboard', 'texto' => 'Escritorio', 'permisos' => array('escritorio')),
@@ -108,7 +54,7 @@ $menu = array(
   )),
   array('tipo' => 'grupo', 'icono' => 'fa-money', 'texto' => 'Finanzas', 'permisos' => array('caja', 'cuentas', 'ventas', 'compras'), 'hijos' => array(
     array('href' => 'caja.php', 'texto' => 'Caja diaria', 'permisos' => array('caja', 'ventas')),
-    array('href' => 'cuentas.php', 'texto' => 'Cuentas por cobrar / pagar', 'permisos' => array('cuentas', 'ventas', 'compras')),
+    array('href' => 'cuentas.php', 'texto' => 'Cuentas por cobrar / pagar', 'permisos' => array('cuentas')),
   )),
 
   array('tipo' => 'header', 'texto' => 'Inventario', 'permisos' => array('almacen', 'inventario', 'procenter')),
@@ -159,7 +105,7 @@ if (!function_exists('menuTienePermiso')) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" href="<?php echo e($brandLogo); ?>">
-  <link rel="stylesheet" href="../public/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../public/css/bootstrap.min.css?v=<?php echo e(APP_VERSION); ?>">
   <link rel="stylesheet" href="../public/css/font-awesome.min.css">
   <link rel="stylesheet" href="../public/css/AdminLTE.min.css">
   <link rel="stylesheet" href="../public/css/_all-skins.min.css">
@@ -174,7 +120,7 @@ if (!function_exists('menuTienePermiso')) {
       --brand-primary-dark: <?php echo e($brandPrimaryDark); ?>;
       --brand-primary-soft: <?php echo e($brandPrimarySoft); ?>;
       --brand-accent: <?php echo e($brandSecondary); ?>;
-      --brand-accent-dark: <?php echo e(darkenHexColor($brandSecondary, 0.15)); ?>;
+      --brand-accent-dark: <?php echo e($brandSecondaryDark); ?>;
     }
   </style>
 </head>
@@ -182,7 +128,7 @@ if (!function_exists('menuTienePermiso')) {
 <div class="wrapper">
 
   <header class="main-header">
-    <a href="escritorio.php" class="logo app-brand-logo" title="<?php echo e($brandNombre); ?>">
+    <a href="<?php echo e($paginaInicio); ?>" class="logo app-brand-logo" title="<?php echo e($brandNombre); ?>">
       <span class="logo-mini">
         <img src="<?php echo e($brandLogo); ?>" alt="Logo" class="brand-logo-mini-img" onerror="this.src='../public/img/brand-store.svg'">
       </span>

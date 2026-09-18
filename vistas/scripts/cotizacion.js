@@ -158,6 +158,10 @@ function agregarFicha(f, idpresentacion, opciones){
 	cont++; detalles++;
 	$("#detalles tbody").append(fila);
 	if (typeof opciones.precio === "number") { fila.find("[name='precio[]']").val(opciones.precio.toFixed(2)).attr("data-manual", "1"); }
+	// Sin "Cambiar precios y descuentos" se cotiza al precio de lista (el servidor lo valida)
+	if (!(window.appUser && window.appUser.permisos && window.appUser.permisos.precios)) {
+		fila.find("[name='precio[]'], [name='descuento[]']").prop("readonly", true).attr("title", "Precio de lista: tu usuario no puede cambiarlo");
+	}
 	fila.find("[name='cantidad[]']").attr("step", filaPermiteFraccion(fila) ? "0.001" : "1");
 	etiquetaUnidadFila(fila);
 	modificarSubtotales();

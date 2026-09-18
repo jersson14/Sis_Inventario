@@ -17,8 +17,8 @@ if (function_exists('mapaPermisos')) {
   </footer>
 </div><!-- /.wrapper -->
 
-<script src="../public/js/jquery.min.js"></script>
-<script src="../public/js/bootstrap.min.js"></script>
+<script src="../public/js/jquery.min.js?v=<?php echo e(APP_VERSION); ?>"></script>
+<script src="../public/js/bootstrap.min.js?v=<?php echo e(APP_VERSION); ?>"></script>
 <script src="../public/js/adminlte.min.js"></script>
 <script src="../public/datatables/jquery.dataTables.min.js"></script>
 <script src="../public/datatables/dataTables.buttons.min.js"></script>

@@ -4,9 +4,9 @@ requiereLogin(false);
 $tituloPagina = "Cuentas por cobrar y pagar";
 $iconoPagina = "fa-file-text";
 require 'header.php';
-if (usuarioTienePermiso('cuentas') || usuarioTienePermiso('ventas') || usuarioTienePermiso('compras')) {
-  $puedeCobrar = usuarioTienePermiso('cuentas') || usuarioTienePermiso('ventas');
-  $puedePagar = usuarioTienePermiso('cuentas') || usuarioTienePermiso('compras');
+if (usuarioTienePermiso('cuentas')) {
+  $puedeCobrar = true;   // con el permiso Cuentas se cobra y se paga
+  $puedePagar = true;
 ?>
 <div class="content-wrapper">
   <section class="content">
@@ -109,7 +109,7 @@ if (usuarioTienePermiso('cuentas') || usuarioTienePermiso('ventas') || usuarioTi
       <div class="modal-body">
         <div class="alert alert-info" style="font-size:13px">Saldo pendiente: <strong id="ab_saldo">—</strong></div>
         <div class="form-group"><label>Monto <span class="req">*</span></label><input type="number" step="0.01" min="0.01" class="form-control input-lg" id="ab_monto" required></div>
-        <div class="form-group"><label>Medio de pago</label><select class="form-control" id="ab_medio"><option value="EFECTIVO">Efectivo</option><option value="TARJETA">Tarjeta</option><option value="TRANSFERENCIA">Transferencia</option><option value="YAPE">Yape</option><option value="PLIN">Plin</option><option value="OTRO">Otro</option></select></div>
+        <div class="form-group"><label>Medio de pago</label><select class="form-control" id="ab_medio"><option value="EFECTIVO">Efectivo</option><option value="DEPOSITO">Depósito en cuenta</option><option value="TARJETA">Tarjeta</option><option value="TRANSFERENCIA">Transferencia</option><option value="YAPE">Yape</option><option value="PLIN">Plin</option><option value="OTRO">Otro</option></select></div>
         <div class="form-group"><label>Observación</label><input type="text" class="form-control" id="ab_obs" maxlength="150"></div>
         <button type="button" class="btn btn-default btn-sm w-100" id="btnAbonoTotal"><i class="fa fa-check-square-o"></i> Pagar el saldo completo</button>
       </div>

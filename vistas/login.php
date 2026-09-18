@@ -4,7 +4,7 @@ iniciarSesionSegura();
 enviarCabecerasSeguridad();
 
 if (usuarioAutenticado()) {
-  header("Location: escritorio.php");
+  header("Location: " . paginaInicioUsuario());
   exit;
 }
 
@@ -12,26 +12,14 @@ $csrf = csrfToken();
 $expirada = isset($_GET['expirada']) && $_GET['expirada'] == '1';
 $salio = isset($_GET['salir']) && $_GET['salir'] == '1';
 
-$brandNombre = PRO_NOMBRE;
-$brandSub = '';
-$brandLogo = '../public/img/brand-store.svg';
-$brandPrimary = '#0f766e';
-$brandSecondary = '#f59e0b';
-$cfg = dbRow("SELECT nombre_comercial, razon_social, logo, color_primario, color_secundario FROM configuracion_empresa ORDER BY idconfig ASC LIMIT 1");
-if ($cfg) {
-  $dec = function ($t) { $t = (string)$t; for ($i = 0; $i < 3; $i++) { $d = html_entity_decode($t, ENT_QUOTES | ENT_HTML5, 'UTF-8'); if ($d === $t) break; $t = $d; } return trim($t); };
-  if (!empty($cfg['nombre_comercial'])) $brandNombre = $dec($cfg['nombre_comercial']);
-  if (!empty($cfg['razon_social']) && strcasecmp($cfg['razon_social'], $cfg['nombre_comercial']) !== 0) $brandSub = $dec($cfg['razon_social']);
-  if (!empty($cfg['logo'])) {
-    $l = nombreArchivoSeguro($cfg['logo']);
-    if ($l !== '' && file_exists(__DIR__ . '/../files/empresa/' . $l)) $brandLogo = '../files/empresa/' . $l;
-    elseif ($l !== '' && file_exists(__DIR__ . '/' . $l)) $brandLogo = $l;
-  }
-  if (preg_match('/^#[0-9a-fA-F]{6}$/', (string)$cfg['color_primario'])) $brandPrimary = $cfg['color_primario'];
-  if (preg_match('/^#[0-9a-fA-F]{6}$/', (string)$cfg['color_secundario'])) $brandSecondary = $cfg['color_secundario'];
-}
-$rgb = sscanf(ltrim($brandPrimary, '#'), "%02x%02x%02x");
-$brandPrimaryDark = sprintf("#%02x%02x%02x", (int)($rgb[0] * 0.75), (int)($rgb[1] * 0.75), (int)($rgb[2] * 0.75));
+// Marca de la empresa (config/marca.php): la misma del panel y la landing
+$marca = marcaEmpresa();
+$brandNombre = $marca['nombre'];
+$brandSub = $marca['sub'];
+$brandLogo = marcaUrlLogo('../');
+$brandPrimary = $marca['primario'];
+$brandPrimaryDark = $marca['primario_oscuro'];
+$brandSecondary = $marca['secundario'];
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -117,7 +105,7 @@ $brandPrimaryDark = sprintf("#%02x%02x%02x", (int)($rgb[0] * 0.75), (int)($rgb[1
   </section>
 </div>
 
-<script src="../public/js/jquery.min.js"></script>
+<script src="../public/js/jquery.min.js?v=<?php echo e(APP_VERSION); ?>"></script>
 <script src="scripts/login.js?v=<?php echo e(APP_VERSION); ?>"></script>
 </body>
 </html>

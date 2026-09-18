@@ -18,7 +18,7 @@ class Venta{
 
 	private $tiposComprobante = array("Boleta", "Factura", "Ticket");
 	private $tiposPago = array("CONTADO", "CREDITO");
-	private $mediosPago = array("EFECTIVO", "TARJETA", "TRANSFERENCIA", "YAPE", "PLIN", "OTRO");
+	private $mediosPago = array("EFECTIVO", "DEPOSITO", "TARJETA", "TRANSFERENCIA", "YAPE", "PLIN", "OTRO");
 	private $estados = array("Aceptado", "Anulado");
 
 	public function __construct(){
@@ -122,6 +122,12 @@ class Venta{
 		);
 	}
 
+	/** Impuesto por defecto de la empresa (porcentaje, ej. 18). */
+	private function impuestoEmpresa(){
+		$imp = (float)dbValue("SELECT impuesto_default FROM configuracion_empresa ORDER BY idconfig ASC LIMIT 1", array(), 18);
+		return ($imp >= 0 && $imp <= 100) ? round($imp, 2) : 18.0;
+	}
+
 	/** Id de la caja ABIERTA del usuario (0 si no tiene). */
 	private function cajaAbiertaUsuario($idusuario){
 		return (int)dbValue(
@@ -151,7 +157,7 @@ class Venta{
 	 * Devuelve array {ok, message} o
 	 * {ok:true, idventa, tipo_comprobante, serie_comprobante, num_comprobante, total, alertas, caja_registrada, cuenta_cobrar}.
 	 */
-	public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_venta,$descuento,$idpresentacion = array(),$idvariante = array()){
+	public function insertar($idcliente,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_venta,$descuento,$idpresentacion = array(),$idvariante = array(),$pago = array()){
 		$idcliente = (int)$idcliente;
 		$idusuario = (int)$idusuario;
 
@@ -191,10 +197,7 @@ class Venta{
 		// Cabecera
 		$fecha_hora = $this->normalizarFechaHora($fecha_hora);
 		$fecha_venta = substr($fecha_hora, 0, 10);
-		$impuesto = decimalSeguro($impuesto, 2, 0);
-		if ($impuesto < 0) {
-			$impuesto = 0.0;
-		}
+		// $impuesto que llega del navegador se ignora: lo fija el tipo de comprobante (mas abajo)
 		$tipo_pago = $this->normalizarTipoPago($tipo_pago);
 		$medio_pago = $this->normalizarMedioPago($medio_pago);
 		$fecha_vencimiento = fechaSegura($fecha_vencimiento, '');
@@ -275,9 +278,37 @@ class Venta{
 		$total = round($total, 2);
 		ksort($cantidadesSolicitadas);
 
+		// Cobro al contado: en efectivo se guarda lo que entrego el cliente (vuelto
+		// del ticket); con Yape, tarjeta o deposito, el numero de operacion.
+		$numOperacion = null;
+		$montoRecibido = null;
+		if ($tipo_pago === "CONTADO") {
+			if ($medio_pago === "EFECTIVO") {
+				$recibido = isset($pago["monto_recibido"]) ? trim((string)$pago["monto_recibido"]) : '';
+				if ($recibido !== '') {
+					$montoRecibido = decimalSeguro($recibido, 2, 0);
+					if ($montoRecibido > 0 && $montoRecibido + 0.001 < $total) {
+						return $this->error("El efectivo recibido (" . number_format($montoRecibido, 2) . ") es menor que el total de la venta (" . number_format($total, 2) . ")");
+					}
+					if ($montoRecibido <= 0) {
+						$montoRecibido = null;
+					}
+				}
+			} else {
+				$numOperacion = $this->textoOpcional(isset($pago["num_operacion"]) ? $pago["num_operacion"] : '', 40);
+			}
+		}
+
 		$tipo_comprobante = $this->normalizarTipoComprobante($tipo_comprobante);
 		$serie_comprobante = $this->normalizarSerieComprobante($serie_comprobante, $tipo_comprobante);
-		$num_comprobante = substr(preg_replace('/[^0-9]/', '', (string)$num_comprobante), 0, 10);
+		// El numero siempre es el siguiente correlativo de la serie (se asigna con
+		// bloqueo dentro de la transaccion): nunca uno escrito a mano, para que la
+		// numeracion no tenga huecos ni repetidos (requisito de SUNAT).
+		$num_comprobante = '';
+		// IGV: boleta y factura llevan el impuesto de la empresa (los precios ya lo
+		// incluyen; solo cambia el desglose). La nota de venta interna (Ticket) no
+		// es comprobante tributario y no desglosa IGV.
+		$impuesto = ($tipo_comprobante === "Ticket") ? 0.0 : $this->impuestoEmpresa();
 
 		$ctx = array(
 			"idcliente"=>$idcliente,
@@ -291,6 +322,8 @@ class Venta{
 			"impuesto"=>(float)$impuesto,
 			"tipo_pago"=>$tipo_pago,
 			"medio_pago"=>$medio_pago,
+			"num_operacion"=>$numOperacion,
+			"monto_recibido"=>$montoRecibido,
 			"observacion"=>$observacion,
 			"total"=>(float)$total
 		);
@@ -302,20 +335,8 @@ class Venta{
 			$num = $ctx["num_comprobante"];
 
 			// Correlativo automatico (con bloqueo) o verificacion de unicidad
-			if ($num === '') {
-				$correlativo = $this->obtenerCorrelativoInterno($tipo, $serie, true);
-				$num = $correlativo["numero"];
-			} else {
-				$existe = (int)dbValue(
-					"SELECT idventa FROM venta WHERE tipo_comprobante=? AND serie_comprobante=? AND num_comprobante=? LIMIT 1 FOR UPDATE",
-					array($tipo, $serie, $num),
-					0
-				);
-				if ($existe > 0) {
-					$mensajeError = "Ya existe una venta con el mismo tipo, serie y numero de comprobante";
-					return false;
-				}
-			}
+			$correlativo = $this->obtenerCorrelativoInterno($tipo, $serie, true);
+			$num = $correlativo["numero"];
 
 			// Stock con bloqueo de filas
 			$ids = array_keys($cantidadesSolicitadas);
@@ -372,12 +393,12 @@ class Venta{
 			}
 
 			$idventa = dbInsert(
-				"INSERT INTO venta (idcliente,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,fecha_vencimiento,impuesto,tipo_pago,medio_pago,idcaja,total_venta,estado,observacion)
-				 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'Aceptado',?)",
+				"INSERT INTO venta (idcliente,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,fecha_vencimiento,impuesto,tipo_pago,medio_pago,num_operacion,idcaja,total_venta,monto_recibido,estado,observacion)
+				 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Aceptado',?)",
 				array(
 					$ctx["idcliente"], $ctx["idusuario"], $tipo, $serie, $num, $ctx["fecha_hora"],
-					$ctx["fecha_vencimiento"], $ctx["impuesto"], $ctx["tipo_pago"], $ctx["medio_pago"],
-					($idcaja > 0 ? $idcaja : null), $ctx["total"], $ctx["observacion"]
+					$ctx["fecha_vencimiento"], $ctx["impuesto"], $ctx["tipo_pago"], $ctx["medio_pago"], $ctx["num_operacion"],
+					($idcaja > 0 ? $idcaja : null), $ctx["total"], $ctx["monto_recibido"], $ctx["observacion"]
 				)
 			);
 			if ($idventa <= 0) {
@@ -632,6 +653,14 @@ class Venta{
 			}
 			$documento = $venta["tipo_comprobante"] . " " . $venta["serie_comprobante"] . "-" . $venta["num_comprobante"];
 
+			// Boletas y facturas no se borran: dejarian un hueco en la numeracion
+			// (o, si era la ultima, el siguiente comprobante repetiria su numero).
+			// Se anulan y quedan registradas. Solo la nota de venta interna se elimina.
+			if ($venta["tipo_comprobante"] !== "Ticket") {
+				$mensajeError = "Las boletas y facturas no se eliminan porque dejarían un hueco en la numeración. Anúlala: el stock vuelve igual y el comprobante queda registrado como anulado.";
+				return false;
+			}
+
 			// Cobros aplicados: el dinero ya entro, no se puede borrar el origen
 			$cuentas = dbAll("SELECT idcuenta_cobrar FROM cuenta_cobrar WHERE idventa=? FOR UPDATE", array($idventa));
 			foreach ($cuentas as $c) {
@@ -722,7 +751,7 @@ class Venta{
 		return dbRow(
 			"SELECT v.idventa,DATE_FORMAT(v.fecha_hora,'%Y-%m-%d %H:%i:%s') AS fecha,v.idcliente,p.nombre AS cliente,
 				u.idusuario,u.nombre AS usuario,v.tipo_comprobante,v.serie_comprobante,v.num_comprobante,v.total_venta,v.impuesto,v.estado,
-				v.tipo_pago,v.medio_pago,v.fecha_vencimiento,v.observacion,v.idcaja
+				v.tipo_pago,v.medio_pago,v.num_operacion,v.monto_recibido,v.fecha_vencimiento,v.observacion,v.idcaja
 			 FROM venta v
 			 INNER JOIN persona p ON v.idcliente=p.idpersona
 			 INNER JOIN usuario u ON v.idusuario=u.idusuario
@@ -755,9 +784,14 @@ class Venta{
 	 * Lista ventas con filtros opcionales. $estado y $tipo_pago se validan por whitelist.
 	 * @return mysqli_result|false
 	 */
-	public function listarPorFecha($fechaInicio, $fechaFin, $estado = '', $tipo_pago = ''){
+	public function listarPorFecha($fechaInicio, $fechaFin, $estado = '', $tipo_pago = '', $idusuario = 0){
 		$where = array();
 		$params = array();
+		// Un vendedor sin "Consulta ventas" solo ve sus propias ventas
+		if ((int)$idusuario > 0) {
+			$where[] = "v.idusuario=?";
+			$params[] = (int)$idusuario;
+		}
 		$fechaInicio = fechaSegura($fechaInicio, '');
 		$fechaFin = fechaSegura($fechaFin, '');
 		if ($fechaInicio !== '') {
@@ -798,7 +832,7 @@ class Venta{
 			"SELECT v.idventa, v.idcliente, p.nombre AS cliente, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono,
 				v.idusuario, u.nombre AS usuario, v.tipo_comprobante, v.serie_comprobante, v.num_comprobante,
 				DATE_FORMAT(v.fecha_hora,'%d/%m/%Y %H:%i') AS fecha, v.impuesto, v.total_venta,
-				v.tipo_pago, v.medio_pago, v.fecha_vencimiento, v.observacion, v.estado
+				v.tipo_pago, v.medio_pago, v.num_operacion, v.monto_recibido, v.fecha_vencimiento, v.observacion, v.estado
 			 FROM venta v
 			 INNER JOIN persona p ON v.idcliente=p.idpersona
 			 INNER JOIN usuario u ON v.idusuario=u.idusuario
@@ -855,15 +889,21 @@ class Venta{
 		);
 	}
 
-	/** Totales de las ventas aceptadas de hoy. */
-	public function totalesDia(){
+	/** true si la venta la registro ese usuario (control de "solo mis ventas"). */
+	public function esDelUsuario($idventa, $idusuario){
+		return (int)dbValue("SELECT idusuario FROM venta WHERE idventa=?", array((int)$idventa), 0) === (int)$idusuario && (int)$idusuario > 0;
+	}
+
+	/** Totales de las ventas aceptadas de hoy (de un vendedor si $idusuario > 0). */
+	public function totalesDia($idusuario = 0){
 		$row = dbRow(
 			"SELECT COUNT(*) AS comprobantes,
 				IFNULL(SUM(total_venta),0) AS monto,
 				IFNULL(SUM(CASE WHEN tipo_pago='CONTADO' THEN total_venta ELSE 0 END),0) AS contado,
 				IFNULL(SUM(CASE WHEN tipo_pago='CREDITO' THEN total_venta ELSE 0 END),0) AS credito
 			 FROM venta
-			 WHERE estado='Aceptado' AND DATE(fecha_hora)=CURDATE()"
+			 WHERE estado='Aceptado' AND DATE(fecha_hora)=CURDATE() AND (?=0 OR idusuario=?)",
+			array((int)$idusuario, (int)$idusuario)
 		);
 		return array(
 			"fecha"=>date("Y-m-d"),

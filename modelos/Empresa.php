@@ -11,7 +11,8 @@ class Empresa
     const CAMPOS = array(
         'nombre_comercial', 'razon_social', 'ruc', 'direccion', 'telefono', 'celular', 'correo', 'web', 'logo',
         'color_primario', 'color_secundario', 'serie_boleta', 'serie_factura', 'serie_ticket', 'serie_cotizacion',
-        'impuesto_default', 'moneda', 'tipo_negocio', 'dias_alerta_vencimiento', 'mensaje_ticket'
+        'impuesto_default', 'moneda', 'tipo_negocio', 'dias_alerta_vencimiento', 'mensaje_ticket',
+        'ticket_ancho', 'ticket_auto_imprimir', 'ticket_logo', 'ticket_cabecera', 'ticket_copias', 'arqueo_ciego'
     );
 
     public function __construct()
@@ -40,7 +41,12 @@ class Empresa
             'moneda' => 'PEN',
             'tipo_negocio' => 'GENERAL',
             'dias_alerta_vencimiento' => 30,
-            'mensaje_ticket' => 'Gracias por su compra'
+            'mensaje_ticket' => 'Gracias por su compra',
+            'ticket_ancho' => 80,
+            'ticket_auto_imprimir' => 1,
+            'ticket_logo' => 1,
+            'ticket_copias' => 1,
+            'arqueo_ciego' => 1
         );
 
         $valores = array();
@@ -100,7 +106,7 @@ class Empresa
                 "telefono" => '',
                 "email" => '',
                 "web" => '',
-                "logo" => 'logo1.jpeg',
+                "logo" => '',
                 "moneda" => 'PEN',
                 "mensaje_ticket" => 'Gracias por su compra'
             );
@@ -125,9 +131,28 @@ class Empresa
             "telefono" => $decode(!empty($cfg['telefono']) ? $cfg['telefono'] : $cfg['celular']),
             "email" => $decode($cfg['correo']),
             "web" => $decode($cfg['web']),
-            "logo" => !empty($cfg['logo']) ? $cfg['logo'] : 'logo1.jpeg',
+            "logo" => !empty($cfg['logo']) ? $cfg['logo'] : '',
             "moneda" => !empty($cfg['moneda']) ? strtoupper($cfg['moneda']) : 'PEN',
             "mensaje_ticket" => $decode(!empty($cfg['mensaje_ticket']) ? $cfg['mensaje_ticket'] : 'Gracias por su compra')
+        );
+    }
+
+    /**
+     * Ajustes del ticket termico (ancho del rollo, impresion automatica,
+     * logo, texto de cabecera y copias), ya validados.
+     */
+    public function configTicket()
+    {
+        $cfg = $this->obtener();
+        $ancho = $cfg && isset($cfg['ticket_ancho']) ? (int)$cfg['ticket_ancho'] : 80;
+        $copias = $cfg && isset($cfg['ticket_copias']) ? (int)$cfg['ticket_copias'] : 1;
+        $cabecera = $cfg && isset($cfg['ticket_cabecera']) ? trim(html_entity_decode((string)$cfg['ticket_cabecera'], ENT_QUOTES | ENT_HTML5, 'UTF-8')) : '';
+        return array(
+            'ancho' => $ancho === 58 ? 58 : 80,
+            'auto_imprimir' => !$cfg || !isset($cfg['ticket_auto_imprimir']) || (int)$cfg['ticket_auto_imprimir'] === 1,
+            'logo' => !$cfg || !isset($cfg['ticket_logo']) || (int)$cfg['ticket_logo'] === 1,
+            'cabecera' => $cabecera,
+            'copias' => max(1, min(3, $copias))
         );
     }
 }

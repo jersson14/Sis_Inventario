@@ -1,8 +1,6 @@
 /* Punto de venta */
 var tabla;
-var tablaArticulos;
 var empresaDefaults = { serie_boleta: "B001", serie_factura: "F001", serie_ticket: "T001", impuesto_default: 18, moneda: "PEN", simbolo_moneda: "S/" };
-var posScanTimer = null;
 var posCodeQueue = [];
 var posProcessing = false;
 var correlativoRequestId = 0;
@@ -11,6 +9,19 @@ var numeroComprobanteManual = false;
 var cont = 0;
 var detalles = 0;
 var enFormulario = false;
+var catalogo = [];
+var categoriaActiva = 0;
+var ticketCfg = { auto_imprimir: true, ancho: 80 };
+var ultimaFila = null;
+var cobrando = false;
+var MAX_TILES = 80;
+var cajaPos = null;          // estado de la caja del usuario (null = aun no se sabe)
+var cobrarTrasAbrirCaja = false;
+
+// El administrador puede vender sin caja; el resto necesita la suya abierta
+function exigeCaja(){ return !(window.appUser && window.appUser.permisos && window.appUser.permisos.acceso); }
+// Sin "Cambiar precios y descuentos" se vende al precio de lista (el servidor lo valida)
+function puedeCambiarPrecios(){ return !!(window.appUser && window.appUser.permisos && window.appUser.permisos.precios); }
 
 function money(v){ return window.appMoney ? window.appMoney(v, 2) : ((window.appCurrencySymbol || "S/") + " " + Number(v || 0).toFixed(2)); }
 
@@ -20,11 +31,15 @@ function fechaHoraActualInput(){
 }
 
 function init(){
+	// Se leen antes de mostrarform(false), que limpia la barra de direcciones
+	var abrirNuevo = window.appQueryParam && window.appQueryParam("nuevo") === "1";
+	var idCotizacion = window.appQueryParam ? parseInt(window.appQueryParam("cotizacion"), 10) : 0;
 	mostrarform(false);
 	listar();
 	cargarResumenDia();
 
-	$("#formulario").on("submit", function(e){ guardaryeditar(e); });
+	// El formulario nunca se envia solo: el cobro pasa por la ventana de cobro
+	$("#formulario").on("submit", function(e){ e.preventDefault(); abrirCobro(); });
 	$("#btnFiltrarVenta").on("click", recargarListadoVenta);
 	$("#btnLimpiarFiltroVenta").on("click", function(){
 		$("#filtro_venta_inicio, #filtro_venta_fin, #filtro_venta_estado, #filtro_venta_pago").val("");
@@ -34,59 +49,75 @@ function init(){
 	cargarClientes();
 	cargarDefaultsEmpresa();
 
-	$("#myModal").on("shown.bs.modal", function(){
-		if (!tablaArticulos) {
-			listarArticulos();
-		} else {
-			tablaArticulos.columns.adjust();
-			tablaArticulos.ajax.reload(null, false);
-		}
-		$("#ventasItemsSeleccionadosModal").text(document.getElementsByName("idarticulo[]").length);
-		setTimeout(function(){ $("#tblarticulos_filter input").focus(); }, 120);
-	});
-
 	$("#formClienteRapido").on("submit", guardarClienteRapido);
 	$("#modalClienteVenta").on("shown.bs.modal", function(){ $("#cli_nombre").focus(); });
 	$("#modalClienteVenta").on("hidden.bs.modal", limpiarFormClienteRapido);
 
 	$("#num_comprobante").on("input", function(){ numeroComprobanteManual = true; });
 	$("#serie_comprobante").on("change blur", cargarCorrelativoComprobante);
-	$("#tipo_comprobante").on("change", aplicarSerieImpuesto);
+	$(".pos-comprobante [data-comprobante]").on("click", function(){ fijarComprobante($(this).data("comprobante")); });
+	$("#impuesto").on("input", calcularTotales);
 
-	$("#btnBuscarCodigo").on("click", function(){ encolarCodigoPOS($("#codigo_rapido").val()); });
-	$("#codigo_rapido").on("keypress", function(e){
-		if (e.which === 13) { e.preventDefault(); clearTimeout(posScanTimer); encolarCodigoPOS($(this).val()); }
+	// Buscador: al escribir filtra la cuadricula; Enter agrega (lector de barras)
+	var filtrarDiferido = appDebounce(pintarGrid, 120);
+	$("#codigo_rapido").on("input", filtrarDiferido);
+	$("#codigo_rapido").on("keydown", function(e){
+		if (e.key === "Enter") { e.preventDefault(); agregarDesdeBuscador(); }
+		else if ((e.key === "+" || e.key === "-") && !$(this).val()) { e.preventDefault(); pasoUltimaFila(e.key === "+" ? 1 : -1); }
 	});
-	$("#codigo_rapido").on("input", function(){
-		clearTimeout(posScanTimer);
-		var codigoLeido = ($(this).val() || "").trim();
-		if (!codigoLeido || codigoLeido.length < 3) { return; }
-		posScanTimer = setTimeout(function(){ encolarCodigoPOS(codigoLeido); }, 260);
+	$("#btnBuscarCodigo").on("click", agregarDesdeBuscador);
+	$("#posGrid").on("click", ".pos-tile", function(){
+		if ($(this).hasClass("agotado")) { appNotify("warning", "Este artículo no tiene stock disponible."); return; }
+		agregarArticulo(parseInt($(this).data("id"), 10), 0);
+	});
+	$("#posCategorias").on("click", "[data-categoria]", function(){
+		categoriaActiva = parseInt($(this).data("categoria"), 10) || 0;
+		$("#posCategorias [data-categoria]").removeClass("active").attr("aria-selected", "false");
+		$(this).addClass("active").attr("aria-selected", "true");
+		pintarGrid();
 	});
 
-	$(".pago-toggle .btn").on("click", function(){
-		$(".pago-toggle .btn").removeClass("active");
-		$(this).addClass("active");
-		var tipo = $(this).data("pago");
-		$("#tipo_pago").val(tipo);
-		if (tipo === "CREDITO") {
-			$("#grupoVencimiento").slideDown(120);
-			if (!$("#fecha_vencimiento").val()) { $("#fecha_vencimiento").val(appFechaSumarDias(null, 30)); }
-		} else {
-			$("#grupoVencimiento").slideUp(120);
-		}
+	// Ventana de cobro
+	$("#modalCobro .pago-toggle .btn").on("click", function(){ fijarTipoPago($(this).data("pago")); });
+	$("#medio_pago").on("change", actualizarCamposMedio);
+	$("#monto_recibido").on("input", calcularVuelto);
+	$("#cobroRapidos").on("click", "[data-monto]", function(){ $("#monto_recibido").val($(this).data("monto")); calcularVuelto(); $("#btnConfirmarCobro").focus(); });
+	$("#modalCobro").on("shown.bs.modal", function(){
+		if ($("#tipo_pago").val() === "CONTADO" && $("#medio_pago").val() === "EFECTIVO") { $("#monto_recibido").focus().select(); }
+		else { $("#btnConfirmarCobro").focus(); }
+	});
+	$("#modalCobro").on("hidden.bs.modal", function(){ if (enFormulario) { $("#codigo_rapido").focus(); } });
+	$("#modalCobro").on("keydown", "input", function(e){ if (e.key === "Enter") { e.preventDefault(); confirmarCobro(); } });
+	$("#formAbrirCajaPos").on("submit", abrirCajaDesdePos);
+	$("#formAutorizarAnulacion").on("submit", autorizarAnulacion);
+	$("#posUltimaVenta").on("click", ".btn-anular-ultima", function(){ anular($(this).data("id"), $(this).data("doc")); });
+	$("#modalAutorizarAnulacion").on("shown.bs.modal", function(){ $("#aut_motivo").focus(); });
+	$("#modalAbrirCajaPos").on("shown.bs.modal", function(){ $("#pos_monto_apertura").focus(); });
+	$("#chkImprimirTicket").on("change", function(){ appPreferenciaLocal("imprimir_ticket", this.checked ? "1" : "0"); });
+	$("#detTicket").on("click", function(){ appImprimirTicket($(this).data("id")); });
+
+	// Enter dentro del carrito no envia nada: vuelve al buscador
+	$("#formulario").on("keydown", "input", function(e){
+		if (e.key === "Enter" && this.id !== "codigo_rapido") { e.preventDefault(); modificarSubtotales(); $("#codigo_rapido").focus(); }
 	});
 
 	$(document).on("keydown", function(e){
 		if (!enFormulario) { return; }
-		if (e.ctrlKey && (e.key === "b" || e.key === "B")) { e.preventDefault(); $("#codigo_rapido").focus().select(); }
-		if (e.key === "F2") { e.preventDefault(); $("#myModal").modal("show"); }
-		if (e.key === "F4") { e.preventDefault(); if ($("#btnGuardar").is(":visible") && !$("#btnGuardar").prop("disabled")) { $("#formulario").trigger("submit"); } }
+		var cobroAbierto = $("#modalCobro").hasClass("in");
+		if (e.key === "F2" || e.key === "F3" || (e.ctrlKey && (e.key === "b" || e.key === "B"))) { e.preventDefault(); if (!cobroAbierto) { $("#codigo_rapido").focus().select(); } }
+		if (e.key === "F4") { e.preventDefault(); if (cobroAbierto) { confirmarCobro(); } else { abrirCobro(); } }
 		if (e.key === "Escape" && !$(".modal.in").length) { cancelarform(); }
+		// + / - fuera de un campo: cambia la cantidad del ultimo producto agregado
+		if ((e.key === "+" || e.key === "-") && !$(e.target).is("input, select, textarea") && !$(".modal.in").length) { e.preventDefault(); pasoUltimaFila(e.key === "+" ? 1 : -1); }
 	});
 
-	if (window.appQueryParam && window.appQueryParam("nuevo") === "1") { mostrarform(true); }
-	if (window.appQueryParam && window.appQueryParam("cotizacion")) { cargarDesdeCotizacion(parseInt(window.appQueryParam("cotizacion"), 10)); }
+	// El ticket termina de imprimirse en su iframe: el foco vuelve al buscador
+	window.addEventListener("message", function(e){
+		if (e.origin === window.location.origin && e.data === "ticket-impreso" && enFormulario) { $("#codigo_rapido").focus(); }
+	});
+
+	if (idCotizacion > 0) { cargarDesdeCotizacion(idCotizacion); }
+	else if (abrirNuevo) { mostrarform(true); }
 }
 
 function cargarDesdeCotizacion(id){
@@ -96,7 +127,7 @@ function cargarDesdeCotizacion(id){
 		mostrarform(true);
 		$("#idcotizacion").val(r.idcotizacion);
 		$("#observacion").val(r.observacion || "");
-		if (r.impuesto > 0) { $("#tipo_comprobante").val("Factura"); aplicarSerieImpuesto(); $("#impuesto").val(Number(r.impuesto).toFixed(2)); }
+		if (r.impuesto > 0) { fijarComprobante("Factura"); }
 		var fijarCliente = function(){ $("#idcliente").val(String(r.idcliente)).selectpicker("refresh"); };
 		if (clientesCargados) { fijarCliente(); } else { setTimeout(fijarCliente, 700); }
 		var sinStock = [];
@@ -110,7 +141,7 @@ function cargarDesdeCotizacion(id){
 		});
 		cadena.then(function(){
 			modificarSubtotales();
-			appNotify("info", "Cotización " + r.numero + " cargada. Revisa cantidades y registra la venta.", 5000);
+			appNotify("info", "Cotización " + r.numero + " cargada. Revisa cantidades y cobra.", 5000);
 			if (sinStock.length) { appNotify("warning", "Sin stock, no se agregaron: " + sinStock.join(", "), 8000); }
 		});
 	});
@@ -120,7 +151,7 @@ function cargarResumenDia(){
 	$.get("../ajax/venta.php?op=resumenDia", function(resp){
 		var r = appParseJson(resp, null);
 		if (!r || !r.ok) { return; }
-		$("#chipResumenDia span").text((r.comprobantes || 0) + " ventas · " + (r.monto_formateado || money(r.monto || 0)));
+		$("#chipResumenDia span, #chipResumenDiaPos span").text((r.comprobantes || 0) + " ventas · " + (r.monto_formateado || money(r.monto || 0)));
 	});
 }
 
@@ -175,8 +206,9 @@ function cargarDefaultsEmpresa(){
 	});
 }
 
+// Deja lista una venta nueva sin salir del punto de venta
 function limpiar(){
-	$("#idventa, #serie_comprobante, #num_comprobante, #observacion, #fecha_vencimiento").val("");
+	$("#idventa, #idcotizacion, #serie_comprobante, #num_comprobante, #observacion, #fecha_vencimiento, #monto_recibido, #num_operacion, #codigo_rapido").val("");
 	if (clientesCargados) {
 		$("#idcliente").val($("#idcliente option:first").val() || "").selectpicker("refresh");
 	}
@@ -186,12 +218,12 @@ function limpiar(){
 	$("#detalles tbody").empty();
 	cont = 0;
 	detalles = 0;
+	ultimaFila = null;
 	$("#fecha_hora").val(fechaHoraActualInput());
+	$(".pos-comprobante [data-comprobante]").removeClass("active").filter("[data-comprobante='Boleta']").addClass("active");
 	$("#tipo_comprobante").val("Boleta");
-	$(".pago-toggle .btn").removeClass("active").filter("[data-pago='CONTADO']").addClass("active");
-	$("#tipo_pago").val("CONTADO");
-	$("#medio_pago").val("EFECTIVO");
-	$("#grupoVencimiento").hide();
+	fijarTipoPago("CONTADO");
+	appFijarMedioPago($("#modalCobro .medio-grid"), "EFECTIVO");
 	aplicarSerieImpuesto();
 	calcularTotales();
 }
@@ -199,23 +231,37 @@ function limpiar(){
 function mostrarform(flag){
 	limpiar();
 	enFormulario = !!flag;
+	appModoCaja(enFormulario);
 	if (flag) {
 		$("#listadoregistros, #accionesListado").hide();
 		$("#formularioregistros").show();
+		cargarCatalogo();
+		cargarCajaPos();
 		setTimeout(function(){ $("#codigo_rapido").focus(); }, 80);
 	} else {
 		$("#listadoregistros, #accionesListado").show();
 		$("#formularioregistros").hide();
+		// Sin ?cotizacion=ID en la barra: recargar no debe volver a cargarla
+		if (window.history && window.history.replaceState && window.location.search) { window.history.replaceState(null, "", window.location.pathname); }
 	}
 }
 
 function cancelarform(){
 	if (detalles > 0) {
-		appConfirm("Hay artículos en la venta actual. ¿Descartar la venta?", function(){ limpiar(); mostrarform(false); }, { titulo: "Descartar venta", ok: "Sí, descartar", tipo: "danger" });
+		appConfirm("Hay productos en el carrito. ¿Salir del punto de venta y descartar la venta?", function(){ mostrarform(false); }, { titulo: "Salir del punto de venta", ok: "Sí, salir", tipo: "danger" });
 		return;
 	}
-	limpiar();
 	mostrarform(false);
+}
+
+function vaciarCarrito(){
+	if (detalles <= 0) { return; }
+	appConfirm("Se quitarán todos los productos del carrito. ¿Continuar?", function(){
+		$("#detalles tbody").empty();
+		detalles = 0; cont = 0; ultimaFila = null;
+		calcularTotales();
+		$("#codigo_rapido").focus();
+	}, { titulo: "Vaciar carrito", ok: "Sí, vaciar", tipo: "danger" });
 }
 
 function listar(){
@@ -237,25 +283,10 @@ function listar(){
 			error: function(e){ console.log(e.responseText); }
 		},
 		"bDestroy": true,
-		"iDisplayLength": 10,
+		"iDisplayLength": 25,
 		// Lo ultimo vendido primero, ordenando por la fecha real
 		"order": [[1, "desc"]],
 		"columnDefs": [{ "orderable": false, "targets": [0] }, { "targets": [1], "render": window.appOrdenPorDato }]
-	}).DataTable();
-}
-
-function listarArticulos(){
-	tablaArticulos = $('#tblarticulos').dataTable({
-		"aProcessing": true,
-		"aServerSide": true,
-		"autoWidth": false,
-		dom: 'frtip',
-		"ajax": { url: '../ajax/venta.php?op=listarArticulos', type: "get", dataType: "json", error: function(e){ console.log(e.responseText); } },
-		"bDestroy": true,
-		"iDisplayLength": 8,
-		"order": [[1, "asc"]],
-		"columnDefs": [{ "orderable": false, "targets": [0, 7] }],
-		"language": { "sSearchPlaceholder": "Buscar por nombre, código o categoría…" }
 	}).DataTable();
 }
 
@@ -266,85 +297,340 @@ function recargarListadoVenta(){
 	if (tabla) { tabla.ajax.reload(); }
 }
 
-function guardaryeditar(e){
-	e.preventDefault();
-	if (!($("#idcliente").val() || "").toString().trim()) { appNotify("warning", "Selecciona un cliente antes de guardar."); return; }
-	if (detalles <= 0) { appNotify("warning", "Agrega al menos un artículo a la venta."); $("#codigo_rapido").focus(); return; }
-	if (!validarStockDetalleAntesGuardar()) { return; }
-	if ($("#tipo_pago").val() === "CREDITO" && !$("#fecha_vencimiento").val()) { appNotify("warning", "Indica la fecha de vencimiento del crédito."); $("#fecha_vencimiento").focus(); return; }
+// ---------------------------------------------------------------------
+// Cuadricula de productos
+// ---------------------------------------------------------------------
 
-	appSetLoading("#btnGuardar", true);
+function cargarCatalogo(){
+	return $.get("../ajax/venta.php?op=catalogoPos", function(resp){
+		var r = appParseJson(resp, null);
+		if (!r || !r.ok) { $("#posGrid").html('<div class="pos-grid-vacio">No se pudo cargar el catálogo.</div>'); return; }
+		catalogo = r.items || [];
+		ticketCfg = r.ticket || ticketCfg;
+		// La preferencia de esta PC manda sobre la de la empresa (ej. una caja sin ticketera)
+		var pref = appPreferenciaLocal("imprimir_ticket");
+		$("#chkImprimirTicket").prop("checked", pref === null ? !!ticketCfg.auto_imprimir : pref === "1");
+		pintarCategorias();
+		pintarGrid();
+	});
+}
+
+function textoPlano(t){
+	return String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+function pintarCategorias(){
+	var vistas = {}, lista = [];
+	catalogo.forEach(function(a){ if (!vistas[a.idcategoria]) { vistas[a.idcategoria] = true; lista.push({ id: a.idcategoria, nombre: a.categoria }); } });
+	lista.sort(function(a, b){ return a.nombre.localeCompare(b.nombre); });
+	if (categoriaActiva && !vistas[categoriaActiva]) { categoriaActiva = 0; }
+	var html = '<button type="button" role="tab" data-categoria="0" class="' + (categoriaActiva === 0 ? "active" : "") + '">Todos <small>' + catalogo.length + '</small></button>';
+	lista.forEach(function(c){
+		html += '<button type="button" role="tab" data-categoria="' + c.id + '" class="' + (categoriaActiva === c.id ? "active" : "") + '">' + appEscapeHtml(c.nombre) + '</button>';
+	});
+	$("#posCategorias").html(html);
+}
+
+// Coincidencias del texto con nombre, codigo o categoria (sin tildes ni mayusculas)
+function filtrarCatalogo(texto, conCategoria){
+	var palabras = textoPlano(texto).split(/\s+/).filter(Boolean);
+	return catalogo.filter(function(a){
+		if (conCategoria && categoriaActiva && a.idcategoria !== categoriaActiva) { return false; }
+		if (!palabras.length) { return true; }
+		var base = textoPlano(a.nombre + " " + a.codigo + " " + a.categoria);
+		return palabras.every(function(p){ return base.indexOf(p) !== -1; });
+	});
+}
+
+function pintarGrid(){
+	var texto = $.trim($("#codigo_rapido").val());
+	var lista = filtrarCatalogo(texto, true);
+	var enCarrito = cantidadesEnCarrito();
+	var html = lista.slice(0, MAX_TILES).map(function(a){
+		var agotado = a.stock <= 0;
+		var bajo = !agotado && a.stock <= Math.max(a.stock_minimo, 5);
+		var img = a.imagen
+			? '<img src="../files/articulos/' + encodeURIComponent(a.imagen) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'sin-img\');this.remove()">'
+			: '';
+		var extra = a.variantes > 0 ? '<span class="pos-tile-tag">Tallas</span>' : (a.presentaciones > 0 ? '<span class="pos-tile-tag">Por caja</span>' : '');
+		var cant = enCarrito[a.idarticulo] ? '<span class="pos-tile-cant">' + window.appCantidad(enCarrito[a.idarticulo]) + '</span>' : '';
+		return '<button type="button" class="pos-tile' + (agotado ? " agotado" : "") + '" data-id="' + a.idarticulo + '" title="' + appEscapeHtml(a.nombre + (a.codigo ? " · " + a.codigo : "")) + '">' +
+			'<span class="pos-tile-img' + (img ? "" : " sin-img") + '" data-inicial="' + appEscapeHtml(a.nombre.charAt(0).toUpperCase()) + '">' + img + '</span>' + cant + extra +
+			'<span class="pos-tile-nombre">' + appEscapeHtml(a.nombre) + '</span>' +
+			'<span class="pos-tile-pie"><strong>' + money(a.precio_venta) + '</strong><small class="' + (agotado ? "text-danger" : (bajo ? "text-warning" : "")) + '">' + (agotado ? "Agotado" : window.appCantidad(a.stock) + " " + appEscapeHtml(a.unidad)) + '</small></span>' +
+		'</button>';
+	}).join("");
+	if (!lista.length) {
+		html = '<div class="pos-grid-vacio"><i class="fa fa-search"></i> ' + (texto ? 'Nada coincide con "' + appEscapeHtml(texto) + '". Presiona Enter para buscarlo por código.' : 'No hay productos en esta categoría.') + '</div>';
+	}
+	$("#posGrid").html(html);
+	$("#posGridPie").text(lista.length > MAX_TILES ? "Mostrando " + MAX_TILES + " de " + lista.length + " productos: escribe para encontrar el resto." : "");
+}
+
+function cantidadesEnCarrito(){
+	var m = {};
+	$("#detalles tbody tr.filas").each(function(){
+		var id = parseInt($(this).attr("data-idarticulo"), 10);
+		m[id] = (m[id] || 0) + (parseFloat($(this).find("[name='cantidad[]']").val()) || 0) * filaFactor($(this));
+	});
+	return m;
+}
+
+// Enter en el buscador: un solo producto que coincide entra directo; un codigo
+// exacto o sin coincidencias va al servidor (codigos de caja y de talla/color).
+function agregarDesdeBuscador(){
+	var texto = $.trim($("#codigo_rapido").val());
+	if (!texto) { appNotify("warning", "Escanea o escribe el código del producto."); return; }
+	var exacto = catalogo.filter(function(a){ return a.codigo && a.codigo.toLowerCase() === texto.toLowerCase(); });
+	var coincidencias = filtrarCatalogo(texto, false);
+	if (exacto.length || !coincidencias.length) { encolarCodigoPOS(texto); return; }
+	if (coincidencias.length === 1) {
+		$("#codigo_rapido").val("");
+		agregarArticulo(coincidencias[0].idarticulo, 0);
+		pintarGrid();
+		return;
+	}
+	appNotify("info", coincidencias.length + " productos coinciden: toca el que quieres.");
+}
+
+// ---------------------------------------------------------------------
+// Cobro
+// ---------------------------------------------------------------------
+
+function fijarComprobante(tipo){
+	$(".pos-comprobante [data-comprobante]").removeClass("active").filter("[data-comprobante='" + tipo + "']").addClass("active");
+	$("#tipo_comprobante").val(tipo);
+	aplicarSerieImpuesto();
+	calcularTotales();
+}
+
+function fijarTipoPago(tipo){
+	$("#modalCobro .pago-toggle .btn").removeClass("active").filter("[data-pago='" + tipo + "']").addClass("active");
+	$("#tipo_pago").val(tipo);
+	var credito = tipo === "CREDITO";
+	$("#grupoVencimiento").toggle(credito);
+	$("#grupoMedioPago").toggle(!credito);
+	if (credito && !$("#fecha_vencimiento").val()) { $("#fecha_vencimiento").val(appFechaSumarDias(null, 30)); }
+	$("#btnConfirmarCobro").html(credito ? '<i class="fa fa-check"></i> Registrar al crédito <small>(Enter)</small>' : '<i class="fa fa-check"></i> Confirmar cobro <small>(Enter)</small>');
+}
+
+function actualizarCamposMedio(){
+	var efectivo = ($("#medio_pago").val() || "EFECTIVO") === "EFECTIVO";
+	$("#grupoEfectivo").toggle(efectivo);
+	$("#grupoOperacion").toggle(!efectivo);
+	if ($("#modalCobro").hasClass("in")) { (efectivo ? $("#monto_recibido") : $("#num_operacion")).focus(); }
+}
+
+function totalVenta(){ return parseFloat($("#total_venta").val()) || 0; }
+
+// Billetes para cobrar rapido: exacto y los redondeos que se suelen recibir
+function pintarRapidos(){
+	var total = totalVenta();
+	var montos = [];
+	[Math.ceil(total), Math.ceil(total / 10) * 10, Math.ceil(total / 20) * 20, Math.ceil(total / 50) * 50, Math.ceil(total / 100) * 100, 200].forEach(function(m){
+		if (m > total + 0.001 && montos.indexOf(m) === -1) { montos.push(m); }
+	});
+	montos.sort(function(a, b){ return a - b; });
+	var html = '<button type="button" data-monto="' + total.toFixed(2) + '">Exacto</button>';
+	montos.slice(0, 4).forEach(function(m){ html += '<button type="button" data-monto="' + m.toFixed(2) + '">' + money(m) + '</button>'; });
+	$("#cobroRapidos").html(html);
+}
+
+function calcularVuelto(){
+	var total = totalVenta();
+	var raw = $.trim($("#monto_recibido").val());
+	var $v = $("#cobroVuelto").removeClass("falta ok");
+	if (raw === "") { $v.find("span").text("Vuelto"); $v.find("strong").text("—"); return; }
+	var recibido = parseFloat(raw) || 0;
+	if (recibido + 0.001 < total) {
+		$v.addClass("falta").find("span").text("Falta");
+		$v.find("strong").text(money(total - recibido));
+	} else {
+		$v.addClass("ok").find("span").text("Vuelto");
+		$v.find("strong").text(money(recibido - total));
+	}
+}
+
+function abrirCobro(){
+	if (cobrando) { return; }
+	if (!($("#idcliente").val() || "").toString().trim()) { appNotify("warning", "Selecciona un cliente antes de cobrar."); return; }
+	if (detalles <= 0) { appNotify("warning", "Agrega al menos un producto."); $("#codigo_rapido").focus(); return; }
+	modificarSubtotales();
+	if (!validarStockDetalleAntesGuardar()) { return; }
+	if (exigeCaja() && cajaPos && !cajaPos.abierta) { pedirAbrirCaja(true); return; }
+	$("#cobroTotal").text(money(totalVenta()));
+	pintarRapidos();
+	calcularVuelto();
+	actualizarCamposMedio();
+	$("#modalCobro").modal("show");
+}
+
+function confirmarCobro(){
+	if (cobrando) { return; }
+	var total = totalVenta();
+	var contado = $("#tipo_pago").val() === "CONTADO";
+	var efectivo = $("#medio_pago").val() === "EFECTIVO";
+	if (!contado && !$("#fecha_vencimiento").val()) { appNotify("warning", "Indica la fecha de vencimiento del crédito."); $("#fecha_vencimiento").focus(); return; }
+	if (contado && efectivo) {
+		var raw = $.trim($("#monto_recibido").val());
+		if (raw !== "" && (parseFloat(raw) || 0) + 0.001 < total) { appNotify("warning", "El monto recibido es menor que el total."); $("#monto_recibido").focus().select(); return; }
+	}
+	if (!(contado && efectivo)) { $("#monto_recibido").val(""); }
+	if (!contado || efectivo) { $("#num_operacion").val(""); }
+	guardaryeditar();
+}
+
+function guardaryeditar(){
+	cobrando = true;
+	appSetLoading("#btnConfirmarCobro", true);
+	var recibido = parseFloat($("#monto_recibido").val()) || 0;
+	var imprimir = $("#chkImprimirTicket").is(":checked");
 	$.ajax({
 		url: "../ajax/venta.php?op=guardaryeditar",
 		type: "POST",
+		// Incluye los campos de la ventana de cobro (atributo form="formulario")
 		data: new FormData($("#formulario")[0]),
 		contentType: false,
 		processData: false,
 		success: function(datos){
-			appSetLoading("#btnGuardar", false);
 			var r = appParseJson(datos, null);
 			if (!r || typeof r.ok === "undefined") { appNotifyFromResponse(datos); return; }
-			if (!r.ok) { appNotify("error", r.message || "No se pudo registrar la venta."); return; }
-			appNotify("success", r.message || "Venta registrada correctamente");
+			if (!r.ok) { if (r.caja_cerrada) { $("#modalCobro").modal("hide"); cargarCajaPos(); pedirAbrirCaja(true); return; } appNotify("error", r.message || "No se pudo registrar la venta."); return; }
+			var vuelto = recibido > 0 ? Math.max(0, recibido - (r.total || 0)) : 0;
+			$("#modalCobro").modal("hide");
+			if (imprimir) { appImprimirTicket(r.idventa); }
+			appNotify("success", "Venta " + (r.serie_comprobante || "") + "-" + (r.num_comprobante || "") + " registrada" + (vuelto > 0 ? " · Vuelto " + money(vuelto) : ""), 5000);
 			if (r.alertas && r.alertas.length > 0) {
 				appNotify("warning", "Stock bajo: " + r.alertas.map(function(a){ return (a.nombre || "Artículo") + " (" + window.appCantidad(a.stock) + ")"; }).join(", "), 7000);
 			}
-			mostrarDialogoPostVenta(r);
-			mostrarform(false);
+			pintarUltimaVenta(r, vuelto);
+			// Venta nueva en el mismo punto de venta, con el stock al dia
+			limpiar();
+			cargarCatalogo();
 			tabla.ajax.reload(null, false);
+			cargarCajaPos();
 			cargarResumenDia();
 			if (window.cargarAlertasBell) { window.cargarAlertasBell(); }
+			if (window.history && window.history.replaceState && window.location.search) { window.history.replaceState(null, "", window.location.pathname + "?nuevo=1"); }
 		},
-		error: function(){ appSetLoading("#btnGuardar", false); }
+		complete: function(){ cobrando = false; appSetLoading("#btnConfirmarCobro", false); }
 	});
 }
 
-function mostrarDialogoPostVenta(r){
-	var id = r.idventa;
-	var doc = (r.tipo_comprobante || "") + " " + (r.serie_comprobante || "") + "-" + (r.num_comprobante || "");
-	var urlPdf = "../reportes/exFactura.php?id=" + id;
-	var urlTicket = "../reportes/exTicket.php?id=" + id;
-	var extra = "";
-	if (r.cuenta_cobrar) { extra += '<p class="text-soft"><i class="fa fa-calendar"></i> Se creó una cuenta por cobrar por ' + money(r.total) + '.</p>'; }
-	if (r.caja_registrada) { extra += '<p class="text-soft"><i class="fa fa-money"></i> Ingreso registrado en tu caja abierta.</p>'; }
-	bootbox.dialog({
-		title: '<i class="fa fa-check-circle" style="color:#16a34a"></i> Venta registrada',
-		message: '<div style="text-align:center"><div style="font-size:13px;color:#64748b">Comprobante</div><div style="font-size:22px;font-weight:800;margin:4px 0 8px">' + appEscapeHtml(doc) + '</div><div style="font-size:28px;font-weight:800;color:#0f766e">' + money(r.total) + '</div>' + extra + '</div>',
-		closeButton: true,
-		buttons: {
-			ticket: { label: '<i class="fa fa-print"></i> Ticket', className: "btn-default", callback: function(){ window.open(urlTicket, "_blank"); } },
-			pdf: { label: '<i class="fa fa-file-pdf-o"></i> PDF A4', className: "btn-info", callback: function(){ window.open(urlPdf, "_blank"); } },
-			nueva: { label: '<i class="fa fa-plus"></i> Nueva venta', className: "btn-primary", callback: function(){ mostrarform(true); } }
+// ---------------------------------------------------------------------
+// Caja del vendedor: se ve en la barra superior y se abre sin salir del POS
+// ---------------------------------------------------------------------
+
+function cargarCajaPos(){
+	return $.get("../ajax/caja.php?op=estado", function(resp){
+		cajaPos = appParseJson(resp, { abierta: false });
+		var $c = $("#posCaja");
+		if (cajaPos.abierta) {
+			$c.attr("class", "pos-caja abierta").html(
+				'<i class="fa fa-unlock"></i><span>Caja #' + parseInt(cajaPos.idcaja, 10) + (typeof cajaPos.sistema !== "undefined" ? ' · efectivo <strong>' + money(cajaPos.sistema) + '</strong>' : ' abierta') + '</span>' +
+				'<a href="caja.php" class="btn btn-default btn-xs" title="Ver movimientos y cerrar la caja con arqueo"><i class="fa fa-lock"></i> Cerrar caja</a>'
+			);
+		} else {
+			$c.attr("class", "pos-caja cerrada").html(
+				'<i class="fa fa-lock"></i><span>Caja cerrada</span>' +
+				'<button type="button" class="btn btn-success btn-xs" onclick="pedirAbrirCaja(false)"><i class="fa fa-unlock"></i> Abrir caja</button>'
+			);
 		}
-	});
+	}).fail(function(){ $("#posCaja").empty(); });
+}
+
+function pedirAbrirCaja(paraCobrar){
+	cobrarTrasAbrirCaja = !!paraCobrar;
+	if (paraCobrar) { appNotify("warning", "Abre tu caja antes de cobrar."); }
+	$("#pos_monto_apertura, #pos_obs_apertura").val("");
+	$("#modalAbrirCajaPos").modal("show");
+}
+
+function abrirCajaDesdePos(e){
+	e.preventDefault();
+	var monto = $.trim($("#pos_monto_apertura").val());
+	if (monto === "" || parseFloat(monto) < 0) { appNotify("warning", "Indica el efectivo inicial (puede ser 0)."); return; }
+	appSetLoading("#btnAbrirCajaPos", true);
+	$.post("../ajax/caja.php?op=abrir", { monto_apertura: monto, observacion: $("#pos_obs_apertura").val() }, function(txt){
+		appNotifyFromResponse(txt);
+		if (String(txt).toLowerCase().indexOf("correctamente") === -1) { return; }
+		$("#modalAbrirCajaPos").modal("hide");
+		cargarCajaPos().then(function(){ if (cobrarTrasAbrirCaja && detalles > 0) { cobrarTrasAbrirCaja = false; abrirCobro(); } });
+	}).always(function(){ appSetLoading("#btnAbrirCajaPos", false); });
+}
+
+function pintarUltimaVenta(r, vuelto){
+	var doc = (r.tipo_comprobante || "") + " " + (r.serie_comprobante || "") + "-" + (r.num_comprobante || "");
+	var extra = [];
+	if (vuelto > 0) { extra.push("Vuelto <strong>" + money(vuelto) + "</strong>"); }
+	if (r.cuenta_cobrar) { extra.push("al crédito"); }
+	$("#posUltimaVenta").html(
+		'<i class="fa fa-check-circle"></i><span><strong>' + appEscapeHtml(doc) + '</strong> · ' + money(r.total) + (extra.length ? ' · ' + extra.join(" · ") : '') + '</span>' +
+		'<button type="button" class="btn btn-default btn-xs" onclick="appImprimirTicket(' + parseInt(r.idventa, 10) + ')" title="Volver a imprimir el ticket"><i class="fa fa-print"></i> Ticket</button>' +
+		'<a class="btn btn-default btn-xs" target="_blank" href="../reportes/exFactura.php?id=' + parseInt(r.idventa, 10) + '" title="Comprobante en PDF A4"><i class="fa fa-file-pdf-o"></i> A4</a>' +
+		'<button type="button" class="btn btn-default btn-xs text-danger btn-anular-ultima" data-id="' + parseInt(r.idventa, 10) + '" data-doc="' + appEscapeHtml(doc) + '" title="Anular esta venta"><i class="fa fa-ban"></i> Anular</button>'
+	).show();
 }
 
 function mostrar(idventa){
 	$.post("../ajax/venta.php?op=mostrar", { idventa: idventa }, function(data){
 		var d = appParseJson(data, null);
 		if (!d) { appNotify("error", "No se pudo cargar la venta."); return; }
-		var esTicket = d.tipo_comprobante === "Ticket";
 		$("#detTitulo").text(d.tipo_comprobante + " " + d.serie_comprobante + "-" + d.num_comprobante);
-		$("#detImprimir").attr("href", (esTicket ? "../reportes/exTicket.php?id=" : "../reportes/exFactura.php?id=") + idventa);
+		$("#detImprimir").attr("href", "../reportes/exFactura.php?id=" + idventa);
+		$("#detTicket").data("id", idventa);
 		var estado = d.estado === "Aceptado" ? '<span class="label bg-green">Aceptado</span>' : '<span class="label bg-red">Anulado</span>';
-		var pago = (d.tipo_pago || "CONTADO") + " · " + (d.medio_pago || "EFECTIVO") + (d.tipo_pago === "CREDITO" && d.fecha_vencimiento ? " · vence " + d.fecha_vencimiento : "");
+		var medio = appMedioPagoTexto[d.medio_pago] || d.medio_pago || "Efectivo";
+		var pago = d.tipo_pago === "CREDITO" ? "Crédito" + (d.fecha_vencimiento ? " · vence " + d.fecha_vencimiento : "") : "Contado · " + medio;
+		var datosPago = "";
+		if (d.num_operacion) { datosPago += '<p><strong>N° operación:</strong> ' + appEscapeHtml(d.num_operacion) + '</p>'; }
+		if (parseFloat(d.monto_recibido) > 0) { datosPago += '<p><strong>Recibido:</strong> ' + money(d.monto_recibido) + ' &nbsp; <strong>Vuelto:</strong> ' + money(Math.max(0, d.monto_recibido - d.total_venta)) + '</p>'; }
 		$("#detCabecera").html(
 			'<div class="col-sm-6"><p><strong>Cliente:</strong> ' + appEscapeHtml(d.cliente) + '</p><p><strong>Vendedor:</strong> ' + appEscapeHtml(d.usuario) + '</p><p><strong>Fecha:</strong> ' + appEscapeHtml(d.fecha) + '</p></div>' +
-			'<div class="col-sm-6"><p><strong>Estado:</strong> ' + estado + '</p><p><strong>Pago:</strong> ' + appEscapeHtml(pago) + '</p><p><strong>Impuesto:</strong> ' + appEscapeHtml(d.impuesto) + ' % &nbsp; <strong>Total:</strong> <span class="money">' + money(d.total_venta) + '</span></p>' + (d.observacion ? '<p><strong>Obs.:</strong> ' + appEscapeHtml(d.observacion) + '</p>' : '') + '</div>'
+			'<div class="col-sm-6"><p><strong>Estado:</strong> ' + estado + '</p><p><strong>Pago:</strong> ' + appEscapeHtml(pago) + '</p>' + datosPago + '<p><strong>Impuesto:</strong> ' + appEscapeHtml(d.impuesto) + ' % &nbsp; <strong>Total:</strong> <span class="money">' + money(d.total_venta) + '</span></p>' + (d.observacion ? '<p><strong>Obs.:</strong> ' + appEscapeHtml(d.observacion) + '</p>' : '') + '</div>'
 		);
 		$.post("../ajax/venta.php?op=listarDetalle&id=" + idventa, function(r){ $("#detTabla").html(r); });
 		$("#modalDetalleVenta").modal("show");
 	});
 }
 
-function anular(idventa){
-	appConfirm("Se anulará la venta y el stock volverá al inventario. Esta acción queda registrada en auditoría. ¿Continuar?", function(){
-		$.post("../ajax/venta.php?op=anular", { idventa: idventa }, function(e){
-			appNotifyFromResponse(e);
-			tabla.ajax.reload(null, false);
-			cargarResumenDia();
-		});
-	}, { titulo: "Anular venta", ok: "Sí, anular", tipo: "danger" });
+// Con permiso "Anular documentos" se confirma y listo; sin el, un encargado
+// autoriza con su usuario y clave (el servidor lo verifica y lo audita).
+function anular(idventa, documento){
+	if (window.appUser && window.appUser.permisos && window.appUser.permisos.anular) {
+		appConfirm("Se anulará la venta y el stock volverá al inventario. Esta acción queda registrada en auditoría. ¿Continuar?", function(){
+			$.post("../ajax/venta.php?op=anular", { idventa: idventa }, function(e){
+				appNotifyFromResponse(e);
+				trasAnular(e);
+			});
+		}, { titulo: "Anular venta", ok: "Sí, anular", tipo: "danger" });
+		return;
+	}
+	$("#aut_idventa").val(idventa);
+	$("#autDocumento").text(documento || "");
+	$("#aut_motivo, #aut_login, #aut_clave").val("");
+	$("#modalAutorizarAnulacion").modal("show");
+}
+
+function autorizarAnulacion(e){
+	e.preventDefault();
+	var datos = { idventa: $("#aut_idventa").val(), motivo: $.trim($("#aut_motivo").val()), autoriza_login: $.trim($("#aut_login").val()), autoriza_clave: $("#aut_clave").val() };
+	if (datos.motivo.length < 4) { appNotify("warning", "Escribe el motivo de la anulación."); $("#aut_motivo").focus(); return; }
+	if (!datos.autoriza_login || !datos.autoriza_clave) { appNotify("warning", "Falta el usuario o la clave del encargado."); return; }
+	appSetLoading("#btnAutorizarAnulacion", true);
+	$.post("../ajax/venta.php?op=anular", datos, function(txt){
+		appNotifyFromResponse(txt);
+		if (String(txt).toLowerCase().indexOf("anulada") === -1) { $("#aut_clave").val("").focus(); return; }
+		$("#modalAutorizarAnulacion").modal("hide");
+		trasAnular(txt);
+	}).always(function(){ appSetLoading("#btnAutorizarAnulacion", false); });
+}
+
+function trasAnular(respuesta){
+	if (String(respuesta).toLowerCase().indexOf("anulada") === -1) { return; }
+	tabla.ajax.reload(null, false);
+	cargarResumenDia();
+	if (enFormulario) { cargarCajaPos(); cargarCatalogo(); $("#posUltimaVenta").hide(); }
 }
 
 // Borrado definitivo (solo administrador). Si la venta seguía vigente el
@@ -367,11 +653,13 @@ function aplicarSerieImpuesto(){
 		$("#impuesto").val((empresaDefaults.impuesto_default || 18).toFixed(2));
 	} else if (tipo === 'Ticket') {
 		$("#serie_comprobante").val(empresaDefaults.serie_ticket || "T001");
-		$("#impuesto").val("0");
+		$("#impuesto").val("0");   // nota de venta interna: sin desglose de IGV
 	} else {
 		$("#serie_comprobante").val(empresaDefaults.serie_boleta || "B001");
-		$("#impuesto").val("0");
+		// La boleta tambien lleva IGV (los precios ya lo incluyen; cambia el desglose)
+		$("#impuesto").val((empresaDefaults.impuesto_default || 18).toFixed(2));
 	}
+	numeroComprobanteManual = false;
 	cargarCorrelativoComprobante();
 }
 
@@ -394,7 +682,7 @@ function cargarCorrelativoComprobante(){
 }
 
 // ---------------------------------------------------------------------
-// Detalle de la venta
+// Detalle de la venta (carrito)
 //
 // Cada fila guarda en data-* la ficha del articulo (factor de la
 // presentacion elegida, si admite decimales, precio base, escalas de precio
@@ -403,7 +691,7 @@ function cargarCorrelativoComprobante(){
 // filas del mismo articulo.
 // ---------------------------------------------------------------------
 
-// Agrega un articulo pidiendo su ficha al servidor (catalogo, cotizacion).
+// Agrega un articulo pidiendo su ficha al servidor (cuadricula, cotizacion).
 function agregarArticulo(idarticulo, idpresentacion, opciones){
 	return $.post("../ajax/venta.php?op=infoArticulo", { idarticulo: idarticulo }, function(resp){
 		var f = appParseJson(resp, null);
@@ -439,9 +727,9 @@ function agregarFicha(f, idpresentacion, opciones){
 		var $cant = $existente.find("[name='cantidad[]']");
 		$cant.val((parseFloat($cant.val()) || 0) + (opciones.cantidad || 1));
 		modificarSubtotales();
-		$('#myModal').modal('hide');
-		appNotify("info", f.nombre + ": cantidad " + window.appCantidad($cant.val()));
+		ultimaFila = $existente;
 		resaltarFila($existente);
+		if (!opciones.silencioso) { $("#codigo_rapido").focus(); }
 		return;
 	}
 
@@ -466,16 +754,26 @@ function agregarFicha(f, idpresentacion, opciones){
 	});
 	fila.data("ficha", f);
 	fila.html(
-		'<td><button type="button" class="btn btn-danger btn-xs btn-icon" onclick="eliminarDetalle(' + cont + ')" title="Quitar"><i class="fa fa-trash"></i></button></td>' +
-		'<td><input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><input type="hidden" name="idvariante[]" value="' + idVar + '">' +
-			'<strong>' + appEscapeHtml(f.nombre) + '</strong>' + selectorVariante + opcionesPres + '<small class="text-soft d-block">Stock: <span class="stock-fila">' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) + '</span>' +
-			(f.escalas && f.escalas.length ? ' · <span class="text-success" title="Tiene precio por mayor"><i class="fa fa-tags"></i> por mayor</span>' : '') +
-			textoVencimiento(f) + '</small></td>' +
-		'<td><span class="unidad-fila"></span></td>' +
-		'<td><input type="number" min="0" name="cantidad[]" value="' + (opciones.cantidad || 1) + '" oninput="modificarSubtotales()" onblur="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="precio_venta[]" value="0.00" oninput="marcarPrecioManual(this)" onfocus="this.select()"></td>' +
-		'<td><input type="number" step="0.01" min="0" name="descuento[]" value="' + Number(opciones.descuento || 0).toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()"></td>' +
-		'<td class="text-right"><span class="money" name="subtotal">0.00</span></td>'
+		'<td>' +
+			'<input type="hidden" name="idarticulo[]" value="' + f.idarticulo + '"><input type="hidden" name="idpresentacion[]" value="' + idPres + '"><input type="hidden" name="idvariante[]" value="' + idVar + '">' +
+			'<div class="cart-cab"><strong class="cart-nombre">' + appEscapeHtml(f.nombre) + '</strong>' +
+				'<button type="button" class="cart-quitar" onclick="eliminarDetalle(' + cont + ')" title="Quitar del carrito"><i class="fa fa-times"></i></button></div>' +
+			selectorVariante + opcionesPres +
+			'<small class="text-soft d-block">Stock: <span class="stock-fila">' + window.appCantidad(f.stock) + ' ' + appEscapeHtml(f.unidad) + '</span>' +
+				(f.escalas && f.escalas.length ? ' · <span class="text-success" title="Tiene precio por mayor"><i class="fa fa-tags"></i> por mayor</span>' : '') +
+				textoVencimiento(f) + '</small>' +
+			'<div class="cart-controles">' +
+				'<div class="cart-cant">' +
+					'<button type="button" onclick="pasoCantidad(this,-1)" title="Uno menos" aria-label="Uno menos">−</button>' +
+					'<input type="number" min="0" name="cantidad[]" value="' + (opciones.cantidad || 1) + '" oninput="modificarSubtotales()" onblur="modificarSubtotales()" onfocus="this.select()" aria-label="Cantidad">' +
+					'<button type="button" onclick="pasoCantidad(this,1)" title="Uno más" aria-label="Uno más">+</button>' +
+				'</div>' +
+				'<span class="unidad-fila"></span>' +
+				'<label class="cart-precio" title="Precio unitario">x<input type="number" step="0.01" min="0" name="precio_venta[]" value="0.00" oninput="marcarPrecioManual(this)" onfocus="this.select()" aria-label="Precio"></label>' +
+				'<label class="cart-dscto" title="Descuento en dinero para esta línea">Dscto<input type="number" step="0.01" min="0" name="descuento[]" value="' + Number(opciones.descuento || 0).toFixed(2) + '" oninput="modificarSubtotales()" onfocus="this.select()" aria-label="Descuento"></label>' +
+				'<span class="money cart-sub" name="subtotal">0.00</span>' +
+			'</div>' +
+		'</td>'
 	);
 	cont++;
 	detalles++;
@@ -483,15 +781,37 @@ function agregarFicha(f, idpresentacion, opciones){
 	if (typeof opciones.precio === "number") {
 		fila.find("[name='precio_venta[]']").val(opciones.precio.toFixed(2)).attr("data-manual", "1");
 	}
+	if (!puedeCambiarPrecios()) {
+		fila.find("[name='precio_venta[]'], [name='descuento[]']").prop("readonly", true).attr("title", "Precio de lista: tu usuario no puede cambiarlo");
+		fila.find(".cart-dscto").hide();
+	}
 	ajustarPasoCantidad(fila);
 	etiquetaUnidadFila(fila);
 	actualizarStockFila(fila);
 	modificarSubtotales();
-	$('#myModal').modal('hide');
+	ultimaFila = fila;
 	resaltarFila(fila);
+	var $carrito = $(".pos-carrito");
+	$carrito.scrollTop($carrito[0] ? $carrito[0].scrollHeight : 0);
 	if (selectorVariante && !idVar) { fila.find(".sel-variante").focus(); }
-	if (precioAutomatico(fila) <= 0 && typeof opciones.precio !== "number") { appNotify("warning", "El artículo no tiene precio de venta: ingrésalo en la fila.", 5000); }
-	if (!opciones.silencioso) { setTimeout(function(){ $("#codigo_rapido").focus(); }, 50); }
+	if (precioAutomatico(fila) <= 0 && typeof opciones.precio !== "number") { appNotify("warning", puedeCambiarPrecios() ? "El artículo no tiene precio de venta: ingrésalo en la fila." : "El artículo no tiene precio de venta: pide a un encargado que lo registre.", 5000); }
+	if (!opciones.silencioso && !(selectorVariante && !idVar)) { setTimeout(function(){ $("#codigo_rapido").focus(); }, 50); }
+}
+
+// Botones - / + de la fila; en 0 la fila se quita
+function pasoCantidad(boton, delta){
+	var $tr = $(boton).closest("tr.filas");
+	var $c = $tr.find("[name='cantidad[]']");
+	var nueva = Math.round(((parseFloat($c.val()) || 0) + delta) * 1000) / 1000;
+	if (nueva <= 0) { eliminarDetalle(String($tr.attr("id")).replace("fila", "")); return; }
+	$c.val(nueva);
+	modificarSubtotales();
+	ultimaFila = $tr;
+}
+
+function pasoUltimaFila(delta){
+	if (!ultimaFila || !ultimaFila.closest("body").length) { ultimaFila = $("#detalles tbody tr.filas").last(); }
+	if (ultimaFila.length) { pasoCantidad(ultimaFila.find(".cart-cant button").first(), delta); }
 }
 
 // Aviso de vencimiento bajo el nombre: proximo lote y stock vencido que no se puede vender
@@ -565,12 +885,14 @@ function cambiarVariante(select){
 		$tr.remove(); detalles--;
 		modificarSubtotales();
 		resaltarFila($otra);
+		ultimaFila = $otra;
 		return;
 	}
 	$tr.find("[name='idvariante[]']").val(id);
 	$tr.find("[name='precio_venta[]']").removeAttr("data-manual");
 	actualizarStockFila($tr);
 	modificarSubtotales();
+	$("#codigo_rapido").focus();
 }
 
 function filaFactor($tr){
@@ -623,8 +945,8 @@ function etiquetaUnidadFila($tr){
 
 
 function resaltarFila($tr){
-	$tr.css("background", "#ecfeff");
-	setTimeout(function(){ $tr.css("background", ""); }, 700);
+	$tr.addClass("fila-nueva");
+	setTimeout(function(){ $tr.removeClass("fila-nueva"); }, 900);
 }
 
 function modificarSubtotales(){
@@ -692,13 +1014,34 @@ function calcularTotales(){
 		unidades += (parseFloat($tr.find("[name='cantidad[]']").val()) || 0) * filaFactor($tr);
 		descuentos += parseFloat($tr.find("[name='descuento[]']").val() || 0);
 	});
-	$("#total").html(money(total));
+	total = Math.round(total * 100) / 100;
+	var imp = parseFloat($("#impuesto").val()) || 0;
 	$("#posTotal").text(money(total));
+	$("#btnCobrarTotal").text(total > 0 ? money(total) : "");
 	$("#posUnidades").text(window.appCantidad(unidades));
 	$("#posDescuentos").text(money(descuentos));
+	$("#filaDescuentos").toggle(descuentos > 0);
+	$("#posIgv").text(money(total - total / (1 + imp / 100)));
+	$("#filaIgv").toggle(imp > 0 && total > 0);
 	$("#total_venta").val(total.toFixed(2));
 	actualizarContadorItems();
 	evaluar();
+	actualizarCantidadesGrid();
+}
+
+// Globo con la cantidad en el carrito sobre cada producto de la cuadricula
+function actualizarCantidadesGrid(){
+	var enCarrito = cantidadesEnCarrito();
+	$("#posGrid .pos-tile").each(function(){
+		var id = parseInt($(this).data("id"), 10);
+		var $b = $(this).find(".pos-tile-cant");
+		if (enCarrito[id]) {
+			if (!$b.length) { $b = $('<span class="pos-tile-cant"></span>').insertAfter($(this).find(".pos-tile-img")); }
+			$b.text(window.appCantidad(enCarrito[id]));
+		} else {
+			$b.remove();
+		}
+	});
 }
 
 function evaluar(){
@@ -715,20 +1058,22 @@ function evaluar(){
 function eliminarDetalle(indice){
 	$("#fila" + indice).remove();
 	detalles = detalles - 1;
+	ultimaFila = null;
 	calcularTotales();
+	$("#codigo_rapido").focus();
 }
 
 function actualizarContadorItems(){
 	var count = document.getElementsByName("idarticulo[]").length;
-	$("#ventasItemsSeleccionados, #ventasItemsSeleccionadosModal").text(count);
+	$("#ventasItemsSeleccionados").text(count);
 }
 
 function encolarCodigoPOS(codigo){
 	var limpio = (codigo || "").trim();
 	if (!limpio) { appNotify("warning", "Ingresa o escanea un código de producto."); return; }
-	clearTimeout(posScanTimer);
 	posCodeQueue.push(limpio);
 	$("#codigo_rapido").val("");
+	pintarGrid();
 	procesarColaPOS();
 }
 

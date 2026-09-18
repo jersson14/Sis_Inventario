@@ -12,7 +12,7 @@ require_once "../config/Conexion.php";
 class Cuentas
 {
     /** Medios de pago aceptados. */
-    const MEDIOS_PAGO = array('EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'OTRO');
+    const MEDIOS_PAGO = array('EFECTIVO', 'DEPOSITO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'OTRO');
 
     /** Tolerancia para comparar montos decimales. */
     const TOLERANCIA = 0.005;

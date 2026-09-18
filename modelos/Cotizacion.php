@@ -183,6 +183,21 @@ class Cotizacion
 		return array('ok' => true, 'message' => 'Cotización marcada como ' . strtolower($estado) . '.');
 	}
 
+	/**
+	 * Lineas de una cotizacion vigente con su precio y descuento: son precios ya
+	 * aprobados que un vendedor sin permiso de precios puede respetar al vender.
+	 */
+	public function lineasPrecio($id)
+	{
+		return dbAll(
+			"SELECT d.idarticulo, IFNULL(d.idpresentacion,0) AS idpresentacion, IFNULL(d.idvariante,0) AS idvariante, d.precio, d.descuento
+			 FROM detalle_cotizacion d
+			 INNER JOIN cotizacion c ON c.idcotizacion=d.idcotizacion
+			 WHERE d.idcotizacion=? AND c.estado IN ('PENDIENTE','ACEPTADA')",
+			array((int)$id)
+		);
+	}
+
 	public function marcarConvertida($id, $idventa)
 	{
 		return dbExec("UPDATE cotizacion SET estado='CONVERTIDA', idventa=? WHERE idcotizacion=? AND estado<>'CONVERTIDA'", array((int)$idventa, (int)$id));

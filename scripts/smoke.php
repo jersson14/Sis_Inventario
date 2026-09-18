@@ -78,6 +78,7 @@ try {
 	check('clave incorrecta rechazada', strpos($b, '"ok":false') !== false, $b);
 	list($c, $b) = http('POST', "$base/ajax/usuario.php?op=verificar", array('logina' => $login, 'clavea' => $clave));
 	check('login correcto', strpos($b, '"ok":true') !== false, $b);
+	check('administrador entra al escritorio', strpos($b, '"redirect":"escritorio.php"') !== false, $b);
 	list($c, $b) = http('GET', "$base/vistas/escritorio.php");
 	preg_match('/appCsrfToken = "([a-f0-9]+)"/', $b, $m);
 	$csrf = isset($m[1]) ? $m[1] : $csrf;
@@ -153,10 +154,9 @@ try {
 		echo "== Eliminación de documentos
 ";
 		$sPrev = (float)sql("SELECT stock FROM articulo WHERE idarticulo=?", array($a))['stock'];
-
-		// Con cobros aplicados no se puede borrar el documento de origen
+		// Boletas y facturas no se eliminan: dejarian un hueco en la numeracion
 		list($c, $b) = http('POST', "$base/ajax/venta.php?op=eliminar", array('idventa' => $v2));
-		check('eliminar venta con cobros se bloquea', stripos($b, 'cobros') !== false, $b);
+		check('eliminar una factura se bloquea (numeración sin huecos)', stripos($b, 'hueco') !== false, $b);
 
 		// Compra vigente: al eliminarla hay que descontar lo que habia ingresado
 		list($c, $b) = http('POST', "$base/ajax/ingreso.php?op=guardaryeditar", array('idproveedor' => $prov['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE DEL', 'idarticulo' => array($a), 'cantidad' => array(7), 'precio_compra' => array(2), 'precio_venta' => array(0)));
@@ -177,8 +177,8 @@ try {
 		$n = sql("SELECT COUNT(*) n FROM caja_movimiento WHERE referencia=?", array('C-' . $i2));
 		check('movimiento de caja de la compra borrado', (int)$n['n'] === 0, 'n=' . $n['n']);
 
-		// Venta vigente: al eliminarla el stock vuelve al inventario
-		list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE DEL', 'idarticulo' => array($a), 'cantidad' => array(2), 'precio_venta' => array(5), 'descuento' => array(0)));
+		// Nota de venta (Ticket) vigente: al eliminarla el stock vuelve al inventario
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Ticket', 'serie_comprobante' => 'T001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE DEL', 'idarticulo' => array($a), 'cantidad' => array(2), 'precio_venta' => array(5), 'descuento' => array(0)));
 		$r = json_decode($b, true);
 		check('venta temporal creada', $r && !empty($r['ok']), $b);
 		$v3 = $r ? (int)$r['idventa'] : 0;
@@ -189,7 +189,7 @@ try {
 		check('stock devuelto al eliminar la venta', abs((float)$s['stock'] - $sPrev) < 0.001, 'stock=' . $s['stock']);
 
 		// Documento ya anulado: eliminar no debe mover el stock por segunda vez
-		list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE DEL2', 'idarticulo' => array($a), 'cantidad' => array(4), 'precio_venta' => array(5), 'descuento' => array(0)));
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Ticket', 'serie_comprobante' => 'T001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE DEL2', 'idarticulo' => array($a), 'cantidad' => array(4), 'precio_venta' => array(5), 'descuento' => array(0)));
 		$r = json_decode($b, true);
 		$v4 = $r ? (int)$r['idventa'] : 0;
 		if ($v4 > 0) { $ids['venta'][] = $v4; }
@@ -349,7 +349,7 @@ try {
 		};
 		$stockLeche = function () use ($leche) { return round((float)dbValue("SELECT stock FROM articulo WHERE idarticulo=?", array($leche), 0), 3); };
 		$ventaLeche = function ($cantidad) use ($base, $cli, $leche, &$ids) {
-			list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE AB',
+			list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Ticket', 'serie_comprobante' => 'T001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE AB',
 				'idarticulo' => array($leche), 'idpresentacion' => array(0), 'cantidad' => array((string)$cantidad), 'precio_venta' => array('4.50'), 'descuento' => array(0)));
 			$r = json_decode($b, true);
 			if ($r && !empty($r['ok'])) { $ids['venta'][] = (int)$r['idventa']; }
@@ -571,11 +571,164 @@ try {
 		check('rubro GENERAL: vender una talla/color mantiene la suma (XL 2, total 15)', $r && !empty($r['ok']) && $varStock('XL', 'Negro') == 2 && $stockPolo() == 15, $b . ' stock=' . $stockPolo());
 		dbExec("UPDATE configuracion_empresa SET tipo_negocio=?", array($rubroOriginal));
 
+		echo "== POS, cobro y ticket\n";
+		$ventaPos = function($extra) use ($base, $cli, $a) {
+			list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array_merge(array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE POS', 'idarticulo' => array($a), 'cantidad' => array(1), 'precio_venta' => array(3.5), 'descuento' => array(0)), $extra));
+			$r = json_decode($b, true);
+			if ($r && !empty($r['ok'])) { $GLOBALS['ids']['venta'][] = (int)$r['idventa']; }
+			return array($r, $b);
+		};
+		list($r, $b) = $ventaPos(array('monto_recibido' => '2.00'));
+		check('efectivo recibido menor al total se rechaza', $r && empty($r['ok']) && stripos($b, 'menor') !== false, $b);
+		list($r, $b) = $ventaPos(array('monto_recibido' => '10'));
+		$vPos = $r && !empty($r['ok']) ? (int)$r['idventa'] : 0;
+		$fila = sql("SELECT monto_recibido, num_operacion FROM venta WHERE idventa=?", array($vPos));
+		check('venta en efectivo guarda lo recibido (10.00)', $vPos > 0 && $fila && abs((float)$fila['monto_recibido'] - 10) < 0.001, $b);
+		list($c, $b) = http('GET', "$base/reportes/exTicket.php?id=$vPos");
+		check('ticket térmico con recibido y vuelto 6.50', $c === 200 && sinErroresPhp($b) && strpos($b, 'class="ticket"') !== false && strpos($b, 'Vuelto') !== false && strpos($b, '6.50') !== false, substr(strip_tags($b), 0, 160));
+		check('ticket con tamaño de rollo (@page en mm)', preg_match('/@page \{ size: (80|58)mm auto/', $b) === 1, substr($b, 0, 160));
+		list($r, $b) = $ventaPos(array('medio_pago' => 'YAPE', 'num_operacion' => 'OP-SMOKE-1', 'monto_recibido' => '50'));
+		$vYape = $r && !empty($r['ok']) ? (int)$r['idventa'] : 0;
+		$fila = sql("SELECT medio_pago, monto_recibido, num_operacion FROM venta WHERE idventa=?", array($vYape));
+		check('venta con Yape guarda la operación y no el efectivo', $fila && $fila['medio_pago'] === 'YAPE' && $fila['num_operacion'] === 'OP-SMOKE-1' && $fila['monto_recibido'] === null, $b);
+		// IGV por comprobante y numeracion automatica (requisitos para facturacion electronica)
+		$impEmpresa = round((float)dbValue("SELECT impuesto_default FROM configuracion_empresa ORDER BY idconfig ASC LIMIT 1", array(), 18), 2);
+		list($r1, $b) = $ventaPos(array('impuesto' => 0, 'num_comprobante' => '99999999'));
+		list($r2, $b2) = $ventaPos(array('impuesto' => 0));
+		$f1 = $r1 && !empty($r1['ok']) ? sql("SELECT impuesto, num_comprobante FROM venta WHERE idventa=?", array((int)$r1['idventa'])) : null;
+		$f2 = $r2 && !empty($r2['ok']) ? sql("SELECT num_comprobante FROM venta WHERE idventa=?", array((int)$r2['idventa'])) : null;
+		check('boleta lleva el IGV de la empresa aunque el navegador envíe 0', $f1 && abs((float)$f1['impuesto'] - $impEmpresa) < 0.001, $b . json_encode($f1));
+		check('el número escrito a mano se ignora', $f1 && $f1['num_comprobante'] !== '99999999', json_encode($f1));
+		check('dos boletas seguidas llevan números consecutivos', $f1 && $f2 && (int)$f2['num_comprobante'] === (int)$f1['num_comprobante'] + 1, json_encode(array($f1, $f2)));
+		list($r3, $b) = $ventaPos(array('tipo_comprobante' => 'Ticket', 'serie_comprobante' => 'T001', 'impuesto' => 18));
+		$f3 = $r3 && !empty($r3['ok']) ? sql("SELECT impuesto FROM venta WHERE idventa=?", array((int)$r3['idventa'])) : null;
+		check('la nota de venta (Ticket) no desglosa IGV', $f3 && (float)$f3['impuesto'] == 0, $b . json_encode($f3));
+		list($c, $b) = http('POST', "$base/ajax/ingreso.php?op=guardaryeditar", array('idproveedor' => $prov['idpersona'], 'tipo_comprobante' => 'Factura', 'serie_comprobante' => 'F001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => '0.18', 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE IGV', 'idarticulo' => array($a), 'cantidad' => array(1), 'precio_compra' => array(1), 'precio_venta' => array(0)));
+		$r = json_decode($b, true);
+		if ($r && !empty($r['ok'])) { $ids['ingreso'][] = (int)$r['idingreso']; }
+		check('compra con IGV 0.18 se rechaza (va en porcentaje)', $r && empty($r['ok']) && stripos($b, 'porcentaje') !== false, $b);
+
+		list($c, $b) = http('GET', "$base/reportes/exTicket.php?prueba=1");
+		check('ticket de prueba', $c === 200 && sinErroresPhp($b) && strpos($b, 'TICKET DE PRUEBA') !== false, substr(strip_tags($b), 0, 120));
+		list($c, $b) = http('GET', "$base/ajax/venta.php?op=catalogoPos");
+		$r = json_decode($b, true);
+		check('catálogo del POS con artículos y ajustes del ticket', $r && !empty($r['ok']) && count($r['items']) > 0 && isset($r['ticket']['ancho']), substr($b, 0, 120));
+
+		$codigoArt = (string)dbValue("SELECT codigo FROM articulo WHERE idarticulo=?", array($a), '');
+		if ($codigoArt !== '') {
+			list($c, $b) = http('GET', "$base/ajax/ingreso.php?op=buscarArticulos&q=" . urlencode($codigoArt));
+			$r = json_decode($b, true);
+			check('buscador de compras: el código exacto sale primero', $r && !empty($r['items']) && (int)$r['items'][0]['idarticulo'] === $a && !empty($r['items'][0]['exacto']), substr($b, 0, 160));
+		}
+		$compraPos = array('idproveedor' => $prov['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'observacion' => 'SMOKE DEP', 'idarticulo' => array($a), 'cantidad' => array(1), 'precio_compra' => array(1), 'precio_venta' => array(0));
+		list($c, $b) = http('POST', "$base/ajax/ingreso.php?op=guardaryeditar", array_merge($compraPos, array('medio_pago' => 'DEPOSITO', 'cuenta_pago' => 'BCP 191-SMOKE', 'num_operacion' => 'DEP-SMOKE-9')));
+		$r = json_decode($b, true);
+		$iDep = $r && !empty($r['ok']) ? (int)$r['idingreso'] : 0;
+		if ($iDep > 0) { $ids['ingreso'][] = $iDep; }
+		$fila = sql("SELECT medio_pago, cuenta_pago, num_operacion FROM ingreso WHERE idingreso=?", array($iDep));
+		check('compra por depósito guarda cuenta y operación', $fila && $fila['medio_pago'] === 'DEPOSITO' && $fila['cuenta_pago'] === 'BCP 191-SMOKE' && $fila['num_operacion'] === 'DEP-SMOKE-9', $b);
+		list($c, $b) = http('POST', "$base/ajax/ingreso.php?op=guardaryeditar", array_merge($compraPos, array('medio_pago' => 'EFECTIVO', 'cuenta_pago' => 'NO', 'num_operacion' => 'NO')));
+		$r = json_decode($b, true);
+		$iEf = $r && !empty($r['ok']) ? (int)$r['idingreso'] : 0;
+		if ($iEf > 0) { $ids['ingreso'][] = $iEf; }
+		$fila = sql("SELECT cuenta_pago, num_operacion FROM ingreso WHERE idingreso=?", array($iEf));
+		check('compra en efectivo no guarda cuenta ni operación', $iEf > 0 && $fila && $fila['cuenta_pago'] === null && $fila['num_operacion'] === null, $b);
+
+		echo "== Rol vendedor (segunda sesión)\n";
+		$loginV = 'qa_vend_' . substr(bin2hex(random_bytes(3)), 0, 5);
+		$claveV = 'Vende' . mt_rand(1000, 9999) . 'x';
+		$idVend = dbInsert("INSERT INTO usuario(nombre,tipo_documento,num_documento,direccion,telefono,email,cargo,login,clave,imagen,condicion) VALUES('QA Vendedor','DNI','','','','','Vendedor',?,?,'',1)", array($loginV, password_hash($claveV, PASSWORD_BCRYPT)));
+		$mapaP = array('ventas' => 4, 'caja' => 14);   // ids fijos (mapaPermisos)
+		foreach (array('ventas', 'caja') as $p) { dbExec("INSERT INTO usuario_permiso(idusuario,idpermiso) VALUES(?,?)", array($idVend, $mapaP[$p])); }
+		$ids['vendedor'] = array($idVend, $loginV);
+		$jarAdmin = $jar; $csrfAdmin = $csrf;
+		$jar = tempnam(sys_get_temp_dir(), 'mtjarv'); $csrf = '';
+		list($c, $b) = http('GET', "$base/vistas/login.php");
+		preg_match('/id="csrf" value="([a-f0-9]+)"/', $b, $m); $csrf = isset($m[1]) ? $m[1] : '';
+		list($c, $b) = http('POST', "$base/ajax/usuario.php?op=verificar", array('logina' => $loginV, 'clavea' => $claveV));
+		$r = json_decode($b, true);
+		check('vendedor entra directo al punto de venta', $r && !empty($r['ok']) && $r['redirect'] === 'venta.php?nuevo=1', $b);
+		list($c, $b) = http('GET', "$base/vistas/venta.php");
+		preg_match('/appCsrfToken = "([a-f0-9]+)"/', $b, $m); $csrf = isset($m[1]) ? $m[1] : $csrf;
+		check('menú del vendedor sin compras, almacén ni configuración', $c === 200 && strpos($b, 'ingreso.php') === false && strpos($b, 'articulo.php') === false && strpos($b, 'usuario.php"') === false && strpos($b, 'empresa.php') === false && strpos($b, 'cuentas.php') === false, 'menu');
+		list($c, $b) = http('GET', "$base/vistas/escritorio.php");
+		check('escritorio lo redirige a su inicio', $c === 302, "code=$c");
+		list($c, $b) = http('GET', "$base/vistas/ingreso.php");
+		check('vista de compras bloqueada', strpos($b, 'Sin acceso a este módulo') !== false, substr(strip_tags($b), 0, 80));
+		foreach (array(array('GET', 'ingreso.php?op=listar'), array('GET', 'usuario.php?op=listar'), array('POST', 'empresa.php?op=guardaryeditar'), array('POST', 'articulo.php?op=guardaryeditar'), array('GET', 'backup.php?op=listar'), array('GET', 'consultas.php?op=utilidadperiodo'), array('GET', 'cuentas.php?op=listarCobrar')) as $ep) {
+			list($c, $b) = http($ep[0], "$base/ajax/" . $ep[1], $ep[0] === 'POST' ? array('x' => 1) : null);
+			check('vendedor sin acceso a ' . $ep[1], $c === 403 || stripos($b, 'permiso') !== false, "code=$c " . substr($b, 0, 80));
+		}
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=infoArticulo", array('idarticulo' => $a));
+		$fichaV = json_decode($b, true);
+		$pLista = round((float)$fichaV['precio_venta'], 2);
+		foreach ((array)$fichaV['escalas'] as $es) { if (1 + 0.0005 >= $es['cantidad_minima']) { $pLista = round((float)$es['precio'], 2); } }
+		$esperado = round(50 + $pLista, 2);
+		$ventaVend = array('idcliente' => $cli['idpersona'], 'tipo_comprobante' => 'Boleta', 'serie_comprobante' => 'B001', 'fecha_hora' => date('Y-m-d\TH:i'), 'impuesto' => 0, 'tipo_pago' => 'CONTADO', 'medio_pago' => 'EFECTIVO', 'observacion' => 'SMOKE VEND', 'idarticulo' => array($a), 'cantidad' => array(1), 'precio_venta' => array($pLista), 'descuento' => array(0));
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", $ventaVend);
+		$r = json_decode($b, true);
+		check('sin caja abierta no puede vender', $r && empty($r['ok']) && !empty($r['caja_cerrada']), $b);
+		list($c, $b) = http('POST', "$base/ajax/caja.php?op=abrir", array('monto_apertura' => 50));
+		check('vendedor abre su caja', strpos($b, 'correctamente') !== false, $b);
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array_merge($ventaVend, array('precio_venta' => array($pLista + 1))));
+		check('sin permiso de precios no puede cambiar el precio', stripos($b, 'No puedes cambiar el precio') !== false, $b);
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array_merge($ventaVend, array('descuento' => array(0.5))));
+		check('sin permiso de precios no puede poner descuento', stripos($b, 'no puede aplicar descuentos') !== false, $b);
+		list($c, $b) = http('POST', "$base/ajax/cotizacion.php?op=guardar", array('idcliente' => $cli['idpersona'], 'idarticulo' => array($a), 'cantidad' => array(1), 'precio' => array($pLista + 1), 'descuento' => array(0)));
+		check('tampoco puede cotizar con otro precio', stripos($b, 'No puedes cambiar el precio') !== false, $b);
+		$idsVend = array();
+		foreach (array('EFECTIVO', 'YAPE') as $medio) {
+			list($c, $b) = http('POST', "$base/ajax/venta.php?op=guardaryeditar", array_merge($ventaVend, array('medio_pago' => $medio)));
+			$r = json_decode($b, true);
+			if ($r && !empty($r['ok'])) { $ids['venta'][] = (int)$r['idventa']; $idsVend[] = (int)$r['idventa']; }
+		}
+		check('vendedor vende en efectivo y con Yape', count($idsVend) === 2, $b);
+		list($c, $b) = http('GET', "$base/ajax/caja.php?op=estado");
+		$r = json_decode($b, true);
+		check('arqueo ciego: el vendedor no recibe efectivo esperado ni totales', $r && !empty($r['arqueo_ciego']) && !isset($r['sistema']) && !isset($r['ingresos']) && !isset($r['medios']), $b);
+		list($c, $b) = http('GET', "$base/ajax/venta.php?op=listar");
+		$r = json_decode($b, true);
+		check('listado muestra solo sus 2 ventas', $r && (int)$r['iTotalRecords'] === 2, substr($b, 0, 120));
+		check('su botón de anular pide la clave de un encargado', $r && strpos($b, 'pide la clave de un encargado') !== false, 'botones');
+		list($c, $b) = http('GET', "$base/ajax/venta.php?op=resumenDia");
+		$r = json_decode($b, true);
+		check('resumen del día solo con sus ventas', $r && (int)$r['comprobantes'] === 2, $b);
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=mostrar", array('idventa' => $v2));
+		check('no ve el detalle de una venta ajena', $c === 403, "code=$c");
+		list($c, $b) = http('GET', "$base/reportes/exTicket.php?id=$v2");
+		check('no imprime el ticket de una venta ajena', strpos($b, 'propias ventas') !== false, substr(strip_tags($b), 0, 80));
+		list($c, $b) = http('GET', "$base/reportes/exTicket.php?id=" . $idsVend[0]);
+		check('sí imprime el ticket de su venta', $c === 200 && strpos($b, 'class="ticket"') !== false, substr(strip_tags($b), 0, 80));
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=anular", array('idventa' => $idsVend[0]));
+		check('anular sin permiso exige motivo', stripos($b, 'motivo') !== false, $b);
+		$anulaYape = array('idventa' => $idsVend[1], 'motivo' => 'Cliente devolvio (SMOKE)');
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=anular", $anulaYape);
+		check('y la autorización de un encargado', stripos($b, 'clave de un encargado') !== false, $b);
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=anular", array_merge($anulaYape, array('autoriza_login' => $login, 'autoriza_clave' => 'mala' . $clave)));
+		check('clave de encargado errada se rechaza', stripos($b, 'incorrectos') !== false, $b);
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=anular", array_merge($anulaYape, array('autoriza_login' => $loginV, 'autoriza_clave' => $claveV)));
+		check('un vendedor no puede autorizarse a sí mismo', stripos($b, 'no tiene permiso para autorizar') !== false, $b);
+		list($c, $b) = http('POST', "$base/ajax/venta.php?op=anular", array_merge($anulaYape, array('autoriza_login' => $login, 'autoriza_clave' => $clave)));
+		$aud = sql("SELECT detalle FROM auditoria WHERE idusuario=? AND accion='anular' ORDER BY idauditoria DESC LIMIT 1", array($idVend));
+		check('con la clave del encargado se anula y queda en auditoría', stripos($b, 'anulada') !== false && $aud && strpos($aud['detalle'], 'autorización de ' . $login) !== false && strpos($aud['detalle'], 'motivo') !== false, $b . json_encode($aud));
+		list($c, $b) = http('POST', "$base/ajax/caja.php?op=cerrar", array('monto_cierre_real' => number_format($esperado, 2, '.', '')));
+		$cv = sql("SELECT monto_cierre_sistema, diferencia FROM caja_diaria WHERE idusuario=? ORDER BY idcaja DESC LIMIT 1", array($idVend));
+		check('arqueo ciego: al cerrar no le muestra el cuadre', strpos($b, 'administrador revisa') !== false && strpos($b, number_format($esperado, 2)) === false, $b);
+		check('cierre: esperado = 50 + venta en efectivo (Yape anulado no cuenta) y cuadra', $cv && abs((float)$cv['monto_cierre_sistema'] - $esperado) < 0.001 && abs((float)$cv['diferencia']) < 0.001, $b . json_encode($cv));
+		dbExec("DELETE FROM usuario_permiso WHERE idusuario=? AND idpermiso=?", array($idVend, $mapaP['ventas']));
+		list($c, $b) = http('GET', "$base/ajax/venta.php?op=listar");
+		check('quitar el permiso de ventas surte efecto sin cerrar sesión', $c === 403, "code=$c");
+		dbExec("UPDATE usuario SET condicion=0 WHERE idusuario=?", array($idVend));
+		list($c, $b) = http('GET', "$base/ajax/caja.php?op=estado");
+		check('usuario desactivado queda fuera de inmediato', $c === 401, "code=$c");
+		@unlink($jar);
+		$jar = $jarAdmin; $csrf = $csrfAdmin;
+
 		echo "== Reportes\n";
 		list($c, $b) = http('GET', "$base/reportes/exFactura.php?id=$v2");
 		check('PDF factura', $c === 200 && substr($b, 0, 4) === '%PDF', substr($b, 0, 80));
 		list($c, $b) = http('GET', "$base/reportes/exTicket.php?id=" . $ids['venta'][0]);
-		check('ticket HTML', $c === 200 && sinErroresPhp($b) && strpos($b, 'ticket-shell') !== false, substr($b, 0, 80));
+		check('ticket HTML', $c === 200 && sinErroresPhp($b) && strpos($b, 'class="ticket"') !== false, substr($b, 0, 80));
 		list($c, $b) = http('GET', "$base/reportes/exIngreso.php?id=$i1");
 		check('PDF compra', $c === 200 && substr($b, 0, 4) === '%PDF', substr($b, 0, 80));
 		list($c, $b) = http('GET', "$base/reportes/rptarticulos.php");
@@ -609,6 +762,15 @@ try {
 			dbExec("DELETE FROM ingreso WHERE idingreso=?", array($i));
 		}
 		dbExec("UPDATE articulo SET stock=?, precio_compra=?, precio_venta=? WHERE idarticulo=?", array((float)$art['stock'], (float)$art['precio_compra'], (float)$art['precio_venta'], (int)$art['idarticulo']));
+	}
+	if (!empty($ids['vendedor'])) {
+		list($idV, $loginVend) = $ids['vendedor'];
+		dbExec("DELETE FROM caja_movimiento WHERE idcaja IN (SELECT idcaja FROM caja_diaria WHERE idusuario=?)", array($idV));
+		dbExec("DELETE FROM caja_diaria WHERE idusuario=?", array($idV));
+		dbExec("DELETE FROM auditoria WHERE idusuario=?", array($idV));
+		dbExec("DELETE FROM intento_login WHERE login=?", array($loginVend));
+		dbExec("DELETE FROM usuario_permiso WHERE idusuario=?", array($idV));
+		dbExec("DELETE FROM usuario WHERE idusuario=?", array($idV));
 	}
 	dbExec("DELETE FROM ajuste_inventario WHERE idusuario=?", array($idqa));
 	dbExec("DELETE FROM caja_movimiento WHERE idcaja IN (SELECT idcaja FROM caja_diaria WHERE idusuario=?)", array($idqa));

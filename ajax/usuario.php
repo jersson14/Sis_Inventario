@@ -65,7 +65,7 @@ if ($op === 'verificar') {
 	responderJson(array(
 		'ok' => true,
 		'nombre' => $fila['nombre'],
-		'redirect' => 'escritorio.php',
+		'redirect' => paginaInicioUsuario(),
 		'csrf' => csrfToken()
 	));
 }
@@ -369,10 +369,15 @@ switch ($op) {
 		$valores = ($id > 0) ? $usuario->idsPermisos($id) : array();
 		$disabled = $esAdmin ? '' : ' disabled';
 
+		// Cada permiso con lo que habilita, para asignarlos sabiendo que se da
+		$clavePorId = array_flip(mapaPermisos());
+		$descripciones = descripcionesPermisos();
 		if ($rspta instanceof mysqli_result) {
 			while ($reg = $rspta->fetch_object()) {
-				$sw = in_array((int)$reg->idpermiso, $valores, true) ? 'checked' : '';
-				echo '<li><input type="checkbox" ' . $sw . $disabled . ' name="permiso[]" value="' . (int)$reg->idpermiso . '">' . e($reg->nombre) . '</li>';
+				$idp = (int)$reg->idpermiso;
+				$sw = in_array($idp, $valores, true) ? 'checked' : '';
+				$desc = isset($clavePorId[$idp], $descripciones[$clavePorId[$idp]]) ? $descripciones[$clavePorId[$idp]] : '';
+				echo '<li><label><input type="checkbox" ' . $sw . $disabled . ' name="permiso[]" value="' . $idp . '"><span><strong>' . e($reg->nombre) . '</strong>' . ($desc !== '' ? '<small>' . e($desc) . '</small>' : '') . '</span></label></li>';
 			}
 		}
 		break;

@@ -21,6 +21,13 @@ if (usuarioTienePermiso('compras')) {
       </div>
     </div>
 
+    <div class="alert-borrador" id="avisoBorradorListado" style="display:none">
+      <i class="fa fa-pencil-square-o"></i>
+      <span>Tienes una compra sin terminar <strong id="avisoBorradorResumen"></strong>.</span>
+      <button type="button" class="btn btn-primary btn-sm" onclick="mostrarform(true)"><i class="fa fa-play"></i> Continuar</button>
+      <button type="button" class="btn btn-default btn-sm" onclick="descartarBorrador()"><i class="fa fa-trash"></i> Descartar</button>
+    </div>
+
     <div class="box" id="listadoregistros">
       <div class="box-body">
         <div class="table-toolbar">
@@ -46,58 +53,82 @@ if (usuarioTienePermiso('compras')) {
       </div>
     </div>
 
-    <div id="formularioregistros">
+    <!-- FORMULARIO DE COMPRA (pantalla completa) -->
+    <div id="formularioregistros" class="caja-pantalla">
       <form action="" name="formulario" id="formulario" method="POST" autocomplete="off">
         <input type="hidden" name="idingreso" id="idingreso">
+
+        <div class="caja-topbar">
+          <div class="caja-topbar-titulo"><span class="page-icon"><i class="fa fa-cart-arrow-down"></i></span> Nueva compra</div>
+          <div class="caja-autoguardado" id="estadoBorrador" title="La compra se guarda sola en esta PC mientras la registras"><i class="fa fa-cloud"></i> <span>Autoguardado activo</span></div>
+          <div class="caja-topbar-acciones">
+            <button type="button" class="btn btn-default btn-sm btn-pantalla-completa" onclick="appAlternarPantallaCompleta()" title="Pantalla completa (F11)"><i class="fa fa-expand"></i></button>
+            <button type="button" class="btn btn-default btn-sm" onclick="cancelarform()" title="Volver al listado (Esc)"><i class="fa fa-arrow-left"></i> Listado</button>
+          </div>
+        </div>
+
         <div class="pos-layout">
           <div class="pos-main">
-            <div class="box">
-              <div class="box-header with-border">
-                <h3 class="box-title"><i class="fa fa-cart-arrow-down"></i> Nueva compra</h3>
-                <div class="box-tools"><button class="btn btn-default btn-sm" onclick="cancelarform()" type="button"><i class="fa fa-arrow-left"></i> Volver al listado</button></div>
-              </div>
+            <div class="box caja-doc">
               <div class="box-body">
-                <div class="row">
-                  <div class="form-group col-lg-7 col-md-7 col-xs-12">
+                <div class="caja-doc-grid">
+                  <div class="form-group campo-proveedor">
                     <label for="idproveedor">Proveedor <span class="req">*</span></label>
                     <div style="display:flex;gap:6px;">
                       <select name="idproveedor" id="idproveedor" class="form-control selectpicker" data-live-search="true" data-width="100%" data-size="8" required></select>
                       <button type="button" class="btn btn-default" id="btnNuevoProveedor" data-toggle="modal" data-target="#modalProveedorIngreso" title="Registrar proveedor rápido" style="flex:0 0 auto;"><i class="fa fa-plus"></i></button>
                     </div>
                   </div>
-                  <div class="form-group col-lg-5 col-md-5 col-xs-12">
-                    <label for="fecha_hora">Fecha y hora <span class="req">*</span></label>
-                    <input class="form-control" type="datetime-local" name="fecha_hora" id="fecha_hora" required>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="form-group col-lg-3 col-md-3 col-sm-6 col-xs-12">
-                    <label for="tipo_comprobante">Comprobante del proveedor</label>
+                  <div class="form-group">
+                    <label for="tipo_comprobante">Comprobante</label>
                     <select name="tipo_comprobante" id="tipo_comprobante" class="form-control"><option value="Boleta">Boleta</option><option value="Factura">Factura</option><option value="Ticket">Ticket / Guía</option></select>
                   </div>
-                  <div class="form-group col-lg-2 col-md-2 col-sm-3 col-xs-6"><label for="serie_comprobante">Serie</label><input class="form-control" type="text" name="serie_comprobante" id="serie_comprobante" maxlength="7" placeholder="F001"></div>
-                  <div class="form-group col-lg-3 col-md-3 col-sm-3 col-xs-6"><label for="num_comprobante">Número</label><input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Del comprobante"></div>
-                  <div class="form-group col-lg-2 col-md-2 col-sm-6 col-xs-6"><label for="impuesto">Impuesto %</label><input class="form-control" type="number" step="0.01" min="0" max="100" name="impuesto" id="impuesto" value="0"></div>
-                  <div class="form-group col-lg-2 col-md-2 col-sm-6 col-xs-6"><label>&nbsp;</label><button id="btnAgregarArt" type="button" class="btn btn-catalog-open w-100" data-toggle="modal" data-target="#myModal" title="Abrir catálogo (F2)"><i class="fa fa-th-large"></i> Catálogo</button></div>
-                </div>
-                <div class="table-responsive">
-                  <table id="detalles" class="table table-bordered table-hover">
-                    <thead><tr><th style="width:52px"></th><th class="col-articulo">Artículo</th><th style="width:70px">Unidad</th><th style="width:104px">Cantidad</th><th style="width:112px">P. Compra</th><th style="width:112px">P. Venta</th><th style="width:124px" class="text-right">Subtotal</th></tr></thead>
-                    <tbody></tbody>
-                    <tfoot><tr><th colspan="6" class="text-right">TOTAL</th><th class="text-right"><h4 id="total" class="mb-0"><?php echo e(formatearMoneda(0)); ?></h4><input type="hidden" name="total_compra" id="total_compra"></th></tr></tfoot>
-                  </table>
-                  <div class="empty-state" id="detalleVacio"><i class="fa fa-cubes"></i><strong>Aún no hay artículos</strong>Abre el catálogo (F2) y agrega los productos que ingresan.</div>
+                  <div class="form-group"><label for="serie_comprobante">Serie</label><input class="form-control" type="text" name="serie_comprobante" id="serie_comprobante" maxlength="7" placeholder="F001"></div>
+                  <div class="form-group"><label for="num_comprobante">Número</label><input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Del comprobante"></div>
+                  <div class="form-group campo-fecha"><label for="fecha_hora">Fecha y hora <span class="req">*</span></label><input class="form-control" type="datetime-local" name="fecha_hora" id="fecha_hora" required></div>
+                  <div class="form-group campo-impuesto"><label for="impuesto">Impuesto %</label><input class="form-control" type="number" step="0.01" min="0" max="100" name="impuesto" id="impuesto" value="0"></div>
                 </div>
               </div>
             </div>
+
+            <div class="box caja-detalle">
+              <div class="box-body">
+                <div class="buscador-articulos">
+                  <div class="buscador-input">
+                    <i class="fa fa-search"></i>
+                    <input type="text" class="form-control input-lg" id="buscarArticulo" placeholder="Escanea el código o escribe el nombre del producto…" autocomplete="off" aria-label="Buscar artículo" aria-autocomplete="list" aria-controls="buscadorResultados">
+                    <kbd>F3</kbd>
+                  </div>
+                  <button id="btnAgregarArt" type="button" class="btn btn-catalog-open btn-lg" data-toggle="modal" data-target="#myModal" title="Abrir catálogo (F2)"><i class="fa fa-th-large"></i> Catálogo</button>
+                  <ul class="buscador-resultados" id="buscadorResultados" role="listbox"></ul>
+                </div>
+
+                <div class="alert-borrador alert-borrador-sm" id="avisoBorradorForm" style="display:none">
+                  <i class="fa fa-history"></i> <span id="avisoBorradorFormTexto"></span>
+                  <button type="button" class="btn btn-link btn-xs" onclick="descartarBorrador(true)">Empezar de cero</button>
+                </div>
+
+                <div class="detalle-scroll">
+                  <table id="detalles" class="table table-hover tabla-detalle-grande">
+                    <thead><tr><th style="width:40px">#</th><th class="col-articulo">Artículo</th><th style="width:90px">Unidad</th><th style="width:120px">Cantidad</th><th style="width:130px">P. compra</th><th style="width:130px">P. venta</th><th style="width:130px" class="text-right">Subtotal</th><th style="width:44px"></th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                  <div class="empty-state" id="detalleVacio"><i class="fa fa-barcode"></i><strong>Aún no hay artículos</strong>Escanea o escribe arriba (F3), o abre el catálogo (F2). Con <kbd>Enter</kbd> pasas de cantidad a precio y vuelves al buscador.</div>
+                </div>
+                <input type="hidden" name="total_compra" id="total_compra">
+              </div>
+            </div>
           </div>
+
           <aside class="pos-side">
             <div class="pos-summary">
-              <div class="pos-summary-title">Resumen de la compra</div>
+              <div class="pos-summary-title">Total de la compra</div>
               <div class="pos-total" id="posTotal"><?php echo e(formatearMoneda(0)); ?></div>
               <div class="pos-row"><span>Artículos</span><span id="comprasItemsSeleccionados">0</span></div>
               <div class="pos-row"><span>Unidades</span><span id="posUnidades">0</span></div>
-              <div style="margin-top:14px">
+              <div class="pos-row" id="filaImpuesto" style="display:none"><span>Incluye impuesto</span><span id="posImpuesto">0.00</span></div>
+
+              <div class="pos-bloque">
                 <div class="pos-summary-title">Forma de pago</div>
                 <div class="pago-toggle">
                   <button type="button" class="btn btn-default btn-sm active" data-pago="CONTADO"><i class="fa fa-money"></i> Contado</button>
@@ -105,22 +136,41 @@ if (usuarioTienePermiso('compras')) {
                 </div>
                 <input type="hidden" name="tipo_pago" id="tipo_pago" value="CONTADO">
               </div>
-              <div style="margin-top:10px">
-                <label style="color:#cbd5e1;font-size:12px">Medio de pago</label>
-                <select name="medio_pago" id="medio_pago" class="form-control input-sm"><option value="EFECTIVO">Efectivo</option><option value="TARJETA">Tarjeta</option><option value="TRANSFERENCIA">Transferencia</option><option value="YAPE">Yape</option><option value="PLIN">Plin</option><option value="OTRO">Otro</option></select>
+
+              <div class="pos-bloque" id="grupoMedioPago">
+                <div class="pos-summary-title">¿Cómo pagaste?</div>
+                <div class="medio-grid" data-target="#medio_pago">
+                  <button type="button" class="active" data-medio="EFECTIVO"><i class="fa fa-money"></i>Efectivo</button>
+                  <button type="button" data-medio="DEPOSITO"><i class="fa fa-university"></i>Depósito</button>
+                  <button type="button" data-medio="TRANSFERENCIA"><i class="fa fa-exchange"></i>Transferencia</button>
+                  <button type="button" data-medio="YAPE"><i class="fa fa-mobile"></i>Yape</button>
+                  <button type="button" data-medio="PLIN"><i class="fa fa-mobile"></i>Plin</button>
+                  <button type="button" data-medio="TARJETA"><i class="fa fa-credit-card"></i>Tarjeta</button>
+                </div>
+                <input type="hidden" name="medio_pago" id="medio_pago" value="EFECTIVO">
+                <div id="grupoCuentaPago" style="display:none">
+                  <label for="cuenta_pago">Cuenta o banco del proveedor</label>
+                  <input type="text" name="cuenta_pago" id="cuenta_pago" class="form-control input-sm" maxlength="80" placeholder="Ej.: BCP 191-1234567-0-12">
+                  <label for="num_operacion">N° de operación</label>
+                  <input type="text" name="num_operacion" id="num_operacion" class="form-control input-sm" maxlength="40" placeholder="Del voucher o la app">
+                </div>
+                <small class="pos-ayuda" id="ayudaCaja">Con caja abierta, el pago se registra como egreso de tu caja.</small>
               </div>
-              <div style="margin-top:10px;display:none" id="grupoVencimiento">
-                <label style="color:#cbd5e1;font-size:12px">Vencimiento del crédito</label>
+
+              <div class="pos-bloque" id="grupoVencimiento" style="display:none">
+                <label for="fecha_vencimiento">Vencimiento del crédito</label>
                 <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control input-sm">
-                <small style="color:#94a3b8">Se creará una cuenta por pagar automáticamente.</small>
+                <small class="pos-ayuda">Se creará una cuenta por pagar automáticamente.</small>
               </div>
-              <div style="margin-top:10px">
-                <label style="color:#cbd5e1;font-size:12px">Observación</label>
+
+              <div class="pos-bloque">
+                <label for="observacion">Observación</label>
                 <input type="text" name="observacion" id="observacion" class="form-control input-sm" maxlength="200" placeholder="Opcional">
               </div>
+
               <button class="btn btn-success btn-lg" type="submit" id="btnGuardar"><i class="fa fa-check"></i> Registrar compra <small>(F4)</small></button>
               <button class="btn btn-default" onclick="cancelarform()" type="button" id="btnCancelar"><i class="fa fa-times"></i> Cancelar</button>
-              <div class="pos-shortcuts"><kbd>F2</kbd> catálogo &nbsp; <kbd>F4</kbd> guardar &nbsp; <kbd>Esc</kbd> cancelar</div>
+              <div class="pos-shortcuts"><kbd>F3</kbd> buscar &nbsp; <kbd>F2</kbd> catálogo &nbsp; <kbd>F4</kbd> guardar &nbsp; <kbd>Esc</kbd> salir</div>
             </div>
           </aside>
         </div>
@@ -205,4 +255,5 @@ if (usuarioTienePermiso('compras')) {
 }
 require 'footer.php';
 ?>
+<script src="../public/js/app-pos.js?v=<?php echo e(APP_VERSION); ?>"></script>
 <script src="scripts/ingreso.js?v=<?php echo e(APP_VERSION); ?>"></script>

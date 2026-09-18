@@ -15,6 +15,7 @@
  */
 require_once __DIR__ . "/Conexion.php";
 require_once __DIR__ . "/negocio.php";   // perfil de negocio: perfilNegocio(), negocioTiene()
+require_once __DIR__ . "/marca.php";     // logo, nombre y colores de la empresa
 
 if (!function_exists('iniciarSesionSegura')) {
 
@@ -36,7 +37,144 @@ if (!function_exists('iniciarSesionSegura')) {
 			'reportes'   => 13,
 			'caja'       => 14,
 			'inventario' => 15,
+			'anular'     => 16,
+			'precios'    => 17,
 		);
+	}
+
+	/** Que habilita cada permiso (se muestra al asignarlos en Usuarios). */
+	function descripcionesPermisos() {
+		return array(
+			'escritorio' => 'Ver el escritorio con ventas, utilidad y alertas del negocio.',
+			'almacen'    => 'Crear y editar artículos, categorías, unidades, etiquetas e importar artículos.',
+			'compras'    => 'Registrar compras y proveedores.',
+			'ventas'     => 'Usar el punto de venta, cotizaciones y clientes. Sin "Consulta ventas" solo ve sus propias ventas.',
+			'acceso'     => 'Administrador: todo el sistema, usuarios, permisos, eliminar documentos y ver todas las cajas.',
+			'consultac'  => 'Ver todas las compras y los reportes de compras.',
+			'consultav'  => 'Ver las ventas de todos los vendedores y los reportes de ventas.',
+			'gestion'    => 'Sin uso por ahora (reservado).',
+			'empresa'    => 'Cambiar datos de la empresa, logo, colores, series y ticket.',
+			'procenter'  => 'Ver kardex y alertas de stock.',
+			'cuentas'    => 'Cuentas por cobrar y por pagar: registrar abonos y pagos.',
+			'backup'     => 'Crear y descargar copias de seguridad.',
+			'reportes'   => 'Centro de reportes (ventas, compras, utilidad, inventario).',
+			'caja'       => 'Abrir, registrar movimientos y cerrar su propia caja.',
+			'inventario' => 'Ajustes de inventario (entradas y salidas) y vencimientos.',
+			'anular'     => 'Anular ventas y compras (el stock se revierte). Recomendado solo para encargados.',
+			'precios'    => 'Cambiar el precio y poner descuentos en ventas y cotizaciones. Sin este permiso se vende al precio de lista.',
+		);
+	}
+
+	/**
+	 * Plantillas de rol para el formulario de usuarios: marcan los permisos
+	 * tipicos de cada puesto. Luego se pueden ajustar uno por uno.
+	 */
+	function plantillasRol() {
+		return array(
+			'vendedor' => array(
+				'nombre' => 'Vendedor / cajero',
+				'cargo' => 'Vendedor',
+				'icono' => 'fa-shopping-cart',
+				'descripcion' => 'Solo punto de venta y su propia caja. Ve únicamente sus ventas; vende a precio de lista; anula solo con clave de un encargado.',
+				'permisos' => array('ventas', 'caja'),
+			),
+			'supervisor' => array(
+				'nombre' => 'Encargado de tienda',
+				'cargo' => 'Encargado',
+				'icono' => 'fa-user-circle',
+				'descripcion' => 'Vende, compra, ajusta stock, cambia precios, anula y autoriza anulaciones; ve todas las ventas, cuentas y reportes. No administra usuarios.',
+				'permisos' => array('escritorio', 'almacen', 'compras', 'ventas', 'consultac', 'consultav', 'procenter', 'cuentas', 'reportes', 'caja', 'inventario', 'anular', 'precios'),
+			),
+			'almacenero' => array(
+				'nombre' => 'Almacenero',
+				'cargo' => 'Almacenero',
+				'icono' => 'fa-cubes',
+				'descripcion' => 'Artículos, ajustes de inventario, vencimientos y kardex.',
+				'permisos' => array('almacen', 'inventario', 'procenter'),
+			),
+			'compras' => array(
+				'nombre' => 'Compras',
+				'cargo' => 'Compras',
+				'icono' => 'fa-truck',
+				'descripcion' => 'Registra compras y proveedores, paga cuentas por pagar y ve reportes de compras.',
+				'permisos' => array('compras', 'consultac', 'cuentas'),
+			),
+			'admin' => array(
+				'nombre' => 'Administrador',
+				'cargo' => 'Administrador',
+				'icono' => 'fa-shield',
+				'descripcion' => 'Acceso total, incluidos usuarios, permisos, empresa y copias de seguridad.',
+				'permisos' => array_keys(mapaPermisos()),
+			),
+		);
+	}
+
+	/**
+	 * Primera pagina que puede abrir el usuario: el escritorio si lo tiene; si
+	 * no, la de su trabajo (un vendedor entra directo al punto de venta).
+	 * $prefijo es la ruta hasta vistas/ ('' desde vistas, 'vistas/' desde la raiz).
+	 */
+	function paginaInicioUsuario($prefijo = '') {
+		$orden = array(
+			'escritorio' => 'escritorio.php',
+			'ventas'     => 'venta.php?nuevo=1',
+			'compras'    => 'ingreso.php',
+			'almacen'    => 'articulo.php',
+			'inventario' => 'inventario.php',
+			'caja'       => 'caja.php',
+			'cuentas'    => 'cuentas.php',
+			'consultav'  => 'reportes.php',
+			'consultac'  => 'reportes.php',
+			'procenter'  => 'procenter.php',
+			'empresa'    => 'empresa.php',
+			'backup'     => 'backup.php',
+		);
+		foreach ($orden as $permiso => $pagina) {
+			if (usuarioTienePermiso($permiso)) {
+				return $prefijo . $pagina;
+			}
+		}
+		return $prefijo . 'usuario.php?perfil=1';
+	}
+
+	/**
+	 * Autorizacion de un encargado con su usuario y clave (ej. anular desde el
+	 * POS de un vendedor). El encargado debe estar activo y tener $permiso o ser
+	 * administrador. Los fallos cuentan como intentos de login: la cuenta se
+	 * bloquea igual que en la pantalla de acceso.
+	 * Devuelve array(ok, mensaje, array usuario|null).
+	 */
+	function autorizacionEncargado($login, $clave, $permiso) {
+		$login = substr(trim((string)$login), 0, 60);
+		$clave = (string)$clave;
+		if ($login === '' || $clave === '') {
+			return array(false, 'Se necesita el usuario y la clave de un encargado.', null);
+		}
+		if (segundosBloqueoLogin($login) > 0) {
+			return array(false, 'Ese usuario está bloqueado por intentos fallidos. Espera unos minutos.', null);
+		}
+		$fila = dbRow("SELECT idusuario, nombre, login, clave FROM usuario WHERE login=? AND condicion=1", array($login));
+		list($ok) = $fila ? verificarClave($clave, $fila['clave']) : array(false);
+		if (!$ok) {
+			registrarIntentoLogin($login, false);
+			return array(false, 'Usuario o clave del encargado incorrectos.', null);
+		}
+		$mapa = mapaPermisos();
+		$tiene = (int)dbValue(
+			"SELECT COUNT(*) FROM usuario_permiso WHERE idusuario=? AND idpermiso IN (?, ?)",
+			array((int)$fila['idusuario'], (int)$mapa[$permiso], (int)$mapa['acceso']),
+			0
+		);
+		if ($tiene === 0) {
+			return array(false, $fila['nombre'] . ' no tiene permiso para autorizar esta acción.', null);
+		}
+		unset($fila['clave']);
+		return array(true, '', $fila);
+	}
+
+	/** Ve las ventas de todos (encargado, admin) o solo las propias (vendedor). */
+	function puedeVerTodasLasVentas() {
+		return usuarioTienePermiso('acceso') || usuarioTienePermiso('consultav');
 	}
 
 	function esHttps() {
@@ -180,11 +318,50 @@ if (!function_exists('iniciarSesionSegura')) {
 	function requiereLogin($modoAjax = true) {
 		iniciarSesionSegura();
 		enviarCabecerasSeguridad();
+		refrescarSesionUsuario();
 		if (!usuarioAutenticado()) {
 			responderNoAutorizado(401, 'Tu sesion ha expirado. Vuelve a iniciar sesion.', $modoAjax);
 		}
 		verificarCsrf($modoAjax);
 		return true;
+	}
+
+	/**
+	 * Relee de la BD el estado y los permisos del usuario en cada peticion:
+	 * un permiso quitado o un usuario desactivado surte efecto de inmediato,
+	 * sin esperar a que cierre sesion.
+	 */
+	function refrescarSesionUsuario() {
+		if (!usuarioAutenticado()) {
+			return;
+		}
+		$fila = dbRow("SELECT condicion FROM usuario WHERE idusuario=?", array((int)$_SESSION['idusuario']));
+		if (!$fila || (int)$fila['condicion'] !== 1) {
+			cerrarSesionUsuario();
+			return;
+		}
+		$ids = array();
+		foreach (dbAll("SELECT idpermiso FROM usuario_permiso WHERE idusuario=?", array((int)$_SESSION['idusuario'])) as $p) {
+			$ids[] = (int)$p['idpermiso'];
+		}
+		aplicarPermisosSesion($ids);
+	}
+
+	/** Deja en sesion los permisos (y las claves antiguas $_SESSION['ventas']...). */
+	function aplicarPermisosSesion(array $idsPermisos) {
+		$_SESSION['permisos'] = array_values(array_unique(array_map('intval', $idsPermisos)));
+		foreach (mapaPermisos() as $clave => $id) {
+			$_SESSION[$clave] = in_array((int)$id, $_SESSION['permisos'], true) ? 1 : 0;
+		}
+		// Los administradores (acceso) tienen todo habilitado.
+		if ($_SESSION['acceso'] === 1) {
+			foreach (mapaPermisos() as $clave => $id) {
+				$_SESSION[$clave] = 1;
+				if (!in_array((int)$id, $_SESSION['permisos'], true)) {
+					$_SESSION['permisos'][] = (int)$id;
+				}
+			}
+		}
 	}
 
 	function usuarioTienePermiso($clave) {
@@ -228,22 +405,9 @@ if (!function_exists('iniciarSesionSegura')) {
 		$_SESSION['imagen']    = isset($usuario['imagen']) ? $usuario['imagen'] : '';
 		$_SESSION['login']     = $usuario['login'];
 		$_SESSION['cargo']     = isset($usuario['cargo']) ? $usuario['cargo'] : '';
-		$_SESSION['permisos']  = array_values(array_map('intval', $idsPermisos));
 		$_SESSION['creada_en'] = time();
 		$_SESSION['ultima_actividad'] = time();
-
-		foreach (mapaPermisos() as $clave => $id) {
-			$_SESSION[$clave] = in_array((int)$id, $_SESSION['permisos'], true) ? 1 : 0;
-		}
-		// Los administradores (acceso) tienen todo habilitado.
-		if ($_SESSION['acceso'] === 1) {
-			foreach (mapaPermisos() as $clave => $id) {
-				$_SESSION[$clave] = 1;
-				if (!in_array((int)$id, $_SESSION['permisos'], true)) {
-					$_SESSION['permisos'][] = (int)$id;
-				}
-			}
-		}
+		aplicarPermisosSesion($idsPermisos);
 		csrfToken();
 	}
 

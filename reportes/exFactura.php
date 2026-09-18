@@ -21,6 +21,13 @@ require_once "../modelos/Venta.php";
 require_once "../modelos/Empresa.php";
 require_once "Letras.php";
 
+// Un vendedor sin "Consulta ventas" solo imprime sus propias ventas
+if (!puedeVerTodasLasVentas() && !(new Venta())->esDelUsuario($idReporte, (int)$_SESSION['idusuario'])) {
+  echo "Solo puedes ver tus propias ventas";
+  ob_end_flush();
+  exit;
+}
+
 class PDFVenta extends FPDF
 {
   public $empresa = array();
@@ -325,19 +332,8 @@ function formatearFechaComprobante($fechaRaw) {
   return $fechaRaw;
 }
 
-$logo = "";
-if (!empty($empresa["logo"])) {
-  $logoEmpresa = realpath(__DIR__."/../files/empresa/".$empresa["logo"]);
-  if ($logoEmpresa && file_exists($logoEmpresa)) {
-    $logo = $logoEmpresa;
-  }
-}
-if ($logo === "") {
-  $logo = __DIR__."/logo1.jpeg";
-  if (!file_exists($logo)) {
-    $logo = __DIR__."/logo.png";
-  }
-}
+// Logo de la empresa (JPG/PNG; un WEBP se convierte). Sin logo, el PDF sale sin imagen.
+$logo = marcaRutaLogoPdf();
 
 $documento = array(
   "titulo" => $regv->tipo_comprobante." N° ".$regv->serie_comprobante."-".$regv->num_comprobante,

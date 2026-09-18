@@ -22,9 +22,25 @@ $observacion       = isset($_POST["observacion"]) ? limpiarCadena($_POST["observ
 
 $op = isset($_GET["op"]) ? (string)$_GET["op"] : "";
 
+// Un vendedor sin "Consulta ventas" solo ve y consulta sus propias ventas;
+// anular exige el permiso "Anular documentos" (el administrador lo tiene).
+$verTodasLasVentas = puedeVerTodasLasVentas();
+$idVendedorFiltro = $verTodasLasVentas ? 0 : $idusuario;
+$puedeAnular = usuarioTienePermiso('anular');
+$idConsulta = $idventa > 0 ? $idventa : enteroSeguro(isset($_GET['id']) ? $_GET['id'] : 0);
+if (in_array($op, array('mostrar', 'listarDetalle', 'anular'), true) && !$verTodasLasVentas && !$venta->esDelUsuario($idConsulta, $idusuario)) {
+	responderJson(array("ok"=>false, "message"=>"Solo puedes consultar tus propias ventas"), 403);
+}
+
 switch ($op) {
 	case 'guardaryeditar':
 		if ($idventa <= 0) {
+			// Sin administrador, se vende con la caja abierta: asi cada venta al contado
+			// entra al cierre de caja del vendedor.
+			if (!usuarioTienePermiso('acceso') && (int)dbValue("SELECT COUNT(*) FROM caja_diaria WHERE idusuario=? AND estado='ABIERTA'", array($idusuario), 0) === 0) {
+				echo json_encode(array("ok"=>false, "caja_cerrada"=>true, "message"=>"Abre tu caja antes de vender"), JSON_UNESCAPED_UNICODE);
+				break;
+			}
 			$arrIdArticulo  = (isset($_POST["idarticulo"]) && is_array($_POST["idarticulo"])) ? $_POST["idarticulo"] : array();
 			$arrCantidad    = (isset($_POST["cantidad"]) && is_array($_POST["cantidad"])) ? $_POST["cantidad"] : array();
 			$arrPrecioVenta = (isset($_POST["precio_venta"]) && is_array($_POST["precio_venta"])) ? $_POST["precio_venta"] : array();
@@ -32,10 +48,31 @@ switch ($op) {
 			$arrPresentacion = (isset($_POST["idpresentacion"]) && is_array($_POST["idpresentacion"])) ? $_POST["idpresentacion"] : array();
 			$arrVariante     = (isset($_POST["idvariante"]) && is_array($_POST["idvariante"])) ? $_POST["idvariante"] : array();
 
+			// Sin "Cambiar precios y descuentos": precio de lista y sin descuento,
+			// salvo lo ya aprobado en la cotizacion que se esta convirtiendo
+			if (!usuarioTienePermiso('precios')) {
+				require_once "../modelos/Articulo.php";
+				$idcotPrecios = enteroSeguro(isset($_POST["idcotizacion"]) ? $_POST["idcotizacion"] : 0);
+				$lineasAprobadas = array();
+				if ($idcotPrecios > 0) {
+					require_once "../modelos/Cotizacion.php";
+					$lineasAprobadas = (new Cotizacion())->lineasPrecio($idcotPrecios);
+				}
+				$msgPrecio = (new Articulo())->validarPreciosDeLista($arrIdArticulo, $arrPresentacion, $arrVariante, $arrCantidad, $arrPrecioVenta, $arrDescuento, $lineasAprobadas);
+				if ($msgPrecio !== '') {
+					echo json_encode(array("ok"=>false, "message"=>$msgPrecio), JSON_UNESCAPED_UNICODE);
+					break;
+				}
+			}
+
 			$rspta = $venta->insertar(
 				$idcliente, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
-				$arrIdArticulo, $arrCantidad, $arrPrecioVenta, $arrDescuento, $arrPresentacion, $arrVariante
+				$arrIdArticulo, $arrCantidad, $arrPrecioVenta, $arrDescuento, $arrPresentacion, $arrVariante,
+				array(
+					"num_operacion"=>isset($_POST["num_operacion"]) ? limpiarCadena($_POST["num_operacion"]) : "",
+					"monto_recibido"=>isset($_POST["monto_recibido"]) ? (string)$_POST["monto_recibido"] : ""
+				)
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('ventas', 'crear', "Venta " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));
@@ -80,9 +117,30 @@ switch ($op) {
 		break;
 
 	case 'anular':
+		// Sin el permiso "Anular documentos" se anula con usuario y clave de un
+		// encargado; queda en auditoria quien pidio, quien autorizo y por que.
+		$motivo = mb_substr(limpiarCadena(isset($_POST['motivo']) ? $_POST['motivo'] : ''), 0, 150, 'UTF-8');
+		$autorizo = null;
+		if (!$puedeAnular) {
+			if (mb_strlen($motivo, 'UTF-8') < 4) {
+				echo "Escribe el motivo de la anulación.";
+				break;
+			}
+			list($okAut, $msgAut, $autorizo) = autorizacionEncargado(
+				isset($_POST['autoriza_login']) ? $_POST['autoriza_login'] : '',
+				isset($_POST['autoriza_clave']) ? $_POST['autoriza_clave'] : '',
+				'anular'
+			);
+			if (!$okAut) {
+				echo $msgAut;
+				break;
+			}
+		}
 		$rspta = $venta->anular($idventa, $idusuario);
 		if (!empty($rspta["ok"])) {
-			registrarAuditoria('ventas', 'anular', "Venta id " . $idventa . " anulada");
+			registrarAuditoria('ventas', 'anular', "Venta id " . $idventa . " anulada"
+				. ($autorizo ? " con autorización de " . $autorizo['login'] : "")
+				. ($motivo !== '' ? " · motivo: " . $motivo : ""));
 		}
 		echo isset($rspta["message"]) ? $rspta["message"] : "No se pudo anular la venta";
 		break;
@@ -124,21 +182,21 @@ switch ($op) {
 		$fecha_fin    = fechaSegura(isset($_GET["fecha_fin"]) ? $_GET["fecha_fin"] : '', '');
 		$f_estado     = isset($_GET["estado"]) ? limpiarCadena($_GET["estado"]) : '';
 		$f_tipo_pago  = isset($_GET["tipo_pago"]) ? limpiarCadena($_GET["tipo_pago"]) : '';
-		$rspta = $venta->listarPorFecha($fecha_inicio, $fecha_fin, $f_estado, $f_tipo_pago);
+		$rspta = $venta->listarPorFecha($fecha_inicio, $fecha_fin, $f_estado, $f_tipo_pago, $idVendedorFiltro);
 		$data = array();
 		$puedeEliminar = usuarioTienePermiso('acceso');
 
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
 				$id = (int)$reg->idventa;
-				$url = ($reg->tipo_comprobante == 'Ticket') ? '../reportes/exTicket.php?id=' : '../reportes/exFactura.php?id=';
-
 				$botones = '<button class="btn btn-default btn-xs" type="button" title="Ver detalle" onclick="mostrar(' . $id . ')"><i class="fa fa-eye"></i></button> ';
 				if ($reg->estado == 'Aceptado') {
-					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="Anular venta" onclick="anular(' . $id . ')"><i class="fa fa-ban"></i></button> ';
+					// Sin permiso de anular, el boton pide la clave de un encargado
+					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="' . ($puedeAnular ? 'Anular venta' : 'Anular (pide la clave de un encargado)') . '" onclick="anular(' . $id . ')"><i class="fa fa-ban"></i></button> ';
 				}
-				$botones .= '<a class="btn btn-info btn-xs" target="_blank" href="' . $url . $id . '" title="Imprimir comprobante"><i class="fa fa-print"></i></a>';
-				if ($puedeEliminar) {
+				$botones .= '<button class="btn btn-default btn-xs" type="button" title="Imprimir ticket en la ticketera" onclick="appImprimirTicket(' . $id . ')"><i class="fa fa-print"></i></button> ';
+				$botones .= '<a class="btn btn-info btn-xs" target="_blank" href="../reportes/exFactura.php?id=' . $id . '" title="Comprobante en PDF A4"><i class="fa fa-file-pdf-o"></i></a>';
+				if ($puedeEliminar && $reg->tipo_comprobante === 'Ticket') {   // boletas y facturas se anulan, no se borran
 					$botones .= ' <button class="btn btn-danger btn-xs" type="button" title="Eliminar definitivamente" onclick="eliminar(' . $id . ')"><i class="fa fa-trash"></i></button>';
 				}
 
@@ -326,8 +384,21 @@ switch ($op) {
 		echo json_encode($ficha, JSON_UNESCAPED_UNICODE);
 		break;
 
+	// Cuadricula del punto de venta: articulos activos + categorias + ajustes del ticket
+	case 'catalogoPos':
+		require_once "../modelos/Articulo.php";
+		require_once "../modelos/Empresa.php";
+		$articuloPos = new Articulo();
+		$empresaPos = new Empresa();
+		echo json_encode(array(
+			"ok"=>true,
+			"items"=>$articuloPos->catalogoPos(),
+			"ticket"=>$empresaPos->configTicket()
+		), JSON_UNESCAPED_UNICODE);
+		break;
+
 	case 'resumenDia':
-		$totales = $venta->totalesDia();
+		$totales = $venta->totalesDia($idVendedorFiltro);
 		$totales["ok"] = true;
 		$totales["monto_formateado"] = formatearMoneda($totales["monto"]);
 		echo json_encode($totales, JSON_UNESCAPED_UNICODE);

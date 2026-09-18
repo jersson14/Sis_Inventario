@@ -37,7 +37,11 @@ switch ($op) {
 			$rspta = $ingreso->insertar(
 				$idproveedor, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
-				$arrIdArticulo, $arrCantidad, $arrPrecioCompra, $arrPrecioVenta, $arrPresentacion, $arrLoteCodigo, $arrLoteVence, $arrVariante
+				$arrIdArticulo, $arrCantidad, $arrPrecioCompra, $arrPrecioVenta, $arrPresentacion, $arrLoteCodigo, $arrLoteVence, $arrVariante,
+				array(
+					"cuenta_pago"=>isset($_POST["cuenta_pago"]) ? limpiarCadena($_POST["cuenta_pago"]) : "",
+					"num_operacion"=>isset($_POST["num_operacion"]) ? limpiarCadena($_POST["num_operacion"]) : ""
+				)
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('compras', 'crear', "Ingreso " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));
@@ -74,6 +78,10 @@ switch ($op) {
 		break;
 
 	case 'anular':
+		if (!usuarioTienePermiso('anular')) {
+			echo "No tienes permiso para anular compras. Pídeselo a un encargado.";
+			break;
+		}
 		$rspta = $ingreso->anular($idingreso, $idusuario);
 		if (!empty($rspta["ok"])) {
 			registrarAuditoria('compras', 'anular', "Ingreso id " . $idingreso . " anulado");
@@ -122,6 +130,7 @@ switch ($op) {
 		$rspta = $ingreso->listarPorFecha($fecha_inicio, $fecha_fin, $f_estado, $f_tipo_pago);
 		$data = array();
 		$puedeEliminar = usuarioTienePermiso('acceso');
+		$puedeAnular = usuarioTienePermiso('anular');
 
 		if ($rspta) {
 			while ($reg = $rspta->fetch_object()) {
@@ -129,7 +138,7 @@ switch ($op) {
 				$url = '../reportes/exIngreso.php?id=';
 
 				$botones = '<button class="btn btn-default btn-xs" type="button" title="Ver detalle" onclick="mostrar(' . $id . ')"><i class="fa fa-eye"></i></button> ';
-				if ($reg->estado == 'Aceptado') {
+				if ($reg->estado == 'Aceptado' && $puedeAnular) {
 					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="Anular ingreso" onclick="anular(' . $id . ')"><i class="fa fa-ban"></i></button> ';
 				}
 				$botones .= '<a class="btn btn-info btn-xs" target="_blank" href="' . $url . $id . '" title="Imprimir comprobante"><i class="fa fa-print"></i></a>';
@@ -229,6 +238,14 @@ switch ($op) {
 		}
 		$ficha["ok"] = true;
 		echo json_encode($ficha, JSON_UNESCAPED_UNICODE);
+		break;
+
+	// Buscador en linea de la pantalla de compra (codigo, codigo de barras o nombre)
+	case 'buscarArticulos':
+		require_once "../modelos/Articulo.php";
+		$articuloBusqueda = new Articulo();
+		$termino = isset($_GET['q']) ? limpiarCadena($_GET['q']) : '';
+		echo json_encode(array("ok"=>true, "items"=>$articuloBusqueda->buscarRapido($termino, 15)), JSON_UNESCAPED_UNICODE);
 		break;
 
 	case 'listarArticulos':

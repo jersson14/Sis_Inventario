@@ -10,10 +10,16 @@ require_once "../config/Conexion.php";
 class Caja
 {
     const TIPOS = array('INGRESO', 'EGRESO');
-    const MEDIOS_PAGO = array('EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'OTRO');
+    const MEDIOS_PAGO = array('EFECTIVO', 'DEPOSITO', 'TARJETA', 'TRANSFERENCIA', 'YAPE', 'PLIN', 'OTRO');
 
     public function __construct()
     {
+    }
+
+    /** Configuracion de empresa: arqueo ciego activado (por defecto si). */
+    public static function arqueoCiegoConfigurado()
+    {
+        return (int)dbValue("SELECT arqueo_ciego FROM configuracion_empresa ORDER BY idconfig ASC LIMIT 1", array(), 1) === 1;
     }
 
     public static function medioPagoSeguro($medio)
@@ -102,6 +108,8 @@ class Caja
           c.monto_cierre_real, c.diferencia, c.estado, c.observacion, u.nombre AS usuario,
           IFNULL(SUM(CASE WHEN m.tipo='INGRESO' THEN m.monto ELSE 0 END),0) AS total_ingresos,
           IFNULL(SUM(CASE WHEN m.tipo='EGRESO' THEN m.monto ELSE 0 END),0) AS total_egresos,
+          IFNULL(SUM(CASE WHEN m.tipo='INGRESO' AND m.medio_pago='EFECTIVO' THEN m.monto ELSE 0 END),0) AS efectivo_ingresos,
+          IFNULL(SUM(CASE WHEN m.tipo='EGRESO' AND m.medio_pago='EFECTIVO' THEN m.monto ELSE 0 END),0) AS efectivo_egresos,
           COUNT(m.idmovimiento) AS num_movimientos
         FROM caja_diaria c
         INNER JOIN usuario u ON u.idusuario=c.idusuario
@@ -110,6 +118,16 @@ class Caja
         GROUP BY c.idcaja, c.idusuario, c.fecha_apertura, c.fecha_cierre, c.monto_apertura, c.monto_cierre_sistema,
           c.monto_cierre_real, c.diferencia, c.estado, c.observacion, u.nombre";
         return dbRow($sql, array((int)$idcaja));
+    }
+
+    /**
+     * Efectivo que deberia haber en el cajon: apertura + lo que entro en
+     * efectivo - lo que salio en efectivo. Yape, tarjeta, transferencias y
+     * depositos no pasan por el cajon, por eso no cuentan para el arqueo.
+     */
+    public static function efectivoEsperado(array $resumen)
+    {
+        return round((float)$resumen['monto_apertura'] + (float)$resumen['efectivo_ingresos'] - (float)$resumen['efectivo_egresos'], 2);
     }
 
     /** Ingresos/egresos agrupados por medio de pago. */
@@ -146,7 +164,7 @@ class Caja
             return array('ok' => false, 'message' => 'La caja no esta abierta.');
         }
 
-        $cierreSistema = round((float)$resumen['monto_apertura'] + (float)$resumen['total_ingresos'] - (float)$resumen['total_egresos'], 2);
+        $cierreSistema = self::efectivoEsperado($resumen);
         $diferencia = round($monto_cierre_real - $cierreSistema, 2);
 
         $ok = dbExec(
@@ -222,7 +240,7 @@ class Caja
             }
         }
 
-        $sistema = round((float)$cab['monto_apertura'] + (float)$cab['total_ingresos'] - (float)$cab['total_egresos'], 2);
+        $sistema = self::efectivoEsperado($cab);
 
         return array(
             'idcaja' => (int)$cab['idcaja'],
@@ -234,6 +252,8 @@ class Caja
             'monto_apertura' => round((float)$cab['monto_apertura'], 2),
             'total_ingresos' => round((float)$cab['total_ingresos'], 2),
             'total_egresos' => round((float)$cab['total_egresos'], 2),
+            'efectivo_ingresos' => round((float)$cab['efectivo_ingresos'], 2),
+            'efectivo_egresos' => round((float)$cab['efectivo_egresos'], 2),
             'sistema' => $sistema,
             'monto_cierre_sistema' => $cab['monto_cierre_sistema'] === null ? null : round((float)$cab['monto_cierre_sistema'], 2),
             'monto_cierre_real' => $cab['monto_cierre_real'] === null ? null : round((float)$cab['monto_cierre_real'], 2),

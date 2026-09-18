@@ -19,7 +19,7 @@ class Ingreso{
 
 	private $tiposComprobante = array("Boleta", "Factura", "Ticket");
 	private $tiposPago = array("CONTADO", "CREDITO");
-	private $mediosPago = array("EFECTIVO", "TARJETA", "TRANSFERENCIA", "YAPE", "PLIN", "OTRO");
+	private $mediosPago = array("EFECTIVO", "DEPOSITO", "TARJETA", "TRANSFERENCIA", "YAPE", "PLIN", "OTRO");
 	private $estados = array("Aceptado", "Anulado");
 
 	public function __construct(){
@@ -152,7 +152,7 @@ class Ingreso{
 	 * Devuelve array {ok, message} o
 	 * {ok:true, idingreso, tipo_comprobante, serie_comprobante, num_comprobante, total, caja_registrada, cuenta_pagar}.
 	 */
-	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta,$idpresentacion = array(),$loteCodigo = array(),$loteVencimiento = array(),$idvariante = array()){
+	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta,$idpresentacion = array(),$loteCodigo = array(),$loteVencimiento = array(),$idvariante = array(),$pago = array()){
 		$idproveedor = (int)$idproveedor;
 		$idusuario = (int)$idusuario;
 
@@ -203,6 +203,10 @@ class Ingreso{
 		if ($impuesto < 0) {
 			$impuesto = 0.0;
 		}
+		// Se guarda en porcentaje: un 0.18 dejaria el IGV de la compra en 0.18 %
+		if ($impuesto > 0 && $impuesto < 1) {
+			return $this->error("El impuesto se escribe en porcentaje: 18, no 0.18");
+		}
 		$tipo_pago = $this->normalizarTipoPago($tipo_pago);
 		$medio_pago = $this->normalizarMedioPago($medio_pago);
 		$fecha_vencimiento = fechaSegura($fecha_vencimiento, '');
@@ -217,6 +221,14 @@ class Ingreso{
 			$fecha_vencimiento = null;
 		}
 		$observacion = $this->textoOpcional($observacion, 200);
+		// Deposito, transferencia, Yape...: a que cuenta se pago y con que operacion.
+		// En efectivo o al credito no aplica.
+		$cuentaPago = null;
+		$numOperacion = null;
+		if ($tipo_pago === "CONTADO" && $medio_pago !== "EFECTIVO") {
+			$cuentaPago = $this->textoOpcional(isset($pago["cuenta_pago"]) ? $pago["cuenta_pago"] : '', 80);
+			$numOperacion = $this->textoOpcional(isset($pago["num_operacion"]) ? $pago["num_operacion"] : '', 40);
+		}
 
 		// Detalle: validaciones y total en servidor
 		$detalles = array();
@@ -292,6 +304,8 @@ class Ingreso{
 			"impuesto"=>(float)$impuesto,
 			"tipo_pago"=>$tipo_pago,
 			"medio_pago"=>$medio_pago,
+			"cuenta_pago"=>$cuentaPago,
+			"num_operacion"=>$numOperacion,
 			"observacion"=>$observacion,
 			"total"=>(float)$total
 		);
@@ -343,12 +357,12 @@ class Ingreso{
 			}
 
 			$idingreso = dbInsert(
-				"INSERT INTO ingreso (idproveedor,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,fecha_vencimiento,impuesto,tipo_pago,medio_pago,total_compra,estado,observacion)
-				 VALUES (?,?,?,?,?,?,?,?,?,?,?,'Aceptado',?)",
+				"INSERT INTO ingreso (idproveedor,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,fecha_vencimiento,impuesto,tipo_pago,medio_pago,cuenta_pago,num_operacion,total_compra,estado,observacion)
+				 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Aceptado',?)",
 				array(
 					$ctx["idproveedor"], $ctx["idusuario"], $tipo, $serie, $num, $ctx["fecha_hora"],
 					$ctx["fecha_vencimiento"], $ctx["impuesto"], $ctx["tipo_pago"], $ctx["medio_pago"],
-					$ctx["total"], $ctx["observacion"]
+					$ctx["cuenta_pago"], $ctx["num_operacion"], $ctx["total"], $ctx["observacion"]
 				)
 			);
 			if ($idingreso <= 0) {
@@ -741,7 +755,7 @@ class Ingreso{
 		return dbRow(
 			"SELECT i.idingreso,DATE_FORMAT(i.fecha_hora,'%Y-%m-%d %H:%i:%s') AS fecha,i.idproveedor,p.nombre AS proveedor,
 				u.idusuario,u.nombre AS usuario,i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado,
-				i.tipo_pago,i.medio_pago,i.fecha_vencimiento,i.observacion
+				i.tipo_pago,i.medio_pago,i.cuenta_pago,i.num_operacion,i.fecha_vencimiento,i.observacion
 			 FROM ingreso i
 			 INNER JOIN persona p ON i.idproveedor=p.idpersona
 			 INNER JOIN usuario u ON i.idusuario=u.idusuario
@@ -818,7 +832,7 @@ class Ingreso{
 			"SELECT i.idingreso, i.idproveedor, p.nombre AS proveedor, p.direccion, p.tipo_documento, p.num_documento, p.email, p.telefono,
 				i.idusuario, u.nombre AS usuario, i.tipo_comprobante, i.serie_comprobante, i.num_comprobante,
 				DATE_FORMAT(i.fecha_hora,'%d/%m/%Y %H:%i') AS fecha, i.impuesto, i.total_compra,
-				i.tipo_pago, i.medio_pago, i.fecha_vencimiento, i.observacion, i.estado
+				i.tipo_pago, i.medio_pago, i.cuenta_pago, i.num_operacion, i.fecha_vencimiento, i.observacion, i.estado
 			 FROM ingreso i
 			 INNER JOIN persona p ON i.idproveedor=p.idpersona
 			 INNER JOIN usuario u ON i.idusuario=u.idusuario

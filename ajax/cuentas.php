@@ -1,7 +1,7 @@
 <?php
 require_once "../config/seguridad.php";
 requiereLogin();
-requierePermiso(array('cuentas', 'ventas', 'compras'));
+requierePermiso(array('cuentas'));   // cobrar y pagar deudas: permiso propio (el vendedor no lo tiene)
 require_once "../modelos/Cuentas.php";
 
 $cuentas = new Cuentas();

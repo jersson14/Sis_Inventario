@@ -28,6 +28,10 @@ function cargarEstadoCaja(){
 			$("#kpiEgresos").text(money(r.egresos));
 			$("#kpiSistema").text(money(r.sistema));
 			$("#cierreSistema").text(money(r.sistema));
+			// Lo cobrado por Yape, tarjeta o deposito no esta en el cajon: se informa aparte
+			var otros = Number(r.otros_medios || 0);
+			$("#kpiOtrosMedios").text(otros !== 0 ? "Otros medios (no van al cajón): " + money(otros) : "Apertura + efectivo que entró − efectivo que salió");
+			$("#cierreOtros").text("otros medios: " + money(otros));
 			$("#monto_cierre_real").attr("placeholder", Number(r.sistema || 0).toFixed(2));
 			var medios = r.medios || [];
 			if (!medios.length) {
@@ -39,6 +43,14 @@ function cargarEstadoCaja(){
 				});
 				html += '</tbody></table>';
 				$("#cajaMedios").html(html);
+			}
+			// Arqueo ciego: el servidor no envia totales; se cuenta sin referencia
+			if (r.arqueo_ciego) {
+				$("#kpiIngresos, #kpiEgresos, #kpiSistema").text("—");
+				$("#kpiOtrosMedios").text("Arqueo ciego: el administrador revisa el cuadre");
+				$("#modalCerrarCaja .alert").html('<i class="fa fa-eye-slash"></i> Cuenta solo los billetes y monedas del cajón y escribe el total. Por arqueo ciego no ves cuánto debería haber: el administrador revisa el cuadre.');
+				$("#monto_cierre_real").attr("placeholder", "0.00");
+				$("#cajaMedios").html('<div class="text-soft"><i class="fa fa-eye-slash"></i> Los totales por medio de pago los ve el administrador (arqueo ciego).</div>');
 			}
 		} else {
 			$("#cajaEstadoCerrada").show();
@@ -88,8 +100,13 @@ function verDetalleCaja(idcaja){
 		var estado = d.estado === "ABIERTA" ? '<span class="label bg-green">ABIERTA</span>' : '<span class="label bg-aqua">CERRADA</span>';
 		var html = '<div class="row">' +
 			'<div class="col-sm-6"><p><strong>Usuario:</strong> ' + appEscapeHtml(d.usuario) + '</p><p><strong>Apertura:</strong> ' + fechaBonita(d.fecha_apertura) + '</p><p><strong>Cierre:</strong> ' + fechaBonita(d.fecha_cierre) + '</p><p><strong>Estado:</strong> ' + estado + '</p></div>' +
-			'<div class="col-sm-6"><table class="table table-condensed"><tr><td>Monto inicial</td><td class="text-right">' + money(d.monto_apertura) + '</td></tr><tr><td>Ingresos</td><td class="text-right">' + money(d.total_ingresos) + '</td></tr><tr><td>Egresos</td><td class="text-right">' + money(d.total_egresos) + '</td></tr><tr><th>Saldo sistema</th><th class="text-right">' + money(d.sistema) + '</th></tr>' +
-			(d.monto_cierre_real !== null ? '<tr><td>Real contado</td><td class="text-right">' + money(d.monto_cierre_real) + '</td></tr><tr><th>Diferencia</th><th class="text-right" style="color:' + (Number(d.diferencia) < 0 ? '#dc2626' : '#16a34a') + '">' + money(d.diferencia) + '</th></tr>' : '') +
+			'<div class="col-sm-6"><table class="table table-condensed"><tr><td>Monto inicial</td><td class="text-right">' + money(d.monto_apertura) + '</td></tr>' +
+			(d.arqueo_ciego
+				// Arqueo ciego: quien conto solo ve lo que declaro
+				? (d.monto_cierre_real !== null ? '<tr><td>Real contado</td><td class="text-right">' + money(d.monto_cierre_real) + '</td></tr>' : '') +
+				  '<tr><td colspan="2" class="text-soft"><i class="fa fa-eye-slash"></i> El cuadre lo revisa el administrador (arqueo ciego).</td></tr>'
+				: '<tr><td>Ingresos</td><td class="text-right">' + money(d.total_ingresos) + '</td></tr><tr><td>Egresos</td><td class="text-right">' + money(d.total_egresos) + '</td></tr><tr><th>Efectivo esperado</th><th class="text-right">' + money(d.monto_cierre_sistema !== null ? d.monto_cierre_sistema : d.sistema) + '</th></tr>' +
+				  (d.monto_cierre_real !== null ? '<tr><td>Real contado</td><td class="text-right">' + money(d.monto_cierre_real) + '</td></tr><tr><th>Diferencia</th><th class="text-right" style="color:' + (Number(d.diferencia) < 0 ? '#dc2626' : '#16a34a') + '">' + money(d.diferencia) + '</th></tr>' : '')) +
 			'</table></div></div>';
 		if (d.medios && d.medios.length) {
 			html += '<h5 class="fw-700">Por medio de pago</h5><table class="table table-condensed table-bordered"><thead><tr><th>Medio</th><th class="text-right">Ingresos</th><th class="text-right">Egresos</th><th class="text-right">Neto</th></tr></thead><tbody>';

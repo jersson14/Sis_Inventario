@@ -127,9 +127,8 @@ $codigoMoneda = !empty($empresa["moneda"]) ? strtoupper((string)$empresa["moneda
 $simbolo = obtenerSimboloMoneda($codigoMoneda);
 $monedaLetras = obtenerNombreMonedaLetras($codigoMoneda);
 
-$logo = "";
-if (!empty($empresa["logo"])) { $l = realpath(__DIR__ . "/../files/empresa/" . nombreArchivoSeguro($empresa["logo"])); if ($l && file_exists($l)) $logo = $l; }
-if ($logo === "") { $logo = file_exists(__DIR__ . "/logo1.jpeg") ? __DIR__ . "/logo1.jpeg" : __DIR__ . "/logo.png"; }
+// Logo de la empresa (JPG/PNG; un WEBP se convierte). Sin logo, el PDF sale sin imagen.
+$logo = marcaRutaLogoPdf();
 
 $pdf = new PDFCotizacion('P', 'mm', 'A4');
 $pdf->empresa = $empresa;

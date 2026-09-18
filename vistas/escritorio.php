@@ -1,6 +1,12 @@
 <?php
 require_once "../config/seguridad.php";
 requiereLogin(false);
+// Sin permiso de escritorio (ej. vendedor) se va directo a su pagina de trabajo;
+// asi los enlaces "Inicio" de todo el sistema le sirven igual
+if (!usuarioTienePermiso('escritorio')) {
+  header("Location: " . paginaInicioUsuario());
+  exit;
+}
 $tituloPagina = "Escritorio";
 $iconoPagina = "fa-dashboard";
 require 'header.php';

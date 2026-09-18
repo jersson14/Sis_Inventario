@@ -26,6 +26,10 @@ if ($whatsapp !== '' && strlen($whatsapp) === 9) {
 }
 $mensajeWA = rawurlencode("Hola, quiero una demostración de " . $producto . " para mi negocio.");
 $logueado = usuarioAutenticado();
+// Marca de la empresa (Configuracion > Empresa y marca): logo, nombre y colores
+$marca = marcaEmpresa();
+$marcaLogo = marcaUrlLogo('');
+$marcaNombre = $marca['nombre'];
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -34,17 +38,26 @@ $logueado = usuarioAutenticado();
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?php echo e($producto); ?> — Sistema de inventario, ventas y caja para tu negocio</title>
   <meta name="description" content="<?php echo e($producto); ?>: controla stock, compras, ventas, caja, cuentas por cobrar y utilidades desde un solo panel. Rápido, seguro y listo para tu tienda, ferretería, farmacia o minimarket.">
-  <link rel="icon" href="public/img/brand-store.svg">
+  <link rel="icon" href="<?php echo e($marcaLogo); ?>">
   <link rel="stylesheet" href="public/css/font-awesome.min.css">
   <link rel="stylesheet" href="public/css/landing.css?v=<?php echo e(APP_VERSION); ?>">
+  <style>
+    :root{
+      --p: <?php echo e($marca['primario']); ?>;
+      --p-dark: <?php echo e($marca['primario_oscuro']); ?>;
+      --p-soft: <?php echo e($marca['primario_suave']); ?>;
+      --a: <?php echo e($marca['secundario']); ?>;
+      --a-dark: <?php echo e($marca['secundario_oscuro']); ?>;
+    }
+  </style>
 </head>
 <body>
 
 <header class="site-nav" id="top">
   <div class="container nav-inner">
     <a href="#top" class="nav-brand">
-      <img src="public/img/brand-store.svg" alt="<?php echo e($producto); ?>">
-      <span><?php echo e($producto); ?></span>
+      <img src="<?php echo e($marcaLogo); ?>" alt="<?php echo e($marcaNombre); ?>" onerror="this.src='public/img/brand-store.svg'">
+      <span><?php echo e($marcaNombre); ?></span>
     </a>
     <nav class="nav-links" id="navLinks">
       <a href="#funciones">Funciones</a>
@@ -55,7 +68,7 @@ $logueado = usuarioAutenticado();
     </nav>
     <div class="nav-cta">
       <?php if ($logueado) { ?>
-        <a href="vistas/escritorio.php" class="btn btn-primary"><i class="fa fa-dashboard"></i> Ir al panel</a>
+        <a href="<?php echo e(paginaInicioUsuario('vistas/')); ?>" class="btn btn-primary"><i class="fa fa-dashboard"></i> Ir al panel</a>
       <?php } else { ?>
         <a href="vistas/login.php" class="btn btn-ghost"><i class="fa fa-sign-in"></i> Ingresar</a>
         <a href="#contacto" class="btn btn-primary">Solicitar demo</a>
@@ -286,10 +299,10 @@ $logueado = usuarioAutenticado();
 <footer class="site-footer">
   <div class="container footer-inner">
     <div class="footer-brand">
-      <img src="public/img/brand-store.svg" alt="">
+      <img src="<?php echo e($marcaLogo); ?>" alt="" onerror="this.src='public/img/brand-store.svg'">
       <div>
-        <strong><?php echo e($producto); ?></strong>
-        <small>Sistema de gestión comercial · v<?php echo e(APP_VERSION); ?></small>
+        <strong><?php echo e($marcaNombre); ?></strong>
+        <small><?php echo e($producto); ?> · sistema de gestión comercial v<?php echo e(APP_VERSION); ?></small>
       </div>
     </div>
     <nav class="footer-links">

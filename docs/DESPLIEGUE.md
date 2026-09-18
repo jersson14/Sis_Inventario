@@ -29,7 +29,7 @@ VALUES('Administrador','DNI','','admin',SHA2('CambiaEsto123',256),'',1);
 INSERT INTO usuario_permiso(idusuario,idpermiso) SELECT LAST_INSERT_ID(), idpermiso FROM permiso;
 ```
 
-## Actualizar una instalación existente (2.0 → 2.0.5)
+## Actualizar una instalación existente (2.0 → 2.3.1)
 
 Los cambios de esquema son **idempotentes**: se pueden ejecutar varias veces sin dañar
 nada, y no borran datos. Aun así, respalda antes.
@@ -44,7 +44,7 @@ nada, y no borran datos. Aun así, respalda antes.
    ```
 
    Se aplican estas: `20260915_perfil_negocio`, `20260916_ferreteria`,
-   `20260917_abarrotes`, `20260918_ropa`.
+   `20260917_abarrotes`, `20260918_ropa`, `20260919_pos_ticket`, `20260920_roles_permisos`, `20260921_precios_arqueo`, `20260922_igv_correlativo`.
 4. Entra a *Configuración → Empresa y marca* y **elige el tipo de negocio** del cliente.
    Mientras esté en "General", el sistema funciona igual que antes.
 5. Pide a los usuarios recargar con `Ctrl+F5` la primera vez (el CSS y el JS llevan
@@ -59,6 +59,16 @@ nada, y no borran datos. Aun así, respalda antes.
 | `20260916_ferreteria` | `permite_fraccion` en unidades; tablas `articulo_presentacion` y `articulo_precio_escala`; `idpresentacion` y `factor` en los detalles; los triggers de stock pasan a usar `cantidad * factor` |
 | `20260917_abarrotes` | Tablas `lote` y `lote_movimiento`; `dias_alerta_vencimiento` en `configuracion_empresa` |
 | `20260918_ropa` | Tabla `articulo_variante`; `idvariante` en detalles y ajustes; `temporada` y `coleccion` en `articulo`; los triggers mueven artículo y variante en una sola sentencia |
+| `20260919_pos_ticket` | Ajustes del ticket en `configuracion_empresa` (`ticket_ancho`, `ticket_auto_imprimir`, `ticket_logo`, `ticket_cabecera`, `ticket_copias`); `num_operacion` y `monto_recibido` en `venta`; `cuenta_pago` y `num_operacion` en `ingreso` |
+| `20260920_roles_permisos` | Permiso 16 "Anular documentos"; se asigna a los usuarios que ya tenían Ventas o Compras para que sigan pudiendo anular |
+| `20260921_precios_arqueo` | Permiso 17 "Cambiar precios y descuentos" (se asigna a quienes ya tenían Ventas); columna `arqueo_ciego` en `configuracion_empresa` (activada) |
+| `20260922_igv_correlativo` | Corrige documentos antiguos con el impuesto guardado como fracción (0.18 → 18). No cambia totales ni numeración |
+
+Tras la 2.1, configura la ticketera de cada caja (papel, impresora predeterminada,
+apertura del cajón y `--kiosk-printing`) como explica el manual, sección *Ticketera*.
+
+Tras la 2.2, revisa en *Configuración → Usuarios* los permisos de cada persona: los vendedores
+deben quedar con el rol **Vendedor / cajero** (sin "Anular documentos" ni "Consulta ventas").
 
 Los datos existentes quedan con `factor = 1` y sin lotes ni variantes: el
 comportamiento anterior no cambia hasta que se usen las funciones nuevas.
@@ -84,7 +94,7 @@ comportamiento anterior no cambia hasta que se usen las funciones nuevas.
 - [ ] Backup programado: tarea cron con `mysqldump` diario, o generar desde el panel y descargar.
 - [ ] Zona horaria correcta (`APP_TIMEZONE`, por defecto `America/Lima`).
 - [ ] Límites de subida en `php.ini` ≥ 8 MB (`upload_max_filesize`, `post_max_size`) para logos e imágenes.
-- [ ] Ejecutar `php scripts/smoke.php https://tudominio.com` tras cada actualización (usa y borra un usuario QA temporal; 163 comprobaciones).
+- [ ] Ejecutar `php scripts/smoke.php https://tudominio.com` tras cada actualización (usa y borra usuarios QA temporales, admin y vendedor; 212 comprobaciones).
 - [ ] Tipo de negocio elegido en *Configuración → Empresa y marca* y, si aplica, días de aviso de vencimiento.
 - [ ] Entregar al cliente el manual de uso: [`MANUAL.md`](MANUAL.md).
 

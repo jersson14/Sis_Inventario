@@ -40,8 +40,44 @@ function limpiar(){
 function cargarPermisos(id){
 	$.post("../ajax/usuario.php?op=permisos&id=" + (id || ""), function(r){
 		$("#permisos").html(r);
+		marcarRolActual();
 	});
 }
+
+// ---------- Plantillas de rol ----------
+// Un clic marca los permisos del puesto; si luego se cambia alguno a mano,
+// la tarjeta deja de estar marcada ("rol personalizado").
+
+var PLANTILLAS_ROL = window.appPlantillasRol || {};
+
+function aplicarRol(clave){
+	var rol = PLANTILLAS_ROL[clave];
+	if (!rol) { return; }
+	$("#permisos input[name='permiso[]']").each(function(){
+		this.checked = rol.permisos.indexOf(parseInt(this.value, 10)) !== -1;
+	});
+	// El cargo se sugiere si esta vacio o era el de otra plantilla
+	var cargoActual = $.trim($("#cargo").val());
+	var esCargoDePlantilla = Object.keys(PLANTILLAS_ROL).some(function(k){ return PLANTILLAS_ROL[k].cargo === cargoActual; });
+	if (!cargoActual || esCargoDePlantilla) { $("#cargo").val(rol.cargo); }
+	marcarRolActual();
+}
+
+function marcarRolActual(){
+	var marcados = $("#permisos input[name='permiso[]']:checked").map(function(){ return parseInt(this.value, 10); }).get().sort(function(a, b){ return a - b; });
+	var actual = "";
+	Object.keys(PLANTILLAS_ROL).forEach(function(k){
+		var ids = PLANTILLAS_ROL[k].permisos.slice().sort(function(a, b){ return a - b; });
+		if (ids.join(",") === marcados.join(",")) { actual = k; }
+	});
+	$("#rolPlantillas .rol-card").each(function(){
+		var activo = $(this).data("rol") === actual;
+		$(this).toggleClass("activo", activo).attr("aria-pressed", activo ? "true" : "false");
+	});
+}
+
+$(document).on("click", "#rolPlantillas .rol-card", function(){ aplicarRol($(this).data("rol")); });
+$(document).on("change", "#permisos input[name='permiso[]']", marcarRolActual);
 
 function mostrarform(flag, uid){
 	limpiar();

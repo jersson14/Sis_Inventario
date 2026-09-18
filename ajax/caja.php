@@ -7,6 +7,11 @@ require_once "../modelos/Caja.php";
 $caja = new Caja();
 $idusuario = (int)$_SESSION['idusuario'];
 $esAdmin = usuarioTienePermiso('acceso');
+// Arqueo ciego: quien no es administrador no recibe totales, efectivo
+// esperado ni diferencia de su caja; cuenta el cajon sin saber cuanto "debe" haber
+$arqueoCiego = !$esAdmin && Caja::arqueoCiegoConfigurado();
+$DATOS_ARQUEO = array('ingresos', 'egresos', 'sistema', 'otros_medios', 'medios', 'total_ingresos', 'total_egresos',
+    'efectivo_ingresos', 'efectivo_egresos', 'monto_cierre_sistema', 'diferencia');
 
 /** Contrato DataTables. */
 function respuestaDataTable(array $data)
@@ -30,18 +35,26 @@ switch ($op) {
         $res = $caja->resumenCaja($abierta['idcaja']);
         $ingresos = $res ? (float)$res['total_ingresos'] : 0.0;
         $egresos = $res ? (float)$res['total_egresos'] : 0.0;
-        responderJson(array(
+        $estado = array(
             'abierta' => true,
+            'arqueo_ciego' => $arqueoCiego,
             'idcaja' => (int)$abierta['idcaja'],
             'usuario' => $res ? $res['usuario'] : (isset($_SESSION['nombre']) ? $_SESSION['nombre'] : ''),
             'fecha_apertura' => $abierta['fecha_apertura'],
             'monto_apertura' => number_format((float)$abierta['monto_apertura'], 2, '.', ''),
             'ingresos' => number_format($ingresos, 2, '.', ''),
             'egresos' => number_format($egresos, 2, '.', ''),
-            'sistema' => number_format(((float)$abierta['monto_apertura'] + $ingresos - $egresos), 2, '.', ''),
+            // Efectivo esperado en el cajon: solo movimientos en EFECTIVO
+            'sistema' => number_format($res ? Caja::efectivoEsperado($res) : (float)$abierta['monto_apertura'], 2, '.', ''),
+            // Yape, tarjeta, transferencias y depositos: neto que no pasa por el cajon
+            'otros_medios' => number_format($res ? round($ingresos - $egresos - (float)$res['efectivo_ingresos'] + (float)$res['efectivo_egresos'], 2) : 0, 2, '.', ''),
             'num_movimientos' => $res ? (int)$res['num_movimientos'] : 0,
             'medios' => $caja->resumenPorMedioPago($abierta['idcaja'])
-        ));
+        );
+        if ($arqueoCiego) {
+            foreach ($DATOS_ARQUEO as $k) { unset($estado[$k]); }
+        }
+        responderJson($estado);
         break;
 
     case 'abrir':
@@ -85,7 +98,8 @@ switch ($op) {
         if (!empty($res['ok'])) {
             registrarAuditoria('caja', 'cerrar', 'Caja #' . (int)$abierta['idcaja'] . ' sistema ' . number_format((float)$res['sistema'], 2) . ' real ' . number_format((float)$res['real'], 2) . ' dif ' . number_format((float)$res['diferencia'], 2));
         }
-        echo $res['message'];
+        // Con arqueo ciego el resultado del cuadre no se le muestra a quien conto
+        echo ($arqueoCiego && !empty($res['ok'])) ? 'Caja cerrada correctamente. Tu conteo quedó registrado; el administrador revisa el cuadre.' : $res['message'];
         break;
 
     case 'listarMovimientos':
@@ -126,11 +140,11 @@ switch ($op) {
                     '1' => date('d/m/Y H:i', strtotime($reg->fecha_apertura)),
                     '2' => empty($reg->fecha_cierre) ? '-' : date('d/m/Y H:i', strtotime($reg->fecha_cierre)),
                     '3' => formatearMoneda((float)$reg->monto_apertura),
-                    '4' => formatearMoneda((float)$reg->ingresos),
-                    '5' => formatearMoneda((float)$reg->egresos),
-                    '6' => $reg->monto_cierre_sistema === null ? '-' : formatearMoneda((float)$reg->monto_cierre_sistema),
+                    '4' => $arqueoCiego ? '—' : formatearMoneda((float)$reg->ingresos),
+                    '5' => $arqueoCiego ? '—' : formatearMoneda((float)$reg->egresos),
+                    '6' => ($arqueoCiego || $reg->monto_cierre_sistema === null) ? '-' : formatearMoneda((float)$reg->monto_cierre_sistema),
                     '7' => $reg->monto_cierre_real === null ? '-' : formatearMoneda((float)$reg->monto_cierre_real),
-                    '8' => $reg->diferencia === null ? '-' : formatearMoneda((float)$reg->diferencia),
+                    '8' => ($arqueoCiego || $reg->diferencia === null) ? '-' : formatearMoneda((float)$reg->diferencia),
                     '9' => $estado,
                     '10' => e($reg->usuario),
                     '11' => '<button class="btn btn-default btn-xs" title="Ver arqueo" onclick="verDetalleCaja(' . $id . ')"><i class="fa fa-eye"></i></button>'
@@ -147,6 +161,10 @@ switch ($op) {
             responderJson(array('ok' => false, 'message' => 'Caja no encontrada o sin acceso.'), 404);
         }
         $det['ok'] = true;
+        $det['arqueo_ciego'] = $arqueoCiego;
+        if ($arqueoCiego) {
+            foreach ($DATOS_ARQUEO as $k) { unset($det[$k]); }
+        }
         responderJson($det);
         break;
 

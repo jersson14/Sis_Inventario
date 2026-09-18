@@ -103,7 +103,55 @@ if (usuarioTienePermiso('empresa') || usuarioTienePermiso('acceso')) {
                     <option value="NIO">NIO — Córdoba</option>
                   </select>
                 </div>
-                <div class="form-group col-md-8 col-sm-6"><label>Mensaje al pie del ticket</label><input type="text" class="form-control" name="mensaje_ticket" id="mensaje_ticket" maxlength="160" placeholder="Gracias por su compra"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="box" id="boxCaja">
+            <div class="box-header with-border"><h3 class="box-title"><i class="fa fa-money"></i> Caja</h3></div>
+            <div class="box-body">
+              <div class="checkbox" style="margin:0"><label><input type="checkbox" name="arqueo_ciego" id="arqueo_ciego" value="1"> <strong>Arqueo ciego</strong> para vendedores y encargados</label></div>
+              <p class="text-soft" style="margin:6px 0 0">Quien no es administrador cuenta el efectivo de su caja sin ver cuánto debería haber. El efectivo esperado y la diferencia solo los ve el administrador en <em>Caja diaria → Historial</em>. Así el conteo es honesto y los faltantes se detectan.</p>
+            </div>
+          </div>
+
+          <div class="box" id="boxTicket">
+            <div class="box-header with-border">
+              <h3 class="box-title"><i class="fa fa-print"></i> Ticket e impresora</h3>
+              <div class="box-tools"><a href="../reportes/exTicket.php?prueba=1" target="_blank" class="btn btn-default btn-sm" id="btnTicketPrueba" title="Abre un ticket de ejemplo con la configuración guardada"><i class="fa fa-eye"></i> Ver ticket de prueba</a></div>
+            </div>
+            <div class="box-body">
+              <div class="row">
+                <div class="form-group col-md-4 col-sm-6">
+                  <label for="ticket_ancho">Ancho del papel</label>
+                  <select class="form-control" name="ticket_ancho" id="ticket_ancho">
+                    <option value="80">80 mm (ticketera estándar)</option>
+                    <option value="58">58 mm (ticketera pequeña)</option>
+                  </select>
+                </div>
+                <div class="form-group col-md-4 col-sm-6">
+                  <label for="ticket_copias">Copias por venta</label>
+                  <select class="form-control" name="ticket_copias" id="ticket_copias">
+                    <option value="1">1 copia</option>
+                    <option value="2">2 copias (cliente y tienda)</option>
+                    <option value="3">3 copias</option>
+                  </select>
+                </div>
+                <div class="form-group col-md-4 col-sm-12">
+                  <label>Opciones</label>
+                  <div class="checkbox" style="margin-top:4px"><label><input type="checkbox" name="ticket_auto_imprimir" id="ticket_auto_imprimir" value="1"> Imprimir solo al cobrar en el POS</label></div>
+                  <div class="checkbox"><label><input type="checkbox" name="ticket_logo" id="ticket_logo" value="1"> Mostrar el logo</label></div>
+                </div>
+                <div class="form-group col-md-6"><label for="ticket_cabecera">Texto bajo el nombre de la tienda</label><input type="text" class="form-control" name="ticket_cabecera" id="ticket_cabecera" maxlength="200" placeholder="Ej.: Lun a Sáb 8am - 8pm · Síguenos en Facebook"></div>
+                <div class="form-group col-md-6"><label for="mensaje_ticket">Mensaje al pie del ticket</label><input type="text" class="form-control" name="mensaje_ticket" id="mensaje_ticket" maxlength="160" placeholder="Gracias por su compra"></div>
+              </div>
+              <div class="callout-soft">
+                <strong><i class="fa fa-info-circle"></i> Para que el ticket salga sin preguntar y abra el cajón:</strong>
+                <ol style="margin:6px 0 0 18px;padding:0">
+                  <li>Instala la ticketera y márcala como <em>impresora predeterminada</em> de Windows, con papel de 80 o 58 mm y márgenes en cero.</li>
+                  <li>El <strong>cajón de dinero</strong> se abre desde el controlador de la ticketera: en <em>Preferencias de impresión</em> activa "Abrir cajón" (Cash drawer / Kick drawer) antes o después de imprimir.</li>
+                  <li>Para imprimir sin la ventana de diálogo, abre el sistema en Chrome o Edge con la opción <code>--kiosk-printing</code> (acceso directo en la PC de caja). Sin esa opción el navegador mostrará la vista previa y solo tendrás que pulsar Enter.</li>
+                </ol>
               </div>
             </div>
           </div>

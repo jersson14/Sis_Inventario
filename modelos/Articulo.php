@@ -247,6 +247,75 @@ class Articulo{
 	}
 
 	/**
+	 * Buscador en linea (pantalla de compra): por codigo del articulo, de una
+	 * presentacion o de una talla/color, o por parte del nombre. El codigo
+	 * exacto va primero para que el lector de barras agregue el correcto.
+	 */
+	public function buscarRapido($termino, $limite = 15){
+		$termino = trim((string)$termino);
+		if ($termino === '') {
+			return array();
+		}
+		$filas = dbAll(
+			"SELECT a.idarticulo,a.codigo,a.nombre,a.stock,IFNULL(u.abreviatura,'und') AS unidad,c.nombre AS categoria,a.imagen,
+				IF(a.precio_compra>0, a.precio_compra, IFNULL((SELECT precio_compra/factor FROM detalle_ingreso WHERE idarticulo=a.idarticulo ORDER BY iddetalle_ingreso DESC LIMIT 1),0)) AS precio_compra,
+				(a.codigo=?
+				 OR EXISTS(SELECT 1 FROM articulo_presentacion p WHERE p.idarticulo=a.idarticulo AND p.condicion=1 AND p.codigo=?)
+				 OR EXISTS(SELECT 1 FROM articulo_variante v WHERE v.idarticulo=a.idarticulo AND v.condicion=1 AND v.codigo=?)) AS exacto
+			 FROM articulo a
+			 INNER JOIN categoria c ON a.idcategoria=c.idcategoria
+			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 WHERE a.condicion=1
+			 AND (a.codigo LIKE CONCAT(?, '%') OR a.nombre LIKE CONCAT('%', ?, '%')
+				OR EXISTS(SELECT 1 FROM articulo_presentacion p WHERE p.idarticulo=a.idarticulo AND p.condicion=1 AND p.codigo=?)
+				OR EXISTS(SELECT 1 FROM articulo_variante v WHERE v.idarticulo=a.idarticulo AND v.condicion=1 AND v.codigo=?))
+			 ORDER BY exacto DESC, a.nombre ASC
+			 LIMIT ?",
+			array($termino, $termino, $termino, $termino, $termino, $termino, $termino, max(1, min(50, (int)$limite)))
+		);
+		foreach ($filas as &$f) {
+			$f['idarticulo'] = (int)$f['idarticulo'];
+			$f['stock'] = round((float)$f['stock'], 3);
+			$f['precio_compra'] = round((float)$f['precio_compra'], 2);
+			$f['exacto'] = (int)$f['exacto'] === 1;
+			$f['imagen'] = nombreArchivoSeguro($f['imagen']);
+		}
+		unset($f);
+		return $filas;
+	}
+
+	/**
+	 * Catalogo del punto de venta: todos los activos con lo necesario para
+	 * pintar la cuadricula (la ficha completa se pide al agregar).
+	 */
+	public function catalogoPos(){
+		$filas = dbAll(
+			"SELECT a.idarticulo,a.codigo,a.nombre,a.stock,IFNULL(a.stock_minimo,0) AS stock_minimo,IFNULL(u.abreviatura,'und') AS unidad,
+				a.idcategoria,c.nombre AS categoria,a.imagen,
+				IF(a.precio_venta>0, a.precio_venta, IFNULL((SELECT precio_venta FROM detalle_ingreso WHERE idarticulo=a.idarticulo AND idpresentacion IS NULL ORDER BY iddetalle_ingreso DESC LIMIT 1),0)) AS precio_venta,
+				(SELECT COUNT(*) FROM articulo_presentacion p WHERE p.idarticulo=a.idarticulo AND p.condicion=1) AS presentaciones,
+				(SELECT COUNT(*) FROM articulo_variante v WHERE v.idarticulo=a.idarticulo AND v.condicion=1) AS variantes
+			 FROM articulo a
+			 INNER JOIN categoria c ON a.idcategoria=c.idcategoria
+			 LEFT JOIN unidad_medida u ON a.idunidad=u.idunidad
+			 WHERE a.condicion=1
+			 ORDER BY a.nombre ASC"
+		);
+		foreach ($filas as &$f) {
+			$f['idarticulo'] = (int)$f['idarticulo'];
+			$f['idcategoria'] = (int)$f['idcategoria'];
+			$f['stock'] = round((float)$f['stock'], 3);
+			$f['stock_minimo'] = round((float)$f['stock_minimo'], 3);
+			$f['precio_venta'] = round((float)$f['precio_venta'], 2);
+			$f['presentaciones'] = (int)$f['presentaciones'];
+			$f['variantes'] = (int)$f['variantes'];
+			$f['imagen'] = nombreArchivoSeguro($f['imagen']);
+		}
+		unset($f);
+		return $filas;
+	}
+
+	/**
 	 * Todo lo que el punto de venta o de compra necesita para agregar un
 	 * articulo: datos base, si admite decimales, presentaciones y escalas de
 	 * precio por mayor. Devuelve array o null si no existe o esta inactivo.
@@ -318,6 +387,74 @@ class Articulo{
 			'presentaciones' => $presentaciones,
 			'escalas' => $escalas
 		);
+	}
+
+	/**
+	 * Precio de lista de una linea, igual que lo calcula el POS
+	 * (precioAutomatico en venta.js): el de la presentacion; si no, el de la
+	 * talla/color o el del articulo, reemplazado por el precio por mayor cuya
+	 * cantidad minima se alcance.
+	 */
+	public static function precioLista(array $ficha, $idpresentacion, $idvariante, $cantidad){
+		foreach ($ficha['presentaciones'] as $p) {
+			if ($p['idpresentacion'] === (int)$idpresentacion) {
+				return $p['precio_venta'] > 0 ? $p['precio_venta'] : $ficha['precio_venta'] * $p['factor'];
+			}
+		}
+		$precio = $ficha['precio_venta'];
+		foreach ($ficha['variantes'] as $v) {
+			if ($v['idvariante'] === (int)$idvariante) {
+				$precio = $v['precio_venta'];
+			}
+		}
+		foreach ($ficha['escalas'] as $es) {
+			if ((float)$cantidad + 0.0005 >= $es['cantidad_minima']) {
+				$precio = $es['precio'];
+			}
+		}
+		return $precio;
+	}
+
+	/**
+	 * Para quien no tiene el permiso "Cambiar precios y descuentos": cada linea
+	 * debe ir al precio de lista y sin descuento. $permitidas son lineas ya
+	 * aprobadas (las de una cotizacion hecha por un encargado) que se aceptan
+	 * tal cual. Devuelve '' si todo esta bien o el mensaje para el usuario.
+	 */
+	public function validarPreciosDeLista($idarticulo, $idpresentacion, $idvariante, $cantidad, $precio, $descuento, array $permitidas = array()){
+		$fichas = array();
+		foreach ((array)$idarticulo as $i => $idRaw) {
+			$id = (int)$idRaw;
+			$idPres = isset($idpresentacion[$i]) ? (int)$idpresentacion[$i] : 0;
+			$idVar = isset($idvariante[$i]) ? (int)$idvariante[$i] : 0;
+			$cant = isset($cantidad[$i]) ? (float)str_replace(',', '.', (string)$cantidad[$i]) : 0;
+			$pre = isset($precio[$i]) ? round((float)$precio[$i], 2) : 0;
+			$des = isset($descuento[$i]) ? round((float)$descuento[$i], 2) : 0;
+			if ($id <= 0) {
+				continue;
+			}
+			foreach ($permitidas as $l) {
+				if ((int)$l['idarticulo'] === $id && (int)$l['idpresentacion'] === $idPres && (int)$l['idvariante'] === $idVar
+					&& abs((float)$l['precio'] - $pre) < 0.005 && abs((float)$l['descuento'] - $des) < 0.005) {
+					continue 2;
+				}
+			}
+			if ($des > 0.004) {
+				return "Tu usuario no puede aplicar descuentos. Pídeselo a un encargado.";
+			}
+			if (!array_key_exists($id, $fichas)) {
+				$fichas[$id] = $this->fichaOperacion($id, true);
+			}
+			if (!$fichas[$id]) {
+				continue;   // articulo inexistente: lo rechaza el registro de la venta
+			}
+			$lista = round(self::precioLista($fichas[$id], $idPres, $idVar, $cant), 2);
+			// ±1 centimo: el POS redondea con toFixed(2) y PHP con round()
+			if (abs($lista - $pre) > 0.0101) {
+				return "No puedes cambiar el precio de " . $fichas[$id]['nombre'] . " (precio de lista " . number_format($lista, 2) . "). Pídeselo a un encargado.";
+			}
+		}
+		return '';
 	}
 
 	// Presentacion activa con ese codigo de barras exacto: array {idarticulo, idpresentacion} o null.

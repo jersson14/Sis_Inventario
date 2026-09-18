@@ -325,19 +325,8 @@ function formatearFechaComprobante($fechaRaw) {
   return $fechaRaw;
 }
 
-$logo = "";
-if (!empty($empresa["logo"])) {
-  $logoEmpresa = realpath(__DIR__."/../files/empresa/".$empresa["logo"]);
-  if ($logoEmpresa && file_exists($logoEmpresa)) {
-    $logo = $logoEmpresa;
-  }
-}
-if ($logo === "") {
-  $logo = __DIR__."/logo1.jpeg";
-  if (!file_exists($logo)) {
-    $logo = __DIR__."/logo.png";
-  }
-}
+// Logo de la empresa (JPG/PNG; un WEBP se convierte). Sin logo, el PDF sale sin imagen.
+$logo = marcaRutaLogoPdf();
 
 $documento = array(
   "titulo" => $reg->tipo_comprobante." N° ".$reg->serie_comprobante."-".$reg->num_comprobante,

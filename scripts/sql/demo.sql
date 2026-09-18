@@ -202,3 +202,24 @@ INSERT INTO caja_movimiento (idcaja, idusuario, tipo, concepto, referencia, medi
 SELECT @caja, @u, 'INGRESO', 'Venta Ticket T001-00000001', 'DEMO', 'EFECTIVO', 64.00, DATE_SUB(CURDATE(), INTERVAL 1 DAY) + INTERVAL 17 HOUR WHERE (SELECT COUNT(*) FROM caja_movimiento WHERE idcaja=@caja)=2;
 INSERT INTO caja_movimiento (idcaja, idusuario, tipo, concepto, referencia, medio_pago, monto, fecha_hora)
 SELECT @caja, @u, 'INGRESO', 'Venta Boleta B001-00000003', 'DEMO', 'TARJETA', 51.00, DATE_SUB(CURDATE(), INTERVAL 1 DAY) + INTERVAL 18 HOUR WHERE (SELECT COUNT(*) FROM caja_movimiento WHERE idcaja=@caja)=3;
+
+-- Documentos de demo en el almacen principal y cobros de contado en venta_pago
+SET @alm_demo = (SELECT idalmacen FROM almacen WHERE principal=1 ORDER BY idalmacen LIMIT 1);
+UPDATE ingreso SET idalmacen=@alm_demo WHERE idalmacen IS NULL;
+UPDATE venta SET idalmacen=@alm_demo WHERE idalmacen IS NULL;
+INSERT INTO venta_pago (idventa, medio_pago, monto, recibido, num_operacion, idcaja, fecha_hora)
+SELECT v.idventa, IFNULL(NULLIF(v.medio_pago,''),'EFECTIVO'), IFNULL(v.total_venta,0),
+       IF(IFNULL(NULLIF(v.medio_pago,''),'EFECTIVO')='EFECTIVO', v.monto_recibido, NULL),
+       v.num_operacion, v.idcaja, v.fecha_hora
+FROM venta v
+WHERE v.tipo_pago='CONTADO' AND NOT EXISTS (SELECT 1 FROM venta_pago p WHERE p.idventa=v.idventa);
+UPDATE venta v SET v.medio_pago='CREDITO'
+WHERE v.tipo_pago='CREDITO' AND NOT EXISTS (SELECT 1 FROM venta_pago p WHERE p.idventa=v.idventa) AND v.medio_pago<>'CREDITO';
+-- El ajuste de demo toca articulo.stock directo: se registra en el principal y se cuadra
+UPDATE ajuste_inventario SET idalmacen=@alm_demo WHERE idalmacen IS NULL;
+INSERT INTO stock_almacen (idalmacen, idarticulo, idvariante, stock)
+SELECT @alm_demo, a.idarticulo, 0, a.stock - IFNULL((SELECT SUM(s.stock) FROM stock_almacen s WHERE s.idarticulo=a.idarticulo), 0)
+FROM articulo a
+WHERE NOT EXISTS (SELECT 1 FROM articulo_variante av WHERE av.idarticulo=a.idarticulo)
+  AND ABS(a.stock - IFNULL((SELECT SUM(s.stock) FROM stock_almacen s WHERE s.idarticulo=a.idarticulo), 0)) > 0.0005
+ON DUPLICATE KEY UPDATE stock_almacen.stock = stock_almacen.stock + VALUES(stock);

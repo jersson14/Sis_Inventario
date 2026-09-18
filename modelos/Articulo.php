@@ -1,6 +1,7 @@
 <?php
 // Modelo de articulos: todas las consultas con datos externos usan sentencias preparadas.
 require_once "../config/Conexion.php";
+require_once "../modelos/Stock.php";
 require_once "../config/negocio.php";
 require_once "../modelos/Lote.php";
 require_once "../modelos/Variante.php";
@@ -288,9 +289,11 @@ class Articulo{
 	 * Catalogo del punto de venta: todos los activos con lo necesario para
 	 * pintar la cuadricula (la ficha completa se pide al agregar).
 	 */
-	public function catalogoPos(){
+	public function catalogoPos($idalmacen = 0){
+		// Con varios almacenes, el POS muestra el stock del almacen donde se vende
+		$colStock = (int)$idalmacen > 0 ? "IFNULL((SELECT SUM(sa.stock) FROM stock_almacen sa WHERE sa.idarticulo=a.idarticulo AND sa.idalmacen=" . (int)$idalmacen . "),0)" : "a.stock";
 		$filas = dbAll(
-			"SELECT a.idarticulo,a.codigo,a.nombre,a.stock,IFNULL(a.stock_minimo,0) AS stock_minimo,IFNULL(u.abreviatura,'und') AS unidad,
+			"SELECT a.idarticulo,a.codigo,a.nombre," . $colStock . " AS stock,IFNULL(a.stock_minimo,0) AS stock_minimo,IFNULL(u.abreviatura,'und') AS unidad,
 				a.idcategoria,c.nombre AS categoria,a.imagen,
 				IF(a.precio_venta>0, a.precio_venta, IFNULL((SELECT precio_venta FROM detalle_ingreso WHERE idarticulo=a.idarticulo AND idpresentacion IS NULL ORDER BY iddetalle_ingreso DESC LIMIT 1),0)) AS precio_venta,
 				(SELECT COUNT(*) FROM articulo_presentacion p WHERE p.idarticulo=a.idarticulo AND p.condicion=1) AS presentaciones,
@@ -320,7 +323,11 @@ class Articulo{
 	 * articulo: datos base, si admite decimales, presentaciones y escalas de
 	 * precio por mayor. Devuelve array o null si no existe o esta inactivo.
 	 */
-	public function fichaOperacion($idarticulo, $paraVenta = false){
+	public function fichaOperacion($idarticulo, $paraVenta = false, $idalmacen = null){
+		// Venta: stock del almacen de la sesion (null = el de la sesion; 0 = total)
+		if ($idalmacen === null) {
+			$idalmacen = $paraVenta ? Stock::almacenActual() : 0;
+		}
 		$a = dbRow(
 			"SELECT a.idarticulo,a.codigo,a.nombre,a.stock,a.stock_minimo,IFNULL(u.abreviatura,'und') AS unidad,IFNULL(u.permite_fraccion,0) AS permite_fraccion,
 				IF(a.precio_venta>0, a.precio_venta, IFNULL((SELECT precio_venta FROM detalle_ingreso WHERE idarticulo=a.idarticulo AND idpresentacion IS NULL ORDER BY iddetalle_ingreso DESC LIMIT 1),0)) AS precio_venta,
@@ -351,13 +358,13 @@ class Articulo{
 		$vencido = 0.0;
 		$proximo = null;
 		if (Lote::activo()) {
-			$vencido = Lote::stockVencido($a['idarticulo']);
-			$p = Lote::proximoVencimiento($a['idarticulo']);
+			$vencido = Lote::stockVencido($a['idarticulo'], $idalmacen);
+			$p = Lote::proximoVencimiento($a['idarticulo'], $idalmacen);
 			if ($p) {
 				$proximo = array('fecha' => $p['fecha_vencimiento'], 'codigo_lote' => (string)$p['codigo_lote'], 'stock' => round((float)$p['stock'], 3));
 			}
 		}
-		$stock = round((float)$a['stock'], 3);
+		$stock = (int)$idalmacen > 0 ? Stock::enAlmacen($idalmacen, $a['idarticulo']) : round((float)$a['stock'], 3);
 		// Tallas y colores: cada una con su stock y su precio efectivo
 		$variantes = array();
 		foreach (Variante::deArticulo($a['idarticulo']) as $v) {
@@ -366,7 +373,7 @@ class Articulo{
 				'talla' => html_entity_decode((string)$v['talla'], ENT_QUOTES, 'UTF-8'),
 				'color' => html_entity_decode((string)$v['color'], ENT_QUOTES, 'UTF-8'),
 				'etiqueta' => html_entity_decode(Variante::etiqueta($v['talla'], $v['color']), ENT_QUOTES, 'UTF-8'),
-				'stock' => round((float)$v['stock'], 3),
+				'stock' => (int)$idalmacen > 0 ? Stock::enAlmacen($idalmacen, $a['idarticulo'], (int)$v['idvariante']) : round((float)$v['stock'], 3),
 				'precio_venta' => (float)$v['precio_venta'] > 0 ? round((float)$v['precio_venta'], 2) : round((float)$a['precio_venta'], 2)
 			);
 		}

@@ -25,10 +25,20 @@ if (usuarioTienePermiso('almacen') || usuarioTienePermiso('consultac') || usuari
             <div class="tab-content" style="margin-top:16px;">
               <div role="tabpanel" class="tab-pane active" id="tabKardex">
                 <div class="row">
-                  <div class="form-group col-md-5">
+<?php require_once "../modelos/Stock.php"; $multiAlmK = Stock::multiAlmacen(); ?>
+                  <div class="form-group col-md-<?php echo $multiAlmK ? 3 : 5; ?>">
                     <label>Articulo</label>
                     <select id="kardex_articulo" class="form-control selectpicker" data-live-search="true"></select>
                   </div>
+<?php if ($multiAlmK) { ?>
+                  <div class="form-group col-md-2">
+                    <label for="kardex_almacen">Almacén</label>
+                    <select id="kardex_almacen" class="form-control">
+                      <option value="0">Todos</option>
+                      <?php foreach (Stock::almacenes() as $alK) { ?><option value="<?php echo (int)$alK['idalmacen']; ?>"><?php echo e(html_entity_decode($alK['nombre'], ENT_QUOTES, 'UTF-8')); ?></option><?php } ?>
+                    </select>
+                  </div>
+<?php } ?>
                   <div class="form-group col-md-2">
                     <label>Desde</label>
                     <input type="date" class="form-control" id="kardex_desde">

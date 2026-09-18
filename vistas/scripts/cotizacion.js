@@ -19,6 +19,7 @@ function init(){
 	});
 	$("#btnBuscarCodigo").on("click", function(){ buscarCodigo($("#codigo_rapido").val()); });
 	$("#codigo_rapido").on("keypress", function(e){ if (e.which === 13) { e.preventDefault(); buscarCodigo($(this).val()); } });
+	window.appLectorCodigo("#codigo_rapido", function(codigo){ buscarCodigo(codigo); }, { enter: false });
 	$(document).on("keydown", function(e){
 		if (!enFormulario) { return; }
 		if (e.key === "F2") { e.preventDefault(); $("#myModal").modal("show"); }

@@ -12,7 +12,8 @@ class Empresa
         'nombre_comercial', 'razon_social', 'ruc', 'direccion', 'telefono', 'celular', 'correo', 'web', 'logo',
         'color_primario', 'color_secundario', 'serie_boleta', 'serie_factura', 'serie_ticket', 'serie_cotizacion',
         'impuesto_default', 'moneda', 'tipo_negocio', 'dias_alerta_vencimiento', 'mensaje_ticket',
-        'ticket_ancho', 'ticket_auto_imprimir', 'ticket_logo', 'ticket_cabecera', 'ticket_copias', 'arqueo_ciego'
+        'ticket_ancho', 'ticket_auto_imprimir', 'ticket_logo', 'ticket_cabecera', 'ticket_copias', 'arqueo_ciego',
+        'url_publica', 'ticket_qr', 'ticket_leyenda'
     );
 
     public function __construct()
@@ -46,7 +47,8 @@ class Empresa
             'ticket_auto_imprimir' => 1,
             'ticket_logo' => 1,
             'ticket_copias' => 1,
-            'arqueo_ciego' => 1
+            'arqueo_ciego' => 1,
+            'ticket_qr' => 1
         );
 
         $valores = array();
@@ -147,12 +149,15 @@ class Empresa
         $ancho = $cfg && isset($cfg['ticket_ancho']) ? (int)$cfg['ticket_ancho'] : 80;
         $copias = $cfg && isset($cfg['ticket_copias']) ? (int)$cfg['ticket_copias'] : 1;
         $cabecera = $cfg && isset($cfg['ticket_cabecera']) ? trim(html_entity_decode((string)$cfg['ticket_cabecera'], ENT_QUOTES | ENT_HTML5, 'UTF-8')) : '';
+        $leyenda = $cfg && isset($cfg['ticket_leyenda']) ? trim(html_entity_decode((string)$cfg['ticket_leyenda'], ENT_QUOTES | ENT_HTML5, 'UTF-8')) : '';
         return array(
             'ancho' => $ancho === 58 ? 58 : 80,
             'auto_imprimir' => !$cfg || !isset($cfg['ticket_auto_imprimir']) || (int)$cfg['ticket_auto_imprimir'] === 1,
             'logo' => !$cfg || !isset($cfg['ticket_logo']) || (int)$cfg['ticket_logo'] === 1,
             'cabecera' => $cabecera,
-            'copias' => max(1, min(3, $copias))
+            'copias' => max(1, min(3, $copias)),
+            'qr' => !$cfg || !isset($cfg['ticket_qr']) || (int)$cfg['ticket_qr'] === 1,
+            'leyenda' => $leyenda
         );
     }
 }

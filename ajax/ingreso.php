@@ -34,6 +34,12 @@ switch ($op) {
 			$arrLoteVence    = (isset($_POST["lote_vencimiento"]) && is_array($_POST["lote_vencimiento"])) ? $_POST["lote_vencimiento"] : array();
 			$arrVariante     = (isset($_POST["idvariante"]) && is_array($_POST["idvariante"])) ? $_POST["idvariante"] : array();
 
+			// Almacen al que entra la compra: el elegido (con permiso de almacenes) o el de la sesion
+			require_once "../modelos/Stock.php";
+			$almCompra = enteroSeguro(isset($_POST["idalmacen"]) ? $_POST["idalmacen"] : 0);
+			if (!usuarioTienePermiso('almacenes') || !Stock::almacenValido($almCompra)) {
+				$almCompra = Stock::almacenActual();
+			}
 			$rspta = $ingreso->insertar(
 				$idproveedor, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
@@ -41,7 +47,8 @@ switch ($op) {
 				array(
 					"cuenta_pago"=>isset($_POST["cuenta_pago"]) ? limpiarCadena($_POST["cuenta_pago"]) : "",
 					"num_operacion"=>isset($_POST["num_operacion"]) ? limpiarCadena($_POST["num_operacion"]) : ""
-				)
+				),
+				$almCompra
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('compras', 'crear', "Ingreso " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));

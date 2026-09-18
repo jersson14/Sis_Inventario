@@ -46,6 +46,7 @@ $menu = array(
   array('tipo' => 'grupo', 'icono' => 'fa-shopping-cart', 'texto' => 'Ventas', 'permisos' => array('ventas'), 'hijos' => array(
     array('href' => 'venta.php', 'texto' => 'Punto de venta'),
     array('href' => 'cotizacion.php', 'texto' => 'Cotizaciones'),
+    array('href' => 'notacredito.php', 'texto' => 'Devoluciones (notas de crédito)'),
     array('href' => 'cliente.php', 'texto' => 'Clientes'),
   )),
   array('tipo' => 'grupo', 'icono' => 'fa-truck', 'texto' => 'Compras', 'permisos' => array('compras'), 'hijos' => array(
@@ -66,6 +67,8 @@ $menu = array(
     array('href' => 'importar.php', 'texto' => 'Importar desde Excel'),
   )),
   array('tipo' => 'item', 'href' => 'inventario.php', 'icono' => 'fa-exchange', 'texto' => 'Ajustes de inventario', 'permisos' => array('inventario', 'almacen')),
+  array('tipo' => 'item', 'href' => 'conteo.php', 'icono' => 'fa-barcode', 'texto' => 'Toma de inventario', 'permisos' => array('inventario', 'almacen')),
+  array('tipo' => 'item', 'href' => 'almacen.php', 'icono' => 'fa-building-o', 'texto' => 'Almacenes y transferencias', 'permisos' => array('almacenes', 'inventario', 'almacen')),
   array('tipo' => 'item', 'href' => 'vencimientos.php', 'icono' => 'fa-calendar-times-o', 'texto' => 'Vencimientos', 'permisos' => array('inventario', 'almacen'), 'capacidades' => array('vencimientos', 'lotes')),
   array('tipo' => 'item', 'href' => 'procenter.php', 'icono' => 'fa-line-chart', 'texto' => 'Kardex y alertas', 'permisos' => array('procenter', 'almacen')),
 
@@ -164,6 +167,27 @@ if (!function_exists('menuTienePermiso')) {
 
       <div class="navbar-custom-menu">
         <ul class="nav navbar-nav">
+          <?php
+          // Almacen de trabajo: solo se muestra cuando hay mas de uno
+          require_once "../modelos/Stock.php";
+          if (Stock::multiAlmacen()) {
+            $almActualNav = Stock::almacenActual();
+            $puedeCambiarAlmNav = usuarioTienePermiso('almacenes');
+          ?>
+          <li class="dropdown navbar-almacen">
+            <a href="#" class="dropdown-toggle" <?php echo $puedeCambiarAlmNav ? 'data-toggle="dropdown"' : ''; ?> title="Almacén donde trabajas: las ventas, ajustes y conteos usan su stock">
+              <i class="fa fa-building-o"></i> <span class="hidden-xs"><?php echo e(Stock::nombre($almActualNav)); ?></span><?php if ($puedeCambiarAlmNav) { ?> <i class="fa fa-angle-down"></i><?php } ?>
+            </a>
+            <?php if ($puedeCambiarAlmNav) { ?>
+            <ul class="dropdown-menu">
+              <li class="bell-header">Trabajar en…</li>
+              <?php foreach (Stock::almacenes() as $alNav) { ?>
+              <li><a href="#" class="cambiar-almacen<?php echo (int)$alNav['idalmacen'] === $almActualNav ? ' activo' : ''; ?>" data-id="<?php echo (int)$alNav['idalmacen']; ?>"><i class="fa <?php echo (int)$alNav['idalmacen'] === $almActualNav ? 'fa-check-circle' : 'fa-circle-thin'; ?>"></i> <?php echo e(html_entity_decode($alNav['nombre'], ENT_QUOTES, 'UTF-8')); ?><?php echo (int)$alNav['principal'] === 1 ? ' <small class="text-soft">(principal)</small>' : ''; ?></a></li>
+              <?php } ?>
+            </ul>
+            <?php } ?>
+          </li>
+          <?php } ?>
           <?php if (usuarioTienePermiso('escritorio')) { ?>
           <li class="dropdown navbar-bell" id="navbarBell">
             <a href="#" class="dropdown-toggle" data-toggle="dropdown" title="Alertas">

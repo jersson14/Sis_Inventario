@@ -11,6 +11,7 @@ if ($op === 'publicBrand') {
     requiereLogin();
 }
 require_once "../modelos/Empresa.php";
+require_once "../config/comprobante.php";
 
 $empresa = new Empresa();
 
@@ -103,6 +104,8 @@ switch ($op) {
         $cfg = $empresa->obtener();
         if ($cfg) {
             $cfg['logo_url'] = urlLogoEmpresa($cfg['logo']);
+            // Direccion que usara el QR si no se configura una publica
+            $cfg['url_detectada'] = urlBaseSistema();
         }
         responderJson($cfg ? $cfg : array());
         break;
@@ -157,6 +160,14 @@ switch ($op) {
             $moneda = 'PEN';
         }
 
+        // Direccion con la que el cliente abre su comprobante desde el QR
+        $urlPublicaRaw = trim((string)(isset($_POST['url_publica']) ? $_POST['url_publica'] : ''));
+        $urlPublica = normalizarUrlPublica($urlPublicaRaw);
+        if ($urlPublicaRaw !== '' && $urlPublica === '') {
+            echo 'La dirección pública debe ser una URL como https://mitienda.pe (sin ? ni #).';
+            break;
+        }
+
         $data = array(
             'nombre_comercial' => $nombre_comercial,
             'razon_social' => substr(limpiarCadena(isset($_POST['razon_social']) ? $_POST['razon_social'] : ''), 0, 150),
@@ -183,7 +194,10 @@ switch ($op) {
             'ticket_logo' => !empty($_POST['ticket_logo']) ? 1 : 0,
             'ticket_cabecera' => mb_substr(limpiarCadena(isset($_POST['ticket_cabecera']) ? $_POST['ticket_cabecera'] : ''), 0, 200, 'UTF-8'),
             'ticket_copias' => max(1, min(3, enteroSeguro(isset($_POST['ticket_copias']) ? $_POST['ticket_copias'] : 1))),
-            'arqueo_ciego' => !empty($_POST['arqueo_ciego']) ? 1 : 0
+            'arqueo_ciego' => !empty($_POST['arqueo_ciego']) ? 1 : 0,
+            'url_publica' => $urlPublica,
+            'ticket_qr' => !empty($_POST['ticket_qr']) ? 1 : 0,
+            'ticket_leyenda' => mb_substr(limpiarCadena(isset($_POST['ticket_leyenda']) ? $_POST['ticket_leyenda'] : ''), 0, 250, 'UTF-8')
         );
 
         $rspta = $empresa->guardar($data);

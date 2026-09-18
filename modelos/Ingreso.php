@@ -11,6 +11,7 @@
  *  - CREDITO: se genera automaticamente una cuenta_pagar.
  */
 require_once "../config/Conexion.php";
+require_once "../modelos/Stock.php";
 require_once "../config/negocio.php";   // fracciones y presentaciones
 require_once "../modelos/Lote.php";      // lotes y vencimientos
 require_once "../modelos/Variante.php";  // tallas y colores
@@ -152,7 +153,9 @@ class Ingreso{
 	 * Devuelve array {ok, message} o
 	 * {ok:true, idingreso, tipo_comprobante, serie_comprobante, num_comprobante, total, caja_registrada, cuenta_pagar}.
 	 */
-	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta,$idpresentacion = array(),$loteCodigo = array(),$loteVencimiento = array(),$idvariante = array(),$pago = array()){
+	public function insertar($idproveedor,$idusuario,$tipo_comprobante,$serie_comprobante,$num_comprobante,$fecha_hora,$impuesto,$tipo_pago,$medio_pago,$fecha_vencimiento,$observacion,$idarticulo,$cantidad,$precio_compra,$precio_venta,$idpresentacion = array(),$loteCodigo = array(),$loteVencimiento = array(),$idvariante = array(),$pago = array(),$idalmacen = 0){
+		// Almacen al que entra la mercaderia
+		$idalmacen = ((int)$idalmacen > 0 && Stock::almacenValido($idalmacen)) ? (int)$idalmacen : Stock::principal();
 		$idproveedor = (int)$idproveedor;
 		$idusuario = (int)$idusuario;
 
@@ -311,7 +314,7 @@ class Ingreso{
 		);
 		$mensajeError = '';
 
-		$resultado = dbTransaccion(function($cx) use ($ctx, $detalles, $articulosAfectados, &$mensajeError) {
+		$resultado = dbTransaccion(function($cx) use ($idalmacen, $ctx, $detalles, $articulosAfectados, &$mensajeError) {
 			$tipo = $ctx["tipo_comprobante"];
 			$serie = $ctx["serie_comprobante"];
 			$num = $ctx["num_comprobante"];
@@ -357,10 +360,10 @@ class Ingreso{
 			}
 
 			$idingreso = dbInsert(
-				"INSERT INTO ingreso (idproveedor,idusuario,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,fecha_vencimiento,impuesto,tipo_pago,medio_pago,cuenta_pago,num_operacion,total_compra,estado,observacion)
-				 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Aceptado',?)",
+				"INSERT INTO ingreso (idproveedor,idusuario,idalmacen,tipo_comprobante,serie_comprobante,num_comprobante,fecha_hora,fecha_vencimiento,impuesto,tipo_pago,medio_pago,cuenta_pago,num_operacion,total_compra,estado,observacion)
+				 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Aceptado',?)",
 				array(
-					$ctx["idproveedor"], $ctx["idusuario"], $tipo, $serie, $num, $ctx["fecha_hora"],
+					$ctx["idproveedor"], $ctx["idusuario"], $idalmacen, $tipo, $serie, $num, $ctx["fecha_hora"],
 					$ctx["fecha_vencimiento"], $ctx["impuesto"], $ctx["tipo_pago"], $ctx["medio_pago"],
 					$ctx["cuenta_pago"], $ctx["num_operacion"], $ctx["total"], $ctx["observacion"]
 				)
@@ -384,7 +387,7 @@ class Ingreso{
 				if ($d["lote_vencimiento"] !== '' || $d["lote_codigo"] !== '') {
 					$idlote = Lote::crear(
 						$d["idarticulo"], round($d["cantidad"] * $d["factor"], 3), $d["lote_vencimiento"], $d["lote_codigo"],
-						round($d["precio_compra"] / $d["factor"], 2), $idingreso
+						round($d["precio_compra"] / $d["factor"], 2), $idingreso, null, $idalmacen
 					);
 					if ($idlote <= 0) {
 						$mensajeError = "No se pudo registrar el lote del articulo";
@@ -467,6 +470,39 @@ class Ingreso{
 			"caja_registrada"=>(bool)$resultado["caja_registrada"],
 			"cuenta_pagar"=>(bool)$resultado["cuenta_pagar"]
 		);
+	}
+
+	/**
+	 * Resta del almacen de la compra lo que entro con ella (total, talla y
+	 * almacen). Si en ese almacen ya no esta (se vendio o se traslado), no se
+	 * revierte. Dentro de la transaccion; devuelve true o false con el mensaje.
+	 */
+	private function revertirStockAlmacen($idingreso, $verbo, &$mensajeError){
+		$alm = (int)dbValue("SELECT IFNULL(idalmacen,0) FROM ingreso WHERE idingreso=?", array((int)$idingreso), 0);
+		if ($alm <= 0) {
+			$alm = Stock::principal();
+		}
+		$filas = dbAll(
+			"SELECT d.idarticulo, IFNULL(d.idvariante,0) AS idvariante, SUM(d.cantidad*d.factor) AS cantidad, a.nombre
+			 FROM detalle_ingreso d INNER JOIN articulo a ON a.idarticulo=d.idarticulo
+			 WHERE d.idingreso=? GROUP BY d.idarticulo, IFNULL(d.idvariante,0), a.nombre",
+			array((int)$idingreso)
+		);
+		foreach ($filas as $f) {
+			$enAlm = Stock::enAlmacen($alm, (int)$f["idarticulo"], (int)$f["idvariante"], true);
+			if ($enAlm + 0.0005 < (float)$f["cantidad"]) {
+				$mensajeError = "No se puede " . $verbo . ": de " . $f["nombre"] . " solo quedan " . formatearCantidad(max(0, $enAlm))
+					. (Stock::multiAlmacen() ? " en " . Stock::nombre($alm) : "") . " (ya se vendió o se trasladó)";
+				return false;
+			}
+		}
+		foreach ($filas as $f) {
+			if (!Stock::mover((int)$f["idarticulo"], (int)$f["idvariante"] > 0 ? (int)$f["idvariante"] : null, -(float)$f["cantidad"], $alm)) {
+				$mensajeError = "No se pudo revertir el stock de los articulos";
+				return false;
+			}
+		}
+		return true;
 	}
 
 	// ---------- Anulacion ----------
@@ -556,18 +592,9 @@ class Ingreso{
 				}
 			}
 
-			// Restar stock y retirar los lotes que trajo esta compra
-			foreach ($detalle as $d) {
-				if (!dbExec("UPDATE articulo SET stock=stock-? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
-					$mensajeError = "No se pudo revertir el stock de los articulos";
-					return false;
-				}
-			}
-			foreach ($porVariante as $pv) {
-				if (!Variante::moverStock($pv["idvariante"], -(float)$pv["cantidad"])) {
-					$mensajeError = "No se pudo revertir el stock de las tallas/colores";
-					return false;
-				}
+			// Restar stock (del almacen al que entro) y retirar los lotes que trajo esta compra
+			if (!$this->revertirStockAlmacen($idingreso, 'anular', $mensajeError)) {
+				return false;
 			}
 			if (!Lote::anularLotesIngreso($idingreso)) {
 				$mensajeError = "No se pudo anular los lotes de la compra";
@@ -704,17 +731,8 @@ class Ingreso{
 					$mensajeError = $porVariante;
 					return false;
 				}
-				foreach ($detalle as $d) {
-					if (!dbExec("UPDATE articulo SET stock=stock-? WHERE idarticulo=?", array((float)$d["cantidad"], (int)$d["idarticulo"]))) {
-						$mensajeError = "No se pudo revertir el stock de los articulos";
-						return false;
-					}
-				}
-				foreach ($porVariante as $pv) {
-					if (!Variante::moverStock($pv["idvariante"], -(float)$pv["cantidad"])) {
-						$mensajeError = "No se pudo revertir el stock de las tallas/colores";
-						return false;
-					}
+				if (!$this->revertirStockAlmacen($idingreso, 'eliminar', $mensajeError)) {
+					return false;
 				}
 			}
 
@@ -755,10 +773,12 @@ class Ingreso{
 		return dbRow(
 			"SELECT i.idingreso,DATE_FORMAT(i.fecha_hora,'%Y-%m-%d %H:%i:%s') AS fecha,i.idproveedor,p.nombre AS proveedor,
 				u.idusuario,u.nombre AS usuario,i.tipo_comprobante,i.serie_comprobante,i.num_comprobante,i.total_compra,i.impuesto,i.estado,
-				i.tipo_pago,i.medio_pago,i.cuenta_pago,i.num_operacion,i.fecha_vencimiento,i.observacion
+				i.tipo_pago,i.medio_pago,i.cuenta_pago,i.num_operacion,i.fecha_vencimiento,i.observacion,
+				i.idalmacen,IFNULL(al.nombre,'') AS almacen
 			 FROM ingreso i
 			 INNER JOIN persona p ON i.idproveedor=p.idpersona
 			 INNER JOIN usuario u ON i.idusuario=u.idusuario
+			 LEFT JOIN almacen al ON al.idalmacen=i.idalmacen
 			 WHERE i.idingreso=?",
 			array((int)$idingreso)
 		);

@@ -11,6 +11,21 @@ require_once "../modelos/Usuario.php";
 $usuario = new Usuario();
 $op = isset($_GET['op']) ? $_GET['op'] : '';
 
+/** Almacen de trabajo del usuario (solo lo envia el formulario del administrador con varios almacenes). */
+function guardarAlmacenUsuario($idusuario)
+{
+	if (!isset($_POST['idalmacen'])) {
+		return;
+	}
+	require_once "../modelos/Stock.php";
+	$idalmacen = Stock::almacenValido(enteroSeguro($_POST['idalmacen']));
+	$anterior = (int)dbValue("SELECT IFNULL(idalmacen,0) FROM usuario WHERE idusuario=?", array((int)$idusuario), 0);
+	if ($idalmacen && $idalmacen !== $anterior) {
+		dbExec("UPDATE usuario SET idalmacen=? WHERE idusuario=?", array($idalmacen, (int)$idusuario));
+		registrarAuditoria('acceso', 'almacen_usuario', 'Usuario #' . (int)$idusuario . ' trabaja en ' . Stock::nombre($idalmacen));
+	}
+}
+
 // ---------- LOGIN (publica) ----------
 if ($op === 'verificar') {
 	iniciarSesionSegura();
@@ -220,6 +235,7 @@ switch ($op) {
 				return $id;
 			});
 			if ($idNuevo) {
+				guardarAlmacenUsuario((int)$idNuevo);
 				registrarAuditoria('acceso', 'crear_usuario', 'Usuario creado #' . (int)$idNuevo . ': ' . $login);
 			}
 			echo $idNuevo ? "Datos registrados correctamente" : "No se pudo registrar todos los datos del usuario";
@@ -234,6 +250,9 @@ switch ($op) {
 				return true;
 			});
 			if ($rspta) {
+				if ($esAdmin) {
+					guardarAlmacenUsuario($idusuario);
+				}
 				if ($idusuario === $idSesion) {
 					$_SESSION['nombre'] = $nombre;
 					$_SESSION['imagen'] = $imagen;

@@ -4,6 +4,7 @@
  * Sin librerias externas: el .xlsx se lee con ZipArchive + SimpleXML.
  */
 require_once "../config/Conexion.php";
+require_once "../modelos/Stock.php";
 require_once "../config/negocio.php";
 require_once "../modelos/Lote.php";
 require_once "../modelos/Variante.php";
@@ -468,7 +469,7 @@ class Importacion
 						array($idcat, (int)$r['idunidad'], $codigo, $nombre, (float)$r['stock'], (float)$r['stock_minimo'], (float)$r['precio_compra'], (float)$r['precio_venta'], $desc));
 					if ($id <= 0) return false;
 					if ((float)$r['stock'] > 0) {
-						dbInsert("INSERT INTO ajuste_inventario(idarticulo, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,'ENTRADA','INICIAL',?,0,?,?,'Stock inicial por importación')",
+						dbInsert("INSERT INTO ajuste_inventario(idarticulo, idalmacen, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,(SELECT idalmacen FROM almacen WHERE principal=1 ORDER BY idalmacen LIMIT 1),?,'ENTRADA','INICIAL',?,0,?,?,'Stock inicial por importación')",
 							array($id, (int)$idusuario, (float)$r['stock'], (float)$r['stock'], (float)$r['precio_compra']));
 					}
 					$res['creados']++;
@@ -487,7 +488,7 @@ class Importacion
 						$act = dbRow("SELECT stock FROM articulo WHERE idarticulo=? FOR UPDATE", array($idart));
 						$anterior = $act ? (float)$act['stock'] : 0; $nuevo = (float)$r['stock'];
 						if (abs($nuevo - $anterior) > 0.0001) {
-							dbInsert("INSERT INTO ajuste_inventario(idarticulo, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,?,'CONTEO',?,?,?,?,'Conteo por importación')",
+							dbInsert("INSERT INTO ajuste_inventario(idarticulo, idalmacen, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,(SELECT idalmacen FROM almacen WHERE principal=1 ORDER BY idalmacen LIMIT 1),?,?,'CONTEO',?,?,?,?,'Conteo por importación')",
 								array($idart, (int)$idusuario, $nuevo > $anterior ? 'ENTRADA' : 'SALIDA', abs($nuevo - $anterior), $anterior, $nuevo, (float)$r['precio_compra']));
 							dbExec("UPDATE articulo SET stock=? WHERE idarticulo=?", array($nuevo, $idart));
 							// Si el conteo baja el stock, los lotes se recortan (primero lo que vence antes)
@@ -502,6 +503,8 @@ class Importacion
 			foreach (array_unique(array_values($articulosVariante)) as $idArt) {
 				if (!Variante::recalcularArticulo($idArt)) return false;
 			}
+			// Stock por almacen: lo que la importacion cambio en el total va al almacen principal
+			if (!Stock::cuadrarDescuadrados()) return false;
 			return true;
 		});
 		if ($ok === false) return array('ok' => false, 'message' => 'La importación falló y se revirtió por completo. Revisa logs/app.log.');
@@ -541,7 +544,7 @@ class Importacion
 				array($idart, $talla, $color, $codigo !== '' ? $codigo : null, (float)$r['stock'], (float)$r['stock_minimo'], $precioVariante, (int)$r['fila']));
 			if ($idvar <= 0) return false;
 			if ((float)$r['stock'] > 0) {
-				dbInsert("INSERT INTO ajuste_inventario(idarticulo, idvariante, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,?,'ENTRADA','INICIAL',?,?,?,?,'Stock inicial por importación')",
+				dbInsert("INSERT INTO ajuste_inventario(idarticulo, idvariante, idalmacen, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,(SELECT idalmacen FROM almacen WHERE principal=1 ORDER BY idalmacen LIMIT 1),?,'ENTRADA','INICIAL',?,?,?,?,'Stock inicial por importación')",
 					array($idart, $idvar, (int)$idusuario, (float)$r['stock'], $stockArt, $stockArt + (float)$r['stock'], (float)$r['precio_compra']));
 				dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array((float)$r['stock'], $idart));
 				$res['ajustes']++;
@@ -561,7 +564,7 @@ class Importacion
 			$nuevo = (float)$r['stock'];
 			if (abs($nuevo - $anterior) > 0.0001) {
 				$delta = $nuevo - $anterior;
-				dbInsert("INSERT INTO ajuste_inventario(idarticulo, idvariante, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,?,?,'CONTEO',?,?,?,?,'Conteo por importación')",
+				dbInsert("INSERT INTO ajuste_inventario(idarticulo, idvariante, idalmacen, idusuario, tipo, motivo, cantidad, stock_anterior, stock_nuevo, costo_unitario, observacion) VALUES(?,?,(SELECT idalmacen FROM almacen WHERE principal=1 ORDER BY idalmacen LIMIT 1),?,?,'CONTEO',?,?,?,?,'Conteo por importación')",
 					array($idart, $idvar, (int)$idusuario, $delta > 0 ? 'ENTRADA' : 'SALIDA', abs($delta), $stockArt, $stockArt + $delta, (float)$r['precio_compra']));
 				if (!Variante::moverStock($idvar, $delta)) return false;
 				dbExec("UPDATE articulo SET stock=stock+? WHERE idarticulo=?", array($delta, $idart));

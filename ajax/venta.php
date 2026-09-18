@@ -28,7 +28,7 @@ $verTodasLasVentas = puedeVerTodasLasVentas();
 $idVendedorFiltro = $verTodasLasVentas ? 0 : $idusuario;
 $puedeAnular = usuarioTienePermiso('anular');
 $idConsulta = $idventa > 0 ? $idventa : enteroSeguro(isset($_GET['id']) ? $_GET['id'] : 0);
-if (in_array($op, array('mostrar', 'listarDetalle', 'anular'), true) && !$verTodasLasVentas && !$venta->esDelUsuario($idConsulta, $idusuario)) {
+if (in_array($op, array('mostrar', 'listarDetalle', 'anular', 'devolvible', 'devolver'), true) && !$verTodasLasVentas && !$venta->esDelUsuario($idConsulta, $idusuario)) {
 	responderJson(array("ok"=>false, "message"=>"Solo puedes consultar tus propias ventas"), 403);
 }
 
@@ -65,14 +65,28 @@ switch ($op) {
 				}
 			}
 
+			// Pagos: varias lineas (pago mixto / adelanto) o el formato anterior de un solo medio
+			$pagoVenta = array(
+				"num_operacion"=>isset($_POST["num_operacion"]) ? limpiarCadena($_POST["num_operacion"]) : "",
+				"monto_recibido"=>isset($_POST["monto_recibido"]) ? (string)$_POST["monto_recibido"] : ""
+			);
+			if (isset($_POST["pago_medio"]) && is_array($_POST["pago_medio"])) {
+				$pagoVenta["lineas"] = array();
+				foreach (array_values($_POST["pago_medio"]) as $i => $medioLinea) {
+					$pagoVenta["lineas"][] = array(
+						"medio"=>(string)$medioLinea,
+						"monto"=>isset($_POST["pago_monto"][$i]) ? (string)$_POST["pago_monto"][$i] : "0",
+						"recibido"=>isset($_POST["pago_recibido"][$i]) ? (string)$_POST["pago_recibido"][$i] : "",
+						"num_operacion"=>isset($_POST["pago_operacion"][$i]) ? limpiarCadena((string)$_POST["pago_operacion"][$i]) : ""
+					);
+				}
+			}
 			$rspta = $venta->insertar(
 				$idcliente, $idusuario, $tipo_comprobante, $serie_comprobante, $num_comprobante, $fecha_hora, $impuesto,
 				$tipo_pago, $medio_pago, $fecha_vencimiento, $observacion,
 				$arrIdArticulo, $arrCantidad, $arrPrecioVenta, $arrDescuento, $arrPresentacion, $arrVariante,
-				array(
-					"num_operacion"=>isset($_POST["num_operacion"]) ? limpiarCadena($_POST["num_operacion"]) : "",
-					"monto_recibido"=>isset($_POST["monto_recibido"]) ? (string)$_POST["monto_recibido"] : ""
-				)
+				$pagoVenta,
+				Stock::almacenActual()
 			);
 			if (is_array($rspta) && !empty($rspta["ok"])) {
 				registrarAuditoria('ventas', 'crear', "Venta " . $rspta["serie_comprobante"] . "-" . $rspta["num_comprobante"] . " total " . number_format((float)$rspta["total"], 2, '.', ''));
@@ -93,7 +107,10 @@ switch ($op) {
 					"total"=>(float)$rspta["total"],
 					"alertas"=>isset($rspta["alertas"]) ? $rspta["alertas"] : array(),
 					"caja_registrada"=>!empty($rspta["caja_registrada"]),
-					"cuenta_cobrar"=>!empty($rspta["cuenta_cobrar"])
+					"cuenta_cobrar"=>!empty($rspta["cuenta_cobrar"]),
+					"vuelto"=>(float)$rspta["vuelto"],
+					"adelanto"=>(float)$rspta["adelanto"],
+					"saldo_credito"=>(float)$rspta["saldo_credito"]
 				), JSON_UNESCAPED_UNICODE);
 			} else {
 				echo json_encode(array(
@@ -136,13 +153,104 @@ switch ($op) {
 				break;
 			}
 		}
-		$rspta = $venta->anular($idventa, $idusuario);
+		$rspta = $venta->anular($idventa, $idusuario, $motivo, $autorizo ? (int)$autorizo['idusuario'] : null);
 		if (!empty($rspta["ok"])) {
 			registrarAuditoria('ventas', 'anular', "Venta id " . $idventa . " anulada"
 				. ($autorizo ? " con autorización de " . $autorizo['login'] : "")
 				. ($motivo !== '' ? " · motivo: " . $motivo : ""));
 		}
 		echo isset($rspta["message"]) ? $rspta["message"] : "No se pudo anular la venta";
+		break;
+
+	// Devolucion parcial o total por items: nota de credito (v2.5)
+	case 'devolvible':
+		require_once "../modelos/NotaCredito.php";
+		$d = (new NotaCredito())->devolvible($idConsulta);
+		if (!$d) {
+			echo json_encode(array("ok"=>false, "message"=>"La venta no existe"), JSON_UNESCAPED_UNICODE);
+			break;
+		}
+		$d["ok"] = true;
+		$d["puede_devolver"] = $puedeAnular;   // sin el permiso, autoriza un encargado
+		echo json_encode($d, JSON_UNESCAPED_UNICODE);
+		break;
+
+	case 'devolver':
+		require_once "../modelos/NotaCredito.php";
+		$motivoDev = isset($_POST['motivo']) ? limpiarCadena($_POST['motivo']) : '';
+		$autorizoDev = null;
+		if (!$puedeAnular) {
+			list($okAut, $msgAut, $autorizoDev) = autorizacionEncargado(
+				isset($_POST['autoriza_login']) ? $_POST['autoriza_login'] : '',
+				isset($_POST['autoriza_clave']) ? $_POST['autoriza_clave'] : '',
+				'anular'
+			);
+			if (!$okAut) {
+				echo json_encode(array("ok"=>false, "message"=>$msgAut), JSON_UNESCAPED_UNICODE);
+				break;
+			}
+		}
+		$lineasDev = array();
+		$idsDet = (isset($_POST['iddetalle_venta']) && is_array($_POST['iddetalle_venta'])) ? array_values($_POST['iddetalle_venta']) : array();
+		$cantDev = (isset($_POST['cantidad_dev']) && is_array($_POST['cantidad_dev'])) ? array_values($_POST['cantidad_dev']) : array();
+		$reingDev = (isset($_POST['reingresa']) && is_array($_POST['reingresa'])) ? array_values($_POST['reingresa']) : array();
+		foreach ($idsDet as $i => $idDet) {
+			$lineasDev[] = array(
+				'iddetalle_venta' => enteroSeguro($idDet),
+				'cantidad' => isset($cantDev[$i]) ? (string)$cantDev[$i] : '0',
+				'reingresa' => !isset($reingDev[$i]) || (string)$reingDev[$i] === '1'
+			);
+		}
+		$reintegroDev = isset($_POST['reintegro']) ? strtoupper(limpiarCadena($_POST['reintegro'])) : '';
+		$rspta = (new NotaCredito())->emitir($idventa, $idusuario, $lineasDev, $motivoDev, $reintegroDev,
+			array('idautoriza' => $autorizoDev ? (int)$autorizoDev['idusuario'] : null, 'sin_caja' => usuarioTienePermiso('acceso')));
+		if (!empty($rspta['ok'])) {
+			registrarAuditoria('ventas', 'devolucion', 'NC ' . $rspta['numero'] . ' de ' . $rspta['documento'] . ' por ' . number_format($rspta['total'], 2, '.', '')
+				. ' · reintegro ' . $reintegroDev . ($autorizoDev ? ' · autorizó ' . $autorizoDev['login'] : '') . ' · motivo: ' . $motivoDev);
+		}
+		echo json_encode($rspta, JSON_UNESCAPED_UNICODE);
+		break;
+
+	// Saldo a favor del cliente (notas de credito) para usarlo al cobrar
+	case 'saldoFavor':
+		require_once "../modelos/NotaCredito.php";
+		$lista = (new NotaCredito())->saldosCliente(enteroSeguro(isset($_GET['idcliente']) ? $_GET['idcliente'] : 0));
+		$totalFavor = 0.0;
+		foreach ($lista as $l) {
+			$totalFavor += (float)$l['saldo_favor'];
+		}
+		echo json_encode(array("ok"=>true, "notas"=>$lista, "total"=>round($totalFavor, 2)), JSON_UNESCAPED_UNICODE);
+		break;
+
+	// Listado de notas de credito (el vendedor sin "Consulta ventas" ve las suyas)
+	case 'listarNotas':
+		require_once "../modelos/NotaCredito.php";
+		$filas = (new NotaCredito())->listar(
+			fechaSegura(isset($_GET['fecha_inicio']) ? $_GET['fecha_inicio'] : '', ''),
+			fechaSegura(isset($_GET['fecha_fin']) ? $_GET['fecha_fin'] : '', ''),
+			$idVendedorFiltro
+		);
+		$reintegros = array('ORIGINAL' => 'Medios de la venta', 'SALDO_A_FAVOR' => 'Saldo a favor', 'EFECTIVO' => 'Efectivo', 'YAPE' => 'Yape', 'PLIN' => 'Plin',
+			'TARJETA' => 'Extorno tarjeta', 'TRANSFERENCIA' => 'Transferencia', 'DEPOSITO' => 'Depósito', 'OTRO' => 'Otro');
+		$data = array();
+		foreach ($filas as $r) {
+			$id = (int)$r['idnota'];
+			$data[] = array(
+				"0"=>'<button class="btn btn-default btn-xs" type="button" title="Ticket de la nota de crédito" onclick="window.open(\'../reportes/exTicketNC.php?id=' . $id . '\',\'_blank\')"><i class="fa fa-print"></i></button> '
+					. '<a class="btn btn-info btn-xs" target="_blank" href="../reportes/exNotaCredito.php?id=' . $id . '" title="Nota de crédito en PDF A4"><i class="fa fa-file-pdf-o"></i></a>',
+				"1"=>'<span data-orden="' . e($r['fecha_hora']) . '">' . e(date('d/m/Y H:i', strtotime($r['fecha_hora']))) . '</span>',
+				"2"=>'<strong>' . e($r['serie'] . '-' . $r['numero']) . '</strong>',
+				"3"=>e($r['tipo_comprobante'] . ' ' . $r['serie_comprobante'] . '-' . $r['num_comprobante']),
+				"4"=>e($r['cliente']),
+				"5"=>($r['tipo_nota'] === '01' ? '<span class="label label-danger">Anulación</span>' : '<span class="label label-warning">Devolución</span>') . ' <small>' . e($r['motivo']) . '</small>',
+				"6"=>formatearMoneda((float)$r['total']),
+				"7"=>e(isset($reintegros[$r['reintegro']]) ? $reintegros[$r['reintegro']] : $r['reintegro'])
+					. ((float)$r['monto_credito'] > 0 ? '<br><small class="text-soft">deuda -' . e(formatearMoneda((float)$r['monto_credito'])) . '</small>' : '')
+					. ((float)$r['saldo_favor'] > 0 ? '<br><span class="label label-success">saldo ' . e(formatearMoneda((float)$r['saldo_favor'])) . '</span>' : ''),
+				"8"=>e($r['usuario']) . ($r['autorizo'] !== '' ? '<br><small class="text-soft">autorizó ' . e($r['autorizo']) . '</small>' : '')
+			);
+		}
+		echo json_encode(array("sEcho"=>1, "iTotalRecords"=>count($data), "iTotalDisplayRecords"=>count($data), "aaData"=>$data), JSON_UNESCAPED_UNICODE);
 		break;
 
 	// Borrado definitivo: reservado al administrador porque no deja rastro.
@@ -160,6 +268,9 @@ switch ($op) {
 
 	case 'mostrar':
 		$rspta = $venta->mostrar($idventa);
+		if ($rspta) {
+			$rspta["pagos"] = $venta->pagos($idventa);
+		}
 		echo json_encode($rspta, JSON_UNESCAPED_UNICODE);
 		break;
 
@@ -191,6 +302,7 @@ switch ($op) {
 				$id = (int)$reg->idventa;
 				$botones = '<button class="btn btn-default btn-xs" type="button" title="Ver detalle" onclick="mostrar(' . $id . ')"><i class="fa fa-eye"></i></button> ';
 				if ($reg->estado == 'Aceptado') {
+					$botones .= '<button class="btn btn-warning btn-xs" type="button" title="Devolver productos (nota de crédito)" onclick="abrirDevolucion(' . $id . ')"><i class="fa fa-undo"></i></button> ';
 					// Sin permiso de anular, el boton pide la clave de un encargado
 					$botones .= '<button class="btn btn-danger btn-xs" type="button" title="' . ($puedeAnular ? 'Anular venta' : 'Anular (pide la clave de un encargado)') . '" onclick="anular(' . $id . ')"><i class="fa fa-ban"></i></button> ';
 				}
@@ -202,7 +314,8 @@ switch ($op) {
 
 				$tipoPago = strtoupper((string)$reg->tipo_pago);
 				$clasePago = ($tipoPago === 'CREDITO') ? 'bg-yellow' : 'bg-aqua';
-				$pagoHtml = '<span class="label ' . $clasePago . '">' . e($tipoPago) . ' · ' . e(strtoupper((string)$reg->medio_pago)) . '</span>';
+				$medioLista = strtoupper((string)$reg->medio_pago);
+				$pagoHtml = '<span class="label ' . $clasePago . '">' . e($tipoPago) . ($medioLista !== '' && $medioLista !== $tipoPago ? ' · ' . e($medioLista) : '') . '</span>';
 				if ($tipoPago === 'CREDITO' && !empty($reg->fecha_vencimiento)) {
 					$pagoHtml .= ' <small title="Vence">' . e(date('d/m/Y', strtotime($reg->fecha_vencimiento))) . '</small>';
 				}
@@ -216,7 +329,8 @@ switch ($op) {
 					"5"=>e($reg->serie_comprobante . '-' . $reg->num_comprobante),
 					"6"=>formatearMoneda((float)$reg->total_venta),
 					"7"=>$pagoHtml,
-					"8"=>($reg->estado == 'Aceptado') ? '<span class="label bg-green">Aceptado</span>' : '<span class="label bg-red">Anulado</span>'
+					"8"=>(($reg->estado == 'Aceptado') ? '<span class="label bg-green">Aceptado</span>' : '<span class="label bg-red">Anulado</span>')
+						. ((float)$reg->devuelto > 0 ? ' <span class="label label-warning" title="Devuelto con notas de crédito"><i class="fa fa-undo"></i> ' . e(formatearMoneda((float)$reg->devuelto)) . '</span>' : '')
 				);
 			}
 		}
@@ -392,7 +506,7 @@ switch ($op) {
 		$empresaPos = new Empresa();
 		echo json_encode(array(
 			"ok"=>true,
-			"items"=>$articuloPos->catalogoPos(),
+			"items"=>$articuloPos->catalogoPos(Stock::almacenActual()),
 			"ticket"=>$empresaPos->configTicket()
 		), JSON_UNESCAPED_UNICODE);
 		break;

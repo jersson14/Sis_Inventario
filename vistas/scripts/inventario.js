@@ -1,12 +1,16 @@
 /* Ajustes de inventario */
 var tabla;
 var articulosCargados = false;
+// Lo que trae un codigo escaneado, para elegirlo cuando carguen tallas y lotes
+var preVariante = 0;
+var preLote = 0;
 
 function money(v){ return window.appMoney ? window.appMoney(v, 2) : Number(v || 0).toFixed(2); }
 
 function cargarArticulos(){
 	$.post("../ajax/inventario.php?op=selectArticulo", function(r){
-		$("#aj_articulo").html('<option value="">— Selecciona —</option>' + r).selectpicker("refresh");
+		var actual = $("#aj_articulo").val();
+		$("#aj_articulo").html('<option value="">— Selecciona —</option>' + r).val(actual || "").selectpicker("refresh");
 		articulosCargados = true;
 	});
 }
@@ -42,24 +46,31 @@ function cargarVariantesAjuste(){
 	var $opt = $("#aj_articulo option:selected");
 	var $grupo = $("#grupoVarianteAjuste"), $sel = $("#aj_idvariante");
 	$sel.html("");
-	if (!$opt.val() || !(parseInt($opt.data("variantes"), 10) > 0)) { $grupo.hide(); return; }
+	if (!$opt.val() || !(parseInt($opt.data("variantes"), 10) > 0)) { $grupo.hide(); preVariante = 0; return; }
 	$.get("../ajax/inventario.php?op=variantesArticulo", { idarticulo: $opt.val() }, function(resp){
 		var r = appParseJson(resp, null);
-		$sel.append('<option value="0">— Elige talla / color —</option>');
+		$sel.html('<option value="0">— Elige talla / color —</option>');
 		((r && r.variantes) || []).forEach(function(v){
 			$sel.append($("<option>").val(v.idvariante).attr("data-stock", v.stock).text(v.etiqueta + " · stock " + window.appCantidad(v.stock)));
 		});
+		if (preVariante) { $sel.val(String(preVariante)); preVariante = 0; }
 		$grupo.show();
 	});
 }
 
-// En una salida, lista los lotes del articulo para dar de baja uno concreto
-function cargarLotesSalida(){
+// Lotes del articulo. Salida: de cual sale (o FEFO automatico).
+// Entrada: stock sin lote, un lote nuevo (codigo/fecha) o sumar a uno existente.
+function cargarLotes(){
 	var $sel = $("#aj_idlote");
-	if (!$sel.length || $("#aj_tipo").val() !== "SALIDA") { return; }
+	if (!$sel.length) { return; }
+	var entrada = $("#aj_tipo").val() === "ENTRADA";
+	$("#aj_lote_label").text(entrada ? "Lote que ingresa" : "Retirar del lote");
+	$sel.html(entrada
+		? '<option value="0">Sin lote</option><option value="nuevo">Lote nuevo (código y vencimiento)…</option>'
+		: '<option value="0">Automático: primero lo vencido y lo que vence antes</option>');
+	mostrarLoteNuevo();
 	var id = $("#aj_articulo").val();
-	$sel.html('<option value="0">Automático: primero lo vencido y lo que vence antes</option>');
-	if (!id) { return; }
+	if (!id) { preLote = 0; return; }
 	$.get("../ajax/inventario.php?op=lotesArticulo", { idarticulo: id }, function(resp){
 		var r = appParseJson(resp, null);
 		if (!r || !r.lotes) { return; }
@@ -67,22 +78,31 @@ function cargarLotesSalida(){
 			var vence = l.fecha_vencimiento ? l.fecha_vencimiento.split("-").reverse().join("/") : "sin fecha";
 			var estado = l.dias === null ? "" : (l.dias < 0 ? " · VENCIDO" : " · " + l.dias + " día(s)");
 			$sel.append($("<option>").val(l.idlote).attr("data-stock", l.stock)
-				.text((l.codigo_lote || "Lote #" + l.idlote) + " — vence " + vence + estado + " — " + window.appCantidad(l.stock)));
+				.text((entrada ? "Sumar a " : "") + (l.codigo_lote || "Lote #" + l.idlote) + " — vence " + vence + estado + " — " + window.appCantidad(l.stock)));
 		});
+		if (preLote && $sel.find("option[value='" + preLote + "']").length) { $sel.val(String(preLote)); mostrarLoteNuevo(); }
+		preLote = 0;
 	});
+}
+
+function mostrarLoteNuevo(){
+	var nuevo = $("#aj_tipo").val() === "ENTRADA" && $("#aj_idlote").val() === "nuevo";
+	$(".lote-entrada").toggle(nuevo);
+	if (!nuevo) { $("#aj_lote_codigo, #aj_lote_vence").val(""); }
 }
 
 function abrirAjuste(tipo){
 	$("#aj_tipo").val(tipo);
 	$("#aj_titulo").html(tipo === "ENTRADA" ? '<i class="fa fa-arrow-down" style="color:#16a34a"></i> Entrada de inventario' : '<i class="fa fa-arrow-up" style="color:#dc2626"></i> Salida de inventario');
 	$("#btnGuardarAjuste").removeClass("btn-success btn-danger").addClass(tipo === "ENTRADA" ? "btn-success" : "btn-danger");
-	$("#aj_cantidad, #aj_costo, #aj_obs, #aj_lote_codigo, #aj_lote_vence").val("");
-	$("#aj_idlote").html('<option value="0">Automático: primero lo vencido y lo que vence antes</option>');
-	$(".lote-entrada").toggle(tipo === "ENTRADA");
+	$("#aj_cantidad, #aj_costo, #aj_obs, #aj_lote_codigo, #aj_lote_vence, #aj_scan").val("");
+	$("#aj_scan_info").removeClass("text-danger text-success").text("Con el lector: cada lectura del mismo producto suma a la cantidad.");
 	$("#grupoVarianteAjuste").hide();
 	$("#aj_idvariante").html("");
-	$(".lote-salida").toggle(tipo === "SALIDA");
+	preVariante = 0;
+	preLote = 0;
 	$("#aj_articulo").val("").selectpicker("refresh");
+	cargarLotes();
 	$("#aj_info").text("Selecciona un artículo para ver su stock actual.");
 	$("#aj_preview").hide();
 	// Motivos sugeridos por tipo
@@ -106,6 +126,45 @@ function actualizarPreview(){
 	$("#aj_preview").html(html).show();
 }
 
+// Lectura del lector: elige articulo, talla y lote; una caja suma su equivalencia
+function escanearAjuste(codigo){
+	var $info = $("#aj_scan_info");
+	$.post("../ajax/inventario.php?op=buscarCodigo", { codigo: codigo }, function(resp){
+		var r = appParseJson(resp, { ok: false, message: resp });
+		$("#aj_scan").val("").focus();
+		if (!r.ok) {
+			window.appSonido("error");
+			$info.removeClass("text-success").addClass("text-danger").text(r.message || "Código no encontrado.");
+			return;
+		}
+		var $opt = $("#aj_articulo option[value='" + r.idarticulo + "']");
+		if (!$opt.length) {
+			window.appSonido("error");
+			$info.removeClass("text-success").addClass("text-danger").text("El artículo está desactivado.");
+			return;
+		}
+		window.appSonido("ok");
+		var factor = parseFloat(r.factor) || 1;
+		if ($("#aj_articulo").val() === String(r.idarticulo)) {
+			// Mismo articulo: otra talla u otro lote reinicia la cantidad; el mismo la suma
+			var cambia = (r.idvariante && $("#aj_idvariante").val() !== String(r.idvariante))
+				|| (r.idlote && $("#aj_idlote").val() !== String(r.idlote));
+			if (r.idvariante) { $("#aj_idvariante").val(String(r.idvariante)); }
+			if (r.idlote && $("#aj_idlote option[value='" + r.idlote + "']").length) { $("#aj_idlote").val(String(r.idlote)); mostrarLoteNuevo(); }
+			var actual = cambia ? 0 : (parseFloat($("#aj_cantidad").val()) || 0);
+			$("#aj_cantidad").val(Math.round((actual + factor) * 1000) / 1000);
+			actualizarPreview();
+		} else {
+			preVariante = parseInt(r.idvariante, 10) || 0;
+			preLote = parseInt(r.idlote, 10) || 0;
+			$("#aj_cantidad").val(factor);
+			$("#aj_articulo").val(String(r.idarticulo)).selectpicker("refresh").trigger("change");
+		}
+		$info.removeClass("text-danger").addClass("text-success")
+			.text($opt.text() + (r.presentacion ? " · " + r.presentacion + " = " + window.appCantidad(factor) + " " + ($opt.data("unidad") || "und") : "") + " · cantidad " + window.appCantidad($("#aj_cantidad").val()));
+	});
+}
+
 function init(){
 	cargarArticulos();
 	listar();
@@ -113,29 +172,37 @@ function init(){
 	$("#btnNuevaEntrada").on("click", function(){ abrirAjuste("ENTRADA"); });
 	$("#btnNuevaSalida").on("click", function(){ abrirAjuste("SALIDA"); });
 	$("#btnFiltrar").on("click", function(){ tabla.ajax.reload(); cargarResumen(); });
+	// bootstrap-select dispara "changed.bs.select" y "change": se procesa una vez por valor
+	var ultimoArticulo = null;
 	$("#aj_articulo").on("changed.bs.select change", function(){
 		var $opt = $("#aj_articulo option:selected");
+		if ($opt.val() === ultimoArticulo) { return; }
+		ultimoArticulo = $opt.val();
 		if ($opt.val()) {
 			$("#aj_info").text("Stock actual: " + window.appCantidad($opt.data("stock")) + " " + $opt.data("unidad") + " · costo ref. " + money($opt.data("costo")));
 			$("#aj_cantidad").attr({ step: String($opt.data("fraccion")) === "1" ? "0.001" : "1", min: String($opt.data("fraccion")) === "1" ? "0.001" : "1" });
 			if (!$("#aj_costo").val()) { $("#aj_costo").attr("placeholder", money($opt.data("costo"))); }
 		}
-		cargarLotesSalida();
+		cargarLotes();
 		cargarVariantesAjuste();
 		actualizarPreview();
 	});
+	$("#modalAjuste").on("show.bs.modal", function(){ ultimoArticulo = null; });
 	$("#aj_cantidad").on("input", actualizarPreview);
 	$("#aj_idlote").on("change", function(){
+		mostrarLoteNuevo();
 		var st = $(this).find("option:selected").data("stock");
-		if (st && !$("#aj_cantidad").val()) { $("#aj_cantidad").val(st); actualizarPreview(); }
+		if (st && $("#aj_tipo").val() === "SALIDA" && !$("#aj_cantidad").val()) { $("#aj_cantidad").val(st); actualizarPreview(); }
 	});
-	$("#modalAjuste").on("shown.bs.modal", function(){ if (!$("#aj_articulo").val()) { $("#aj_articulo").selectpicker("toggle"); } });
+	window.appLectorCodigo("#aj_scan", escanearAjuste);
+	$("#modalAjuste").on("shown.bs.modal", function(){ $("#aj_scan").focus(); });
 
 	$("#formAjuste").on("submit", function(e){
 		e.preventDefault();
 		if (!$("#aj_articulo").val()) { appNotify("warning", "Selecciona un artículo."); return; }
 		if ($("#grupoVarianteAjuste").is(":visible") && !(parseInt($("#aj_idvariante").val(), 10) > 0)) { appNotify("warning", "Elige la talla y el color."); return; }
 		if ((parseFloat($("#aj_cantidad").val()) || 0) <= 0) { appNotify("warning", "La cantidad debe ser mayor que cero."); return; }
+		if ($("#aj_idlote").val() === "nuevo" && !$("#aj_lote_codigo").val() && !$("#aj_lote_vence").val()) { appNotify("warning", "Escribe el código o la fecha de vencimiento del lote nuevo."); return; }
 		appSetLoading("#btnGuardarAjuste", true);
 		$.post("../ajax/inventario.php?op=registrar", $(this).serialize(), function(resp){
 			appSetLoading("#btnGuardarAjuste", false);

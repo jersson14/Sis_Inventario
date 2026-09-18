@@ -69,6 +69,15 @@ if ($esAdmin || $perfilPropio) {
                 <label for="cargo">Cargo</label>
                 <input class="form-control" type="text" name="cargo" id="cargo" maxlength="20" placeholder="Ej. Vendedor">
               </div>
+<?php require_once "../modelos/Stock.php"; if ($esAdmin && !$perfilPropio && Stock::multiAlmacen()) { ?>
+              <div class="form-group col-lg-4 col-md-4 col-xs-12 pull-right">
+                <label for="idalmacen_usuario"><i class="fa fa-building-o"></i> Almacén donde trabaja</label>
+                <select class="form-control" name="idalmacen" id="idalmacen_usuario">
+                  <?php foreach (Stock::almacenes() as $alU) { ?><option value="<?php echo (int)$alU['idalmacen']; ?>"<?php echo (int)$alU['principal'] === 1 ? ' data-principal="1"' : ''; ?>><?php echo e(html_entity_decode($alU['nombre'], ENT_QUOTES, 'UTF-8')); ?></option><?php } ?>
+                </select>
+                <span class="help-block">Vende, compra y ajusta stock en este almacén al iniciar sesión.</span>
+              </div>
+<?php } ?>
               <div class="form-group col-lg-4 col-md-4 col-xs-12">
                 <label for="login">Usuario (login) <span class="req">*</span></label>
                 <input class="form-control" type="text" name="login" id="login" maxlength="20" placeholder="nombre de usuario" required <?php echo $perfilPropio && !$esAdmin ? 'readonly' : ''; ?>>

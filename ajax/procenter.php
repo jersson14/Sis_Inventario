@@ -51,13 +51,16 @@ switch ($op) {
             break;
         }
 
-        $totales = $pro->kardexTotales($idarticulo);
-        $antes = $pro->kardexAntesDeFecha($idarticulo, $desde);
-        $movs = $pro->kardexMovimientos($idarticulo, $desde, $hasta);
+        // Almacen: 0 = todos (stock total del articulo)
+        require_once "../modelos/Stock.php";
+        $idalmacenK = Stock::almacenValido(enteroSeguro(isset($_GET['idalmacen']) ? $_GET['idalmacen'] : 0));
+        $totales = $pro->kardexTotales($idarticulo, $idalmacenK);
+        $antes = $pro->kardexAntesDeFecha($idarticulo, $desde, $idalmacenK);
+        $movs = $pro->kardexMovimientos($idarticulo, $desde, $hasta, $idalmacenK);
 
         $entradasTotal = (float)$totales['entradas_total'];
         $salidasTotal = (float)$totales['salidas_total'];
-        $stockActual = (float)$info['stock'];
+        $stockActual = $idalmacenK ? Stock::enAlmacen($idalmacenK, $idarticulo) : (float)$info['stock'];
 
         // Saldo inicial global = stock actual - (todo lo que entro - todo lo que salio)
         $saldoInicialGlobal = $stockActual - ($entradasTotal - $salidasTotal);
@@ -81,7 +84,8 @@ switch ($op) {
                     'salida' => formatearCantidad($salida),
                     'saldo' => formatearCantidad($saldo),
                     'costo' => (float)$reg->costo,
-                    'precio_ref' => (float)$reg->precio_ref
+                    'precio_ref' => (float)$reg->precio_ref,
+                    'almacen' => html_entity_decode((string)$reg->almacen, ENT_QUOTES, 'UTF-8')
                 );
             }
         }
@@ -94,6 +98,7 @@ switch ($op) {
             'stock_actual' => formatearCantidad($stockActual),
             'stock_minimo' => formatearCantidad($info['stock_minimo']),
             'saldo_inicial' => formatearCantidad($saldoInicialRango),
+            'almacen' => $idalmacenK ? Stock::nombre($idalmacenK) : '',
             'movimientos' => $data
         ), JSON_UNESCAPED_UNICODE);
         break;

@@ -401,7 +401,7 @@ $pdf->SetXY(13, $startY + 2.5);
 $pdf->Cell(116, 5, $pdf->u('TOTAL EN LETRAS'), 0, 1, 'L');
 $pdf->SetFont('Arial', '', 9.2);
 $pdf->SetXY(13, $startY + 8);
-$pdf->MultiCell(116, 5, $pdf->u($con_letra." CON 00/100"), 0, 'L');
+$pdf->MultiCell(116, 5, $pdf->u($con_letra), 0, 'L');
 
 $boxX = 137;
 $boxW = 63;

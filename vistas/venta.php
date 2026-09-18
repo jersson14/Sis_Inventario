@@ -87,6 +87,20 @@ if (usuarioTienePermiso('ventas')) {
           <div class="caja-topbar-titulo"><span class="page-icon"><i class="fa fa-desktop"></i></span> Punto de venta</div>
           <div class="chip chip-primary" id="chipResumenDiaPos" title="<?php echo puedeVerTodasLasVentas() ? 'Ventas aceptadas de hoy' : 'Tus ventas aceptadas de hoy'; ?>"><i class="fa fa-calendar-check-o"></i> Hoy: <span>—</span></div>
           <div class="pos-caja" id="posCaja"></div>
+<?php require_once "../modelos/Stock.php"; if (Stock::multiAlmacen()) { $almPos = Stock::almacenActual(); ?>
+          <div class="dropdown pos-almacen">
+<?php   if (usuarioTienePermiso('almacenes')) { ?>
+            <a href="#" class="chip chip-almacen dropdown-toggle" data-toggle="dropdown" title="Se vende y descuenta stock de este almacén. Clic para cambiar."><i class="fa fa-building-o"></i> <?php echo e(Stock::nombre($almPos)); ?> <i class="fa fa-caret-down"></i></a>
+            <ul class="dropdown-menu">
+<?php     foreach (Stock::almacenes() as $alP) { ?>
+              <li><a href="#" class="cambiar-almacen<?php echo (int)$alP['idalmacen'] === $almPos ? ' activo' : ''; ?>" data-id="<?php echo (int)$alP['idalmacen']; ?>"><i class="fa <?php echo (int)$alP['idalmacen'] === $almPos ? 'fa-check-circle' : 'fa-circle-thin'; ?>"></i> <?php echo e(html_entity_decode($alP['nombre'], ENT_QUOTES, 'UTF-8')); ?></a></li>
+<?php     } ?>
+            </ul>
+<?php   } else { ?>
+            <span class="chip chip-almacen" title="Se vende y descuenta stock de este almacén"><i class="fa fa-building-o"></i> <?php echo e(Stock::nombre($almPos)); ?></span>
+<?php   } ?>
+          </div>
+<?php } ?>
           <div class="caja-topbar-acciones">
             <span class="caja-usuario hidden-xs"><i class="fa fa-user-circle"></i> <?php echo e($_SESSION['nombre']); ?></span>
             <button type="button" class="btn btn-default btn-sm btn-pantalla-completa" onclick="appAlternarPantallaCompleta()" title="Pantalla completa (F11)"><i class="fa fa-expand"></i></button>
@@ -205,12 +219,26 @@ if (usuarioTienePermiso('ventas')) {
             <label for="num_operacion">N° de operación <small class="text-soft">(opcional)</small></label>
             <input type="text" class="form-control input-lg" name="num_operacion" id="num_operacion" form="formulario" maxlength="40" placeholder="Del voucher o de la app">
           </div>
+          <button type="button" class="btn btn-link cobro-link" id="btnPagoMixto" title="Parte en efectivo y parte con Yape, tarjeta…"><i class="fa fa-random"></i> Pagar con varios medios</button>
         </div>
 
         <div id="grupoVencimiento" style="display:none">
           <label for="fecha_vencimiento">Fecha de vencimiento del crédito</label>
           <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control input-lg" form="formulario">
-          <small class="text-soft">Se creará una cuenta por cobrar a nombre del cliente.</small>
+          <small class="text-soft">Se creará una cuenta por cobrar a nombre del cliente por el saldo.</small>
+          <button type="button" class="btn btn-link cobro-link" id="btnAdelanto" title="El cliente deja una parte ahora"><i class="fa fa-plus-circle"></i> Registrar un adelanto</button>
+        </div>
+
+        <!-- Pago mixto (contado) o adelanto (credito): una linea por medio -->
+        <div id="grupoMixto" class="cobro-mixto" style="display:none">
+          <div class="cobro-mixto-cab"><strong id="mixTitulo">Formas de pago</strong><button type="button" class="btn btn-link btn-xs" id="btnMixtoSalir" title="Volver a un solo medio de pago"><i class="fa fa-times"></i> Quitar</button></div>
+          <div id="pagosLista"></div>
+          <button type="button" class="btn btn-default btn-sm" id="btnAgregarPago"><i class="fa fa-plus"></i> Agregar otro medio</button>
+          <div class="cobro-mixto-resumen">
+            <div><span>Pagado</span><strong id="mixPagado">—</strong></div>
+            <div id="mixFaltaBox"><span id="mixFaltaTxt">Falta</span><strong id="mixFalta">—</strong></div>
+            <div><span>Vuelto</span><strong id="mixVuelto">—</strong></div>
+          </div>
         </div>
 
         <div class="form-group cobro-obs">
@@ -309,10 +337,79 @@ if (usuarioTienePermiso('ventas')) {
         </div>
       </div>
       <div class="modal-footer">
+        <button type="button" id="detDevolver" class="btn btn-warning" title="Devolver productos de esta venta (nota de crédito)"><i class="fa fa-undo"></i> Devolver</button>
         <button type="button" id="detTicket" class="btn btn-default"><i class="fa fa-print"></i> Ticket</button>
         <a id="detImprimir" href="#" target="_blank" class="btn btn-info"><i class="fa fa-file-pdf-o"></i> PDF A4</a>
         <button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Devolucion: nota de credito por items -->
+<div class="modal fade" id="modalDevolucion" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <form id="formDevolucion" autocomplete="off">
+        <input type="hidden" name="idventa" id="dev_idventa">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+          <h4 class="modal-title"><i class="fa fa-undo"></i> Devolución <span id="devTitulo"></span></h4>
+        </div>
+        <div class="modal-body">
+          <div class="text-soft" id="devDatos" style="margin-bottom:8px"></div>
+          <div id="devNotas" class="callout-soft" style="display:none;margin-bottom:10px"></div>
+          <div class="table-responsive">
+            <table class="table table-bordered table-condensed dev-tabla" id="devTabla">
+              <thead><tr><th>Producto</th><th class="text-right">Vendido</th><th class="text-right">Ya devuelto</th><th class="text-right" style="width:170px">A devolver</th><th class="text-center" title="Desmarca si vuelve dañado: no regresa a la venta">¿Vuelve a stock?</th><th class="text-right">Importe</th></tr></thead>
+              <tbody></tbody>
+              <tfoot><tr><th colspan="5" class="text-right">Total a devolver</th><th class="text-right"><span class="money" id="devTotal">—</span></th></tr></tfoot>
+            </table>
+          </div>
+          <div class="row">
+            <div class="form-group col-sm-6">
+              <label for="dev_motivo_tipo">Motivo <span class="req">*</span></label>
+              <select id="dev_motivo_tipo" class="form-control">
+                <option value="Cliente se arrepintió">Cliente se arrepintió</option>
+                <option value="Producto defectuoso">Producto defectuoso</option>
+                <option value="Cambio por otro producto">Cambio por otro producto</option>
+                <option value="Error en la venta">Error en la venta</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div class="form-group col-sm-6">
+              <label for="dev_motivo_det">Detalle</label>
+              <input type="text" id="dev_motivo_det" class="form-control" maxlength="150" placeholder="Opcional (obligatorio si es Otro)">
+            </div>
+            <div class="form-group col-sm-6">
+              <label for="dev_reintegro">¿Cómo se devuelve el dinero? <span class="req">*</span></label>
+              <select name="reintegro" id="dev_reintegro" class="form-control">
+                <option value="EFECTIVO">Efectivo (sale de la caja)</option>
+                <option value="YAPE">Yape</option>
+                <option value="PLIN">Plin</option>
+                <option value="TARJETA">Extorno a tarjeta</option>
+                <option value="TRANSFERENCIA">Transferencia</option>
+                <option value="DEPOSITO">Depósito</option>
+                <option value="SALDO_A_FAVOR">Saldo a favor del cliente (para otra compra)</option>
+              </select>
+              <p class="help-block" id="devDeuda" style="display:none"></p>
+            </div>
+            <div class="col-sm-6" id="devAutoriza" style="display:none">
+              <label>Autoriza un encargado</label>
+              <div class="row">
+                <div class="col-xs-6"><input type="text" name="autoriza_login" class="form-control" placeholder="Usuario" autocomplete="off"></div>
+                <div class="col-xs-6"><input type="password" name="autoriza_clave" class="form-control" placeholder="Clave" autocomplete="new-password"></div>
+              </div>
+              <p class="help-block">Tu usuario no tiene el permiso "Anular documentos".</p>
+            </div>
+          </div>
+          <div class="checkbox"><label><input type="checkbox" id="devImprimir" checked> <i class="fa fa-print"></i> Imprimir el comprobante de la devolución</label></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-default" data-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning" id="btnDevolver"><i class="fa fa-undo"></i> Registrar devolución</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -324,3 +421,4 @@ require 'footer.php';
 ?>
 <script src="../public/js/app-pos.js?v=<?php echo e(APP_VERSION); ?>"></script>
 <script src="scripts/venta.js?v=<?php echo e(APP_VERSION); ?>"></script>
+<script src="scripts/devolucion.js?v=<?php echo e(APP_VERSION); ?>"></script>

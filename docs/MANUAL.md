@@ -10,6 +10,7 @@ No hace falta saber de informática: cada sección explica **qué hace el sistem
 - [Abarrotes: lotes y fechas de vencimiento](#abarrotes-lotes-y-fechas-de-vencimiento)
 - [Ropa: tallas y colores](#ropa-tallas-y-colores)
 - [Día a día: vender, comprar, corregir](#día-a-día-vender-comprar-corregir)
+- [Varios almacenes (tienda, depósito, otro local)](#varios-almacenes-tienda-depósito-otro-local)
 - [Anular o eliminar un documento](#anular-o-eliminar-un-documento)
 - [Preguntas frecuentes](#preguntas-frecuentes)
 
@@ -194,6 +195,22 @@ barras y precio.
 Si vendes al crédito, el sistema crea sola la **cuenta por cobrar**. Si vendes al
 contado con la caja abierta, registra solo el **ingreso en caja**.
 
+**Pagar con varios medios (pago mixto).** En la ventana de cobro, **Pagar con varios
+medios** abre una lista: por ejemplo S/ 20 en efectivo y S/ 15 por Yape. **Agregar otro
+medio** suma una línea; abajo ves lo **pagado**, lo que **falta** y el **vuelto**. El
+vuelto solo sale del efectivo: si el cliente te da S/ 50 para los S/ 20 en efectivo, el
+vuelto es S/ 30. En la caja entra un movimiento por cada medio, y el arqueo cuenta solo
+el efectivo. El ticket, el PDF y el detalle de la venta muestran cada pago.
+
+**Crédito con adelanto.** Elige *Crédito* y marca **Registrar un adelanto**: lo que el
+cliente paga hoy entra a la caja por su medio y la cuenta por cobrar queda solo por el
+saldo.
+
+**Saldo a favor.** Si el cliente tiene saldo a favor por una devolución (ver más abajo),
+al cobrarle aparece el aviso *"El cliente tiene S/ … de saldo a favor"* con el botón
+**Usar**: se descuenta de la venta y, si no alcanza, el resto queda en efectivo (puedes
+cambiar el medio).
+
 ### Comprar
 
 *Compras → Ingresos / Compras* y **Nueva compra** (o `Alt+C`). La compra también ocupa
@@ -247,6 +264,37 @@ o administrador). En *Auditoría* queda quién pidió la anulación, quién la a
 motivo. Si se escribe mal la clave del encargado varias veces, esa cuenta se bloquea unos
 minutos, igual que en el inicio de sesión.
 
+### Devoluciones y notas de crédito
+
+Cuando el cliente devuelve **parte** de lo que compró (o todo), no anules la venta:
+registra una **devolución**. Queda una **nota de crédito** (serie NC01) ligada a la
+venta.
+
+1. En *Ventas*, abre el detalle de la venta y pulsa **Devolver**.
+2. En cada producto escribe cuánto vuelve (o **Todo**). No deja devolver más de lo
+   vendido ni lo que ya se devolvió antes.
+3. **¿Vuelve a stock?** Desmárcalo si el producto viene dañado: no regresa a la venta
+   (queda anotado en la nota de crédito).
+4. Elige el **motivo** y **cómo se devuelve el dinero**: efectivo (sale de la caja),
+   Yape, Plin, extorno a tarjeta, transferencia, depósito o **saldo a favor** del
+   cliente para otra compra.
+5. **Registrar devolución**. Se imprime el comprobante de la devolución.
+
+Qué hace el sistema:
+
+- El stock vuelve **a la misma talla/color, al mismo lote y al mismo almacén** de la venta.
+- Si la venta fue **al crédito**, primero se descuenta la deuda del cliente; solo lo que
+  sobre se le devuelve.
+- Quien no tiene "Anular documentos" necesita el **usuario y la clave de un encargado**.
+  Todo queda en *Auditoría* con el motivo.
+- Las devoluciones restan en el kardex, en la utilidad y en los reportes de ventas.
+- En *Ventas → Devoluciones (notas de crédito)* ves todas las notas, con su PDF y su
+  ticket.
+
+**Anular una venta genera una nota de crédito por el total** y devuelve el dinero por el
+mismo medio con que se cobró. Una venta que ya tiene devoluciones parciales no se anula:
+se devuelve el resto.
+
 ### La caja del vendedor
 
 - Un vendedor **no puede cobrar con la caja cerrada**. En el punto de venta, arriba,
@@ -274,6 +322,12 @@ En *Configuración → Empresa y marca → Ticket e impresora* eliges:
 
 Con **Ver ticket de prueba** revisas cómo sale antes de vender.
 
+El ticket lleva un **código QR**: el cliente lo escanea con su celular y ve solo esa
+compra, la imprime o descarga el PDF. Para que funcione fuera de la tienda escribe la
+**Dirección pública** del sistema (tu dominio, ej. `https://mitienda.pe`) en la misma
+sección. También puedes cambiar el **aviso de canje** por boleta o factura
+electrónica SUNAT que sale al pie.
+
 Para que salga directo y abra el cajón:
 
 1. Instala la ticketera y márcala como **impresora predeterminada** de Windows, con
@@ -293,7 +347,100 @@ Para que salga directo y abra el cajón:
 tu nombre. Es la forma correcta de corregir: no edites el stock a mano en la ficha
 del artículo si puedes evitarlo.
 
+- **Con el lector**: en el campo *Escanear código* lee el código del producto, de la
+  caja (suma lo que trae la caja), de la talla/color o del lote. Cada lectura del mismo
+  producto suma a la cantidad.
+- **Lotes** (abarrotes, farmacia): en una salida eliges de qué lote sale (o automático:
+  primero lo vencido). En una entrada eliges *Sin lote*, *Lote nuevo* (código y
+  vencimiento) o *Sumar a* un lote que ya existe.
+
+### Toma de inventario (contar todo el almacén)
+
+*Inventario → Toma de inventario*. Sirve para el inventario físico: cuentas con el
+lector y el sistema te dice qué falta y qué sobra, en unidades y en soles.
+
+1. **Empezar**: elige *Todo el almacén* o una categoría (un pasillo es más fácil de
+   terminar en un día). Si tu rubro usa lotes, deja marcado *Contar cada lote por
+   separado*.
+2. **Contar**: escanea cada unidad. Para varias iguales escribe la cantidad antes de
+   escanear, o usa `12*código`. Una caja con su propio código suma su equivalencia.
+   - Si el producto tiene **tallas**, escanea el código de la talla o elige la talla.
+   - Si tiene **lotes**, elige el lote (con la tecla del número). Si encontraste un lote
+     que el sistema no tiene, regístralo con su código y vencimiento. Con *Usar este
+     lote en las próximas lecturas* no te vuelve a preguntar.
+   - Un código que el sistema no conoce abre la búsqueda por nombre.
+   - Pueden contar varias personas a la vez, cada una en su PC o celular.
+   - ¿Te equivocaste? Corrige el número en la tabla o quita la línea.
+3. **Pendientes**: lista lo que tiene stock y nadie contó. Cuéntalo o marca *No hay*.
+4. **Revisar y aplicar**: muestra cada ajuste que se hará y su valor. Marca *Poner en
+   cero lo que no se contó* solo si contaste todo el alcance. Al aplicar se generan los
+   ajustes (motivo *Conteo físico*), el conteo se cierra y se abre el **reporte** para
+   imprimir y firmar.
+
+Si se vende mientras cuentas no se descuadra: el sistema ajusta solo la diferencia
+entre lo que contaste y lo que había en ese momento. Solo puede haber un conteo abierto
+a la vez. Aplicar o anular un conteo requiere el permiso *Ajustes de inventario*.
+
+### El lector de código de barras
+
+Cualquier lector USB funciona: se comporta como un teclado. El sistema reconoce la
+lectura aunque el lector no envíe `Enter` al final (o envíe `Tab`), en el punto de
+venta, compras, cotizaciones, ajustes y toma de inventario. Si no lee nada, revisa en
+su manual que esté en modo *USB HID / teclado* y con el idioma de teclado correcto.
+
 ---
+
+## Varios almacenes (tienda, depósito, otro local)
+
+Si tienes mercadería en más de un lugar (la tienda y un depósito, o dos locales), cada
+**almacén lleva su propio stock**. El stock total del artículo es la suma de todos.
+
+### Crear almacenes
+
+*Almacén → Almacenes y transferencias* → **+ Almacén** (necesitas el permiso
+"Almacenes"; el administrador lo tiene). Escribe el nombre, la dirección y el
+responsable. Uno es el **principal** (la estrella lo cambia); ahí queda todo lo que ya
+tenías. Un almacén que ya no usas se **desactiva**.
+
+Mientras tengas un solo almacén, el sistema funciona igual que siempre y no muestra nada
+de esto.
+
+### En qué almacén trabajas
+
+Con dos o más almacenes, arriba a la derecha aparece el **almacén donde trabajas**
+(también en el punto de venta, junto a la caja). Todo lo que haces sale o entra ahí:
+
+- **Ventas**: se vende y se descuenta del almacén de trabajo. Si ahí no alcanza, el
+  sistema avisa cuánto hay en otros almacenes.
+- **Compras**: el campo **Entra a** dice a qué almacén llega la mercadería (quien tiene
+  el permiso "Almacenes" puede elegir otro).
+- **Ajustes y toma de inventario**: se ajusta y se cuenta el stock de ese almacén.
+- **Devoluciones**: vuelven al almacén de la venta.
+
+Quien tiene el permiso "Almacenes" cambia de almacén desde ese menú. A cada usuario se le
+asigna su almacén en *Usuarios* (**Almacén donde trabaja**): al entrar, trabaja ahí.
+
+### Mover mercadería entre almacenes (transferencias)
+
+1. **Nueva transferencia**: elige **origen** y **destino**.
+2. Escanea los productos o búscalos por nombre; indica cuánto envías. Con tallas o lotes,
+   elige cuál (si no eliges lote, salen primero los que vencen antes).
+3. **Enviar**. La mercadería sale del origen y queda **en tránsito** hasta que llega.
+4. En el destino abren la transferencia (**Ver**) y pulsan **Recibir**, anotando lo que
+   llegó. Si llegó menos, la diferencia se da de baja como faltante.
+
+Si el destino está en el mismo local, marca **Llega al instante (recibir ahora)** y se
+recibe en el acto. Una transferencia que aún no se recibe se puede **anular**: todo
+vuelve al origen.
+
+### Ver el stock de cada almacén
+
+- *Almacenes y transferencias → Stock por almacén*: cada artículo con lo que hay en cada
+  almacén y en tránsito.
+- *Kardex*: el filtro **Almacén** muestra los movimientos de un solo almacén (con los
+  traslados como entrada o salida). Con "Todos" los traslados no aparecen, porque solo
+  cambian la mercadería de lugar.
+- *Vencimientos*: cada lote dice en qué almacén está.
 
 ## Anular o eliminar un documento
 
@@ -304,6 +451,7 @@ Son cosas distintas:
 | Qué pasa | El documento queda registrado como *Anulado* | Desaparece por completo |
 | Quién puede | Quien tenga el permiso "Anular documentos" (o con la clave de un encargado) | Solo el administrador |
 | El stock | Vuelve como estaba | Vuelve como estaba (si seguía vigente) |
+| El dinero (ventas) | Se emite una nota de crédito y se devuelve por el mismo medio | Se borran sus cobros |
 | Cuándo usarlo | Lo normal: te equivocaste y quieres dejar constancia | Nota de venta de prueba o compra mal registrada |
 
 **Las boletas y facturas no se eliminan, solo se anulan.** Su numeración tiene que ser
@@ -320,7 +468,8 @@ El sistema **no deja** anular ni eliminar cuando:
 
 - La venta ya tiene cobros o la compra ya tiene pagos registrados.
 - El documento pertenece a una **caja ya cerrada** (rompería el arqueo).
-- La mercadería de esa compra ya se vendió.
+- La mercadería de esa compra ya se vendió (o ya se envió a otro almacén).
+- La venta ya tiene devoluciones parciales: se devuelve el resto en lugar de anular.
 
 ---
 

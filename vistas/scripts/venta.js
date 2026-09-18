@@ -17,6 +17,8 @@ var cobrando = false;
 var MAX_TILES = 80;
 var cajaPos = null;          // estado de la caja del usuario (null = aun no se sabe)
 var cobrarTrasAbrirCaja = false;
+// Cambiar de almacen recarga la pagina: avisar si hay una venta a medias
+window.appHayTrabajoSinGuardar = function(){ return enFormulario && detalles > 0; };
 
 // El administrador puede vender sin caja; el resto necesita la suya abierta
 function exigeCaja(){ return !(window.appUser && window.appUser.permisos && window.appUser.permisos.acceso); }
@@ -65,6 +67,8 @@ function init(){
 		if (e.key === "Enter") { e.preventDefault(); agregarDesdeBuscador(); }
 		else if ((e.key === "+" || e.key === "-") && !$(this).val()) { e.preventDefault(); pasoUltimaFila(e.key === "+" ? 1 : -1); }
 	});
+	// Lectores que no envian Enter (o envian Tab): la rafaga del lector basta
+	window.appLectorCodigo("#codigo_rapido", function(){ agregarDesdeBuscador(); }, { enter: false });
 	$("#btnBuscarCodigo").on("click", agregarDesdeBuscador);
 	$("#posGrid").on("click", ".pos-tile", function(){
 		if ($(this).hasClass("agotado")) { appNotify("warning", "Este artículo no tiene stock disponible."); return; }
@@ -80,6 +84,24 @@ function init(){
 	// Ventana de cobro
 	$("#modalCobro .pago-toggle .btn").on("click", function(){ fijarTipoPago($(this).data("pago")); });
 	$("#medio_pago").on("change", actualizarCamposMedio);
+	// Pago mixto / adelanto
+	$("#btnPagoMixto, #btnAdelanto").on("click", activarMixto);
+	$("#btnMixtoSalir").on("click", salirMixto);
+	$("#modalCobro").on("click", "#btnUsarSaldo", usarSaldoFavor);
+	$("#btnAgregarPago").on("click", function(){
+		var pagado = lineasPago().reduce(function(a, l){ return a + l.monto; }, 0);
+		var falta = Math.max(0, Math.round((totalVenta() - pagado) * 100) / 100);
+		var usados = lineasPago().map(function(l){ return l.medio; });
+		var medio = MEDIOS_COBRO.filter(function(m){ return usados.indexOf(m) === -1; })[0] || "YAPE";
+		agregarLineaPago(medio, esCreditoCobro() ? "" : (falta > 0 ? falta.toFixed(2) : ""));
+		$("#pagosLista .pl-monto").last().focus().select();
+	});
+	$("#pagosLista").on("change", ".pl-medio", function(){ ajustarLineaPago($(this).closest(".pago-linea")); recalcMixto(); });
+	$("#pagosLista").on("input", ".pl-monto, .pl-recibido", recalcMixto);
+	$("#pagosLista").on("click", ".pl-quitar", function(){
+		$(this).closest(".pago-linea").remove();
+		if (!$("#pagosLista .pago-linea").length) { salirMixto(); } else { recalcMixto(); }
+	});
 	$("#monto_recibido").on("input", calcularVuelto);
 	$("#cobroRapidos").on("click", "[data-monto]", function(){ $("#monto_recibido").val($(this).data("monto")); calcularVuelto(); $("#btnConfirmarCobro").focus(); });
 	$("#modalCobro").on("shown.bs.modal", function(){
@@ -224,6 +246,7 @@ function limpiar(){
 	$("#tipo_comprobante").val("Boleta");
 	fijarTipoPago("CONTADO");
 	appFijarMedioPago($("#modalCobro .medio-grid"), "EFECTIVO");
+	salirMixto();
 	aplicarSerieImpuesto();
 	calcularTotales();
 }
@@ -408,6 +431,7 @@ function fijarTipoPago(tipo){
 	$("#modalCobro .pago-toggle .btn").removeClass("active").filter("[data-pago='" + tipo + "']").addClass("active");
 	$("#tipo_pago").val(tipo);
 	var credito = tipo === "CREDITO";
+	salirMixto();
 	$("#grupoVencimiento").toggle(credito);
 	$("#grupoMedioPago").toggle(!credito);
 	if (credito && !$("#fecha_vencimiento").val()) { $("#fecha_vencimiento").val(appFechaSumarDias(null, 30)); }
@@ -451,6 +475,162 @@ function calcularVuelto(){
 	}
 }
 
+// ---------- Pago mixto (contado) y adelanto (credito) ----------
+// Una linea por medio: monto aplicado a la venta; en efectivo, lo recibido
+// (el vuelto sale solo del efectivo); en los demas, el N° de operacion.
+var modoMixto = false;
+var MEDIOS_COBRO = ["EFECTIVO", "YAPE", "PLIN", "TARJETA", "TRANSFERENCIA", "DEPOSITO", "NOTA_CREDITO"];
+
+function esCreditoCobro(){ return $("#tipo_pago").val() === "CREDITO"; }
+
+function activarMixto(){
+	modoMixto = true;
+	var credito = esCreditoCobro();
+	$("#pagosLista").empty();
+	$("#mixTitulo").text(credito ? "Adelanto del cliente" : "Formas de pago");
+	$("#mixFaltaTxt").text(credito ? "Saldo a crédito" : "Falta");
+	$("#grupoEfectivo, #grupoOperacion, #btnPagoMixto, #btnAdelanto").hide();
+	$("#grupoMedioPago .medio-grid").hide();
+	if (credito) {
+		agregarLineaPago("EFECTIVO", "");
+	} else {
+		// La primera linea parte con el medio elegido y todo el total; al agregar otra, recibe lo que falta
+		agregarLineaPago($("#medio_pago").val() || "EFECTIVO", totalVenta().toFixed(2));
+	}
+	$("#grupoMixto").show();
+	recalcMixto();
+	$("#pagosLista .pl-monto").first().focus().select();
+}
+
+function salirMixto(){
+	modoMixto = false;
+	$("#pagosLista").empty();
+	$("#grupoMixto").hide();
+	$("#grupoMedioPago .medio-grid, #btnPagoMixto, #btnAdelanto").show();
+	actualizarCamposMedio();
+}
+
+function agregarLineaPago(medio, monto){
+	if ($("#pagosLista .pago-linea").length >= 6) { appNotify("warning", "Máximo 6 medios en una venta."); return; }
+	var opciones = MEDIOS_COBRO.map(function(m){ return '<option value="' + m + '"' + (m === medio ? " selected" : "") + ">" + appEscapeHtml(appMedioPagoTexto[m] || m) + "</option>"; }).join("");
+	var $fila = $('<div class="pago-linea">' +
+		'<select class="form-control pl-medio" title="Medio de pago">' + opciones + "</select>" +
+		'<input type="number" step="0.01" min="0" class="form-control pl-monto" placeholder="Monto" inputmode="decimal" title="Monto que se aplica a la venta">' +
+		'<input type="number" step="0.01" min="0" class="form-control pl-recibido" placeholder="Recibió (opcional)" inputmode="decimal" title="Efectivo que entregó el cliente, para calcular el vuelto">' +
+		'<input type="text" class="form-control pl-op" maxlength="40" placeholder="N° operación" title="N° de operación del voucher o de la app">' +
+		'<button type="button" class="btn btn-default pl-quitar" title="Quitar este medio"><i class="fa fa-times"></i></button>' +
+		"</div>");
+	$fila.find(".pl-monto").val(monto);
+	$("#pagosLista").append($fila);
+	ajustarLineaPago($fila);
+	recalcMixto();
+}
+
+function ajustarLineaPago($fila){
+	var medio = $fila.find(".pl-medio").val();
+	var efectivo = medio === "EFECTIVO";
+	$fila.find(".pl-recibido").toggle(efectivo);
+	// Con saldo a favor, el "N° de operacion" es el numero de la nota de credito
+	$fila.find(".pl-op").toggle(!efectivo).attr("placeholder", medio === "NOTA_CREDITO" ? "N° NC (NC01-…)" : "N° operación");
+}
+
+// ---------- Saldo a favor (notas de credito del cliente) ----------
+var saldoFavorCliente = null;
+
+function revisarSaldoFavor(){
+	var idcliente = $("#idcliente").val();
+	var $box = $("#cobroSaldoFavor");
+	if (!$box.length) {
+		$box = $('<div id="cobroSaldoFavor" class="cobro-saldo-favor" style="display:none"></div>').insertBefore("#grupoMixto");
+	}
+	$box.hide();
+	saldoFavorCliente = null;
+	if (!idcliente) { return; }
+	$.get("../ajax/venta.php?op=saldoFavor", { idcliente: idcliente }, function(resp){
+		var r = appParseJson(resp, null);
+		if (!r || !r.ok || !(r.total > 0)) { return; }
+		saldoFavorCliente = r;
+		$box.html('<i class="fa fa-gift"></i> El cliente tiene <strong>' + money(r.total) + '</strong> de saldo a favor (' + r.notas.map(function(n){ return appEscapeHtml(n.numero); }).join(", ") + ') ' +
+			'<button type="button" class="btn btn-success btn-xs" id="btnUsarSaldo" title="Pagar con el saldo a favor"><i class="fa fa-check"></i> Usar</button>').show();
+	});
+}
+
+function usarSaldoFavor(){
+	if (!saldoFavorCliente || !saldoFavorCliente.notas.length) { return; }
+	if (esCreditoCobro()) { fijarTipoPago("CONTADO"); }
+	var total = totalVenta();
+	activarMixto();
+	$("#pagosLista").empty();
+	var falta = total;
+	saldoFavorCliente.notas.forEach(function(nc){
+		if (falta <= 0.009) { return; }
+		var usa = Math.min(parseFloat(nc.saldo_favor) || 0, falta);
+		agregarLineaPago("NOTA_CREDITO", usa.toFixed(2));
+		$("#pagosLista .pl-op").last().val(nc.numero);
+		falta = Math.round((falta - usa) * 100) / 100;
+	});
+	if (falta > 0.009) { agregarLineaPago("EFECTIVO", falta.toFixed(2)); }
+	recalcMixto();
+}
+
+function lineasPago(){
+	return $("#pagosLista .pago-linea").map(function(){
+		var $f = $(this);
+		return {
+			medio: $f.find(".pl-medio").val(),
+			monto: Math.round((parseFloat($f.find(".pl-monto").val()) || 0) * 100) / 100,
+			recibido: $.trim($f.find(".pl-recibido").val()),
+			num_operacion: $.trim($f.find(".pl-op").val())
+		};
+	}).get();
+}
+
+function recalcMixto(){
+	if (!modoMixto) { return; }
+	var total = totalVenta();
+	var pagado = 0, vuelto = 0;
+	lineasPago().forEach(function(l){
+		pagado += l.monto;
+		var rec = parseFloat(l.recibido) || 0;
+		if (l.medio === "EFECTIVO" && rec > l.monto) { vuelto += rec - l.monto; }
+	});
+	pagado = Math.round(pagado * 100) / 100;
+	var falta = Math.round((total - pagado) * 100) / 100;
+	$("#mixPagado").text(money(pagado));
+	$("#mixFalta").text(money(Math.max(falta, 0)));
+	$("#mixVuelto").text(money(vuelto));
+	var cuadra = esCreditoCobro() ? (falta > 0.009) : (Math.abs(falta) <= 0.009);
+	$("#mixFaltaBox").toggleClass("falta", !cuadra || (!esCreditoCobro() && falta > 0.009)).toggleClass("ok", cuadra);
+	if (falta < -0.009) { $("#mixFaltaTxt").text("Sobra"); $("#mixFalta").text(money(-falta)); }
+	else { $("#mixFaltaTxt").text(esCreditoCobro() ? "Saldo a crédito" : "Falta"); }
+}
+
+/** Valida y devuelve las lineas a enviar, o null (ya avisa al usuario). */
+function pagosParaEnviar(){
+	var total = totalVenta();
+	var credito = esCreditoCobro();
+	if (!modoMixto) {
+		if (credito) { return []; }
+		var medio = $("#medio_pago").val() || "EFECTIVO";
+		return [{ medio: medio, monto: total.toFixed(2), recibido: medio === "EFECTIVO" ? $.trim($("#monto_recibido").val()) : "", num_operacion: medio === "EFECTIVO" ? "" : $.trim($("#num_operacion").val()) }];
+	}
+	var lineas = lineasPago().filter(function(l){ return l.monto > 0 || l.recibido !== ""; });
+	var pagado = 0;
+	for (var i = 0; i < lineas.length; i++) {
+		var l = lineas[i];
+		if (!(l.monto > 0)) { appNotify("warning", "Cada medio de pago necesita un monto."); return null; }
+		if (l.medio === "EFECTIVO" && l.recibido !== "" && (parseFloat(l.recibido) || 0) + 0.001 < l.monto) { appNotify("warning", "Lo recibido en efectivo es menor que el monto en efectivo."); return null; }
+		pagado += l.monto;
+	}
+	pagado = Math.round(pagado * 100) / 100;
+	if (credito) {
+		if (pagado >= total - 0.009) { appNotify("warning", "El adelanto cubre todo: cóbralo al contado."); return null; }
+		return lineas;
+	}
+	if (Math.abs(pagado - total) > 0.009) { appNotify("warning", "Los pagos (" + money(pagado) + ") deben sumar el total (" + money(total) + ")."); return null; }
+	return lineas;
+}
+
 function abrirCobro(){
 	if (cobrando) { return; }
 	if (!($("#idcliente").val() || "").toString().trim()) { appNotify("warning", "Selecciona un cliente antes de cobrar."); return; }
@@ -461,7 +641,8 @@ function abrirCobro(){
 	$("#cobroTotal").text(money(totalVenta()));
 	pintarRapidos();
 	calcularVuelto();
-	actualizarCamposMedio();
+	if (modoMixto) { recalcMixto(); } else { actualizarCamposMedio(); }
+	revisarSaldoFavor();
 	$("#modalCobro").modal("show");
 }
 
@@ -471,35 +652,43 @@ function confirmarCobro(){
 	var contado = $("#tipo_pago").val() === "CONTADO";
 	var efectivo = $("#medio_pago").val() === "EFECTIVO";
 	if (!contado && !$("#fecha_vencimiento").val()) { appNotify("warning", "Indica la fecha de vencimiento del crédito."); $("#fecha_vencimiento").focus(); return; }
-	if (contado && efectivo) {
+	if (contado && efectivo && !modoMixto) {
 		var raw = $.trim($("#monto_recibido").val());
 		if (raw !== "" && (parseFloat(raw) || 0) + 0.001 < total) { appNotify("warning", "El monto recibido es menor que el total."); $("#monto_recibido").focus().select(); return; }
 	}
+	var pagos = pagosParaEnviar();
+	if (pagos === null) { return; }
 	if (!(contado && efectivo)) { $("#monto_recibido").val(""); }
 	if (!contado || efectivo) { $("#num_operacion").val(""); }
-	guardaryeditar();
+	guardaryeditar(pagos);
 }
 
-function guardaryeditar(){
+function guardaryeditar(pagos){
 	cobrando = true;
 	appSetLoading("#btnConfirmarCobro", true);
-	var recibido = parseFloat($("#monto_recibido").val()) || 0;
 	var imprimir = $("#chkImprimirTicket").is(":checked");
+	// Incluye los campos de la ventana de cobro (atributo form="formulario") y una fila por medio de pago
+	var fd = new FormData($("#formulario")[0]);
+	(pagos || []).forEach(function(p){
+		fd.append("pago_medio[]", p.medio);
+		fd.append("pago_monto[]", p.monto);
+		fd.append("pago_recibido[]", p.recibido || "");
+		fd.append("pago_operacion[]", p.num_operacion || "");
+	});
 	$.ajax({
 		url: "../ajax/venta.php?op=guardaryeditar",
 		type: "POST",
-		// Incluye los campos de la ventana de cobro (atributo form="formulario")
-		data: new FormData($("#formulario")[0]),
+		data: fd,
 		contentType: false,
 		processData: false,
 		success: function(datos){
 			var r = appParseJson(datos, null);
 			if (!r || typeof r.ok === "undefined") { appNotifyFromResponse(datos); return; }
 			if (!r.ok) { if (r.caja_cerrada) { $("#modalCobro").modal("hide"); cargarCajaPos(); pedirAbrirCaja(true); return; } appNotify("error", r.message || "No se pudo registrar la venta."); return; }
-			var vuelto = recibido > 0 ? Math.max(0, recibido - (r.total || 0)) : 0;
+			var vuelto = parseFloat(r.vuelto) || 0;
 			$("#modalCobro").modal("hide");
 			if (imprimir) { appImprimirTicket(r.idventa); }
-			appNotify("success", "Venta " + (r.serie_comprobante || "") + "-" + (r.num_comprobante || "") + " registrada" + (vuelto > 0 ? " · Vuelto " + money(vuelto) : ""), 5000);
+			appNotify("success", "Venta " + (r.serie_comprobante || "") + "-" + (r.num_comprobante || "") + " registrada" + (vuelto > 0 ? " · Vuelto " + money(vuelto) : "") + (r.cuenta_cobrar && r.adelanto > 0 ? " · adelanto " + money(r.adelanto) + ", saldo " + money(r.saldo_credito) : ""), 5000);
 			if (r.alertas && r.alertas.length > 0) {
 				appNotify("warning", "Stock bajo: " + r.alertas.map(function(a){ return (a.nombre || "Artículo") + " (" + window.appCantidad(a.stock) + ")"; }).join(", "), 7000);
 			}
@@ -580,11 +769,22 @@ function mostrar(idventa){
 		$("#detImprimir").attr("href", "../reportes/exFactura.php?id=" + idventa);
 		$("#detTicket").data("id", idventa);
 		var estado = d.estado === "Aceptado" ? '<span class="label bg-green">Aceptado</span>' : '<span class="label bg-red">Anulado</span>';
-		var medio = appMedioPagoTexto[d.medio_pago] || d.medio_pago || "Efectivo";
+		var medio = d.medio_pago === "MIXTO" ? "Mixto" : (appMedioPagoTexto[d.medio_pago] || d.medio_pago || "Efectivo");
+		var pagos = d.pagos || [];
+		var pagado = pagos.reduce(function(a, p){ return a + (parseFloat(p.monto) || 0); }, 0);
 		var pago = d.tipo_pago === "CREDITO" ? "Crédito" + (d.fecha_vencimiento ? " · vence " + d.fecha_vencimiento : "") : "Contado · " + medio;
 		var datosPago = "";
-		if (d.num_operacion) { datosPago += '<p><strong>N° operación:</strong> ' + appEscapeHtml(d.num_operacion) + '</p>'; }
-		if (parseFloat(d.monto_recibido) > 0) { datosPago += '<p><strong>Recibido:</strong> ' + money(d.monto_recibido) + ' &nbsp; <strong>Vuelto:</strong> ' + money(Math.max(0, d.monto_recibido - d.total_venta)) + '</p>'; }
+		if (pagos.length) {
+			datosPago += '<ul class="det-pagos">' + pagos.map(function(p){
+				return "<li><strong>" + appEscapeHtml(appMedioPagoTexto[p.medio_pago] || p.medio_pago) + "</strong> " + money(p.monto) +
+					(p.num_operacion ? ' <small class="text-soft">op. ' + appEscapeHtml(p.num_operacion) + "</small>" : "") +
+					(p.recibido !== null && parseFloat(p.recibido) > 0 ? ' <small class="text-soft">recibió ' + money(p.recibido) + " · vuelto " + money(p.vuelto) + "</small>" : "") + "</li>";
+			}).join("") + "</ul>";
+			if (d.tipo_pago === "CREDITO") { datosPago += "<p><strong>Adelanto:</strong> " + money(pagado) + " &nbsp; <strong>Saldo a crédito:</strong> " + money(d.total_venta - pagado) + "</p>"; }
+		} else {
+			if (d.num_operacion) { datosPago += '<p><strong>N° operación:</strong> ' + appEscapeHtml(d.num_operacion) + '</p>'; }
+			if (parseFloat(d.monto_recibido) > 0) { datosPago += '<p><strong>Recibido:</strong> ' + money(d.monto_recibido) + ' &nbsp; <strong>Vuelto:</strong> ' + money(Math.max(0, d.monto_recibido - d.total_venta)) + '</p>'; }
+		}
 		$("#detCabecera").html(
 			'<div class="col-sm-6"><p><strong>Cliente:</strong> ' + appEscapeHtml(d.cliente) + '</p><p><strong>Vendedor:</strong> ' + appEscapeHtml(d.usuario) + '</p><p><strong>Fecha:</strong> ' + appEscapeHtml(d.fecha) + '</p></div>' +
 			'<div class="col-sm-6"><p><strong>Estado:</strong> ' + estado + '</p><p><strong>Pago:</strong> ' + appEscapeHtml(pago) + '</p>' + datosPago + '<p><strong>Impuesto:</strong> ' + appEscapeHtml(d.impuesto) + ' % &nbsp; <strong>Total:</strong> <span class="money">' + money(d.total_venta) + '</span></p>' + (d.observacion ? '<p><strong>Obs.:</strong> ' + appEscapeHtml(d.observacion) + '</p>' : '') + '</div>'

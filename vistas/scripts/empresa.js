@@ -20,6 +20,10 @@ function cargarEmpresa(){
 		$("#ticket_auto_imprimir").prop("checked", typeof d.ticket_auto_imprimir === "undefined" || String(d.ticket_auto_imprimir) === "1");
 		$("#ticket_logo").prop("checked", typeof d.ticket_logo === "undefined" || String(d.ticket_logo) === "1");
 		$("#arqueo_ciego").prop("checked", typeof d.arqueo_ciego === "undefined" || String(d.arqueo_ciego) === "1");
+		$("#ticket_qr").prop("checked", typeof d.ticket_qr === "undefined" || String(d.ticket_qr) === "1");
+		$("#ticket_leyenda").val($("<textarea/>").html(String(d.ticket_leyenda || "")).text());
+		$("#url_publica").val(d.url_publica || "");
+		avisoUrlPublica(d.url_detectada || "");
 		$("#color_primario").val(d.color_primario || "#0f766e");
 		$("#color_secundario").val(d.color_secundario || "#f59e0b");
 		$("#logoactual").val(d.logo || "");
@@ -28,6 +32,19 @@ function cargarEmpresa(){
 		marcarRubro(d.tipo_negocio || "GENERAL");
 		actualizarPreview();
 	});
+}
+
+// Sin direccion publica el QR usa la actual: con localhost el celular del cliente no la abre
+function avisoUrlPublica(detectada){
+	var $ayuda = $("#urlPublicaAyuda");
+	var local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(detectada);
+	if ($("#url_publica").val() || !detectada) {
+		$ayuda.removeClass("text-danger").text("La dirección con la que el cliente abre el QR desde su celular.");
+		return;
+	}
+	$ayuda.toggleClass("text-danger", local).text(local
+		? "Sin dirección pública el QR apunta a " + detectada + " y el celular del cliente no podrá abrirlo. Escribe tu dominio o la IP de esta PC en la red (ej. http://192.168.1.10/mi_tienda)."
+		: "Vacía: el QR usará " + detectada);
 }
 
 // Marca visualmente la tarjeta del rubro activo (:has() no llega a navegadores viejos)

@@ -13,6 +13,10 @@
  *
  * Todos los metodos que escriben deben llamarse dentro de dbTransaccion(); los
  * que leen stock para decidir bloquean las filas con FOR UPDATE.
+ *
+ * Almacenes: cada lote esta en un almacen (lote.idalmacen). La salida FEFO y lo
+ * vencido se calculan dentro del almacen, y en cada almacen la suma de sus
+ * lotes nunca supera su stock (stock_almacen).
  */
 require_once "../config/Conexion.php";
 require_once "../config/negocio.php";
@@ -52,17 +56,21 @@ class Lote
 	}
 
 	/** Crea un lote y devuelve su id (0 si falla). $cantidad en unidades base. */
-	public static function crear($idarticulo, $cantidad, $fechaVencimiento, $codigo, $costoUnitario, $idingreso = null, $idajuste = null)
+	public static function crear($idarticulo, $cantidad, $fechaVencimiento, $codigo, $costoUnitario, $idingreso = null, $idajuste = null, $idalmacen = 0)
 	{
 		$cantidad = round((float)$cantidad, 3);
 		if ($cantidad <= 0) {
 			return 0;
 		}
+		if ((int)$idalmacen <= 0) {
+			$idalmacen = (int)dbValue("SELECT idalmacen FROM almacen WHERE principal=1 ORDER BY idalmacen LIMIT 1", array(), 0);
+		}
 		return (int)dbInsert(
-			"INSERT INTO lote (idarticulo,codigo_lote,fecha_vencimiento,cantidad_inicial,stock,costo_unitario,idingreso,idajuste,fecha_ingreso,condicion)
-			 VALUES (?,?,?,?,?,?,?,?,NOW(),1)",
+			"INSERT INTO lote (idarticulo,idalmacen,codigo_lote,fecha_vencimiento,cantidad_inicial,stock,costo_unitario,idingreso,idajuste,fecha_ingreso,condicion)
+			 VALUES (?,?,?,?,?,?,?,?,?,NOW(),1)",
 			array(
 				(int)$idarticulo,
+				(int)$idalmacen > 0 ? (int)$idalmacen : null,
 				$codigo !== '' ? $codigo : null,
 				$fechaVencimiento !== '' ? $fechaVencimiento : null,
 				$cantidad, $cantidad, round((float)$costoUnitario, 2),
@@ -73,21 +81,23 @@ class Lote
 	}
 
 	/** Stock de lotes ya vencidos (fecha anterior a hoy) de un articulo. */
-	public static function stockVencido($idarticulo)
+	public static function stockVencido($idarticulo, $idalmacen = 0)
 	{
 		return round((float)dbValue(
-			"SELECT IFNULL(SUM(stock),0) FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento < CURDATE()",
+			"SELECT IFNULL(SUM(stock),0) FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento < CURDATE()"
+			. ((int)$idalmacen > 0 ? " AND idalmacen=" . (int)$idalmacen : ""),
 			array((int)$idarticulo),
 			0
 		), 3);
 	}
 
 	/** Proximo lote vigente por vencer: array {fecha_vencimiento, codigo_lote, stock} o null. */
-	public static function proximoVencimiento($idarticulo)
+	public static function proximoVencimiento($idarticulo, $idalmacen = 0)
 	{
 		return dbRow(
 			"SELECT fecha_vencimiento, codigo_lote, stock FROM lote
-			 WHERE idarticulo=? AND condicion=1 AND stock>0 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento >= CURDATE()
+			 WHERE idarticulo=? AND condicion=1 AND stock>0 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento >= CURDATE()"
+			. ((int)$idalmacen > 0 ? " AND idalmacen=" . (int)$idalmacen : "") . "
 			 ORDER BY fecha_vencimiento ASC, idlote ASC LIMIT 1",
 			array((int)$idarticulo)
 		);
@@ -101,26 +111,34 @@ class Lote
 	public static function ajustarAlStock($idarticulo)
 	{
 		$idarticulo = (int)$idarticulo;
-		$stock = (float)dbValue("SELECT stock FROM articulo WHERE idarticulo=? FOR UPDATE", array($idarticulo), 0);
-		$lotes = dbAll(
-			"SELECT idlote, stock FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0
-			 ORDER BY (fecha_vencimiento IS NULL), fecha_vencimiento ASC, idlote ASC FOR UPDATE",
-			array($idarticulo)
-		);
-		$suma = 0.0;
-		foreach ($lotes as $l) {
-			$suma += (float)$l['stock'];
-		}
-		$exceso = round($suma - max($stock, 0), 3);
-		foreach ($lotes as $l) {
-			if ($exceso <= 0) {
-				break;
+		dbValue("SELECT stock FROM articulo WHERE idarticulo=? FOR UPDATE", array($idarticulo), 0);
+		// En cada almacen con lotes, los lotes no pasan del stock de ese almacen
+		$almacenes = dbAll("SELECT DISTINCT IFNULL(idalmacen,0) AS idalmacen FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0", array($idarticulo));
+		foreach ($almacenes as $al) {
+			$idal = (int)$al['idalmacen'];
+			$stock = $idal > 0
+				? (float)dbValue("SELECT IFNULL(SUM(stock),0) FROM stock_almacen WHERE idalmacen=? AND idarticulo=?", array($idal, $idarticulo), 0)
+				: (float)dbValue("SELECT stock FROM articulo WHERE idarticulo=?", array($idarticulo), 0);
+			$lotes = dbAll(
+				"SELECT idlote, stock FROM lote WHERE idarticulo=? AND IFNULL(idalmacen,0)=? AND condicion=1 AND stock>0
+				 ORDER BY (fecha_vencimiento IS NULL), fecha_vencimiento ASC, idlote ASC FOR UPDATE",
+				array($idarticulo, $idal)
+			);
+			$suma = 0.0;
+			foreach ($lotes as $l) {
+				$suma += (float)$l['stock'];
 			}
-			$quitar = min((float)$l['stock'], $exceso);
-			if (!dbExec("UPDATE lote SET stock=ROUND(stock-?,3) WHERE idlote=?", array($quitar, (int)$l['idlote']))) {
-				return false;
+			$exceso = round($suma - max($stock, 0), 3);
+			foreach ($lotes as $l) {
+				if ($exceso <= 0) {
+					break;
+				}
+				$quitar = min((float)$l['stock'], $exceso);
+				if (!dbExec("UPDATE lote SET stock=ROUND(stock-?,3) WHERE idlote=?", array($quitar, (int)$l['idlote']))) {
+					return false;
+				}
+				$exceso = round($exceso - $quitar, 3);
 			}
-			$exceso = round($exceso - $quitar, 3);
 		}
 		return true;
 	}
@@ -132,7 +150,7 @@ class Lote
 	 * sin lote. $ref: tipo, idventa, iddetalle_venta, idajuste.
 	 * Devuelve la lista de {idlote, cantidad} consumidos, o false si falla.
 	 */
-	public static function consumir($idarticulo, $cantidad, array $ref)
+	public static function consumir($idarticulo, $cantidad, array $ref, $idalmacen = 0)
 	{
 		$idarticulo = (int)$idarticulo;
 		$pendiente = round((float)$cantidad, 3);
@@ -142,7 +160,8 @@ class Lote
 			: "(fecha_vencimiento IS NOT NULL AND fecha_vencimiento < CURDATE()) DESC, (fecha_vencimiento IS NULL), fecha_vencimiento ASC, idlote ASC";
 		$filtroVencidos = $esVenta ? " AND (fecha_vencimiento IS NULL OR fecha_vencimiento >= CURDATE())" : "";
 		$lotes = dbAll(
-			"SELECT idlote, stock FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0" . $filtroVencidos . " ORDER BY " . $orden . " FOR UPDATE",
+			"SELECT idlote, stock FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0" . $filtroVencidos
+			. ((int)$idalmacen > 0 ? " AND idalmacen=" . (int)$idalmacen : "") . " ORDER BY " . $orden . " FOR UPDATE",
 			array($idarticulo)
 		);
 		$consumos = array();
@@ -161,16 +180,40 @@ class Lote
 	}
 
 	/** Descuenta de un lote concreto (baja de un lote vencido). */
-	public static function consumirLote($idlote, $idarticulo, $cantidad, array $ref)
+	public static function consumirLote($idlote, $idarticulo, $cantidad, array $ref, $idalmacen = 0)
 	{
-		$l = dbRow("SELECT idlote, stock FROM lote WHERE idlote=? AND idarticulo=? AND condicion=1 FOR UPDATE", array((int)$idlote, (int)$idarticulo));
+		$l = dbRow("SELECT idlote, stock, idalmacen FROM lote WHERE idlote=? AND idarticulo=? AND condicion=1 FOR UPDATE", array((int)$idlote, (int)$idarticulo));
 		if (!$l) {
 			return 'El lote no existe o no pertenece al artículo';
+		}
+		if ((int)$idalmacen > 0 && (int)$l['idalmacen'] !== (int)$idalmacen) {
+			return 'El lote está en otro almacén';
 		}
 		if ((float)$l['stock'] + 0.0005 < (float)$cantidad) {
 			return 'El lote solo tiene ' . formatearCantidad($l['stock']) . ' en stock';
 		}
 		return self::registrarConsumo((int)$idlote, round((float)$cantidad, 3), $ref) ? true : 'No se pudo descontar el lote';
+	}
+
+	/**
+	 * Suma stock a un lote existente (ajuste de entrada o sobrante de un conteo).
+	 * Queda en lote_movimiento como ENTRADA. Devuelve true o el mensaje de error.
+	 */
+	public static function sumarLote($idlote, $idarticulo, $cantidad, $idajuste)
+	{
+		$cantidad = round((float)$cantidad, 3);
+		$l = dbRow("SELECT idlote FROM lote WHERE idlote=? AND idarticulo=? AND condicion=1 FOR UPDATE", array((int)$idlote, (int)$idarticulo));
+		if (!$l) {
+			return 'El lote no existe o no pertenece al artículo';
+		}
+		if (!dbExec("UPDATE lote SET stock=ROUND(stock+?,3) WHERE idlote=?", array($cantidad, (int)$idlote))) {
+			return 'No se pudo actualizar el lote';
+		}
+		$ok = dbInsert(
+			"INSERT INTO lote_movimiento (idlote,tipo,cantidad,idajuste,fecha_hora) VALUES (?,'ENTRADA',?,?,NOW())",
+			array((int)$idlote, $cantidad, (int)$idajuste)
+		) > 0;
+		return $ok ? true : 'No se pudo registrar el movimiento del lote';
 	}
 
 	private static function registrarConsumo($idlote, $cantidad, array $ref)
@@ -210,6 +253,53 @@ class Lote
 	}
 
 	/**
+	 * Devolucion de una linea vendida (nota de credito): la mercaderia vuelve a
+	 * los mismos lotes de los que salio esa linea, sin pasar de lo que salio de
+	 * cada uno (descontando devoluciones anteriores). Lo que no salio de un lote
+	 * queda como stock sin lote. Devuelve true o false.
+	 */
+	public static function devolverLinea($iddetalleVenta, $idventa, $cantidad, $idnota)
+	{
+		$pendiente = round((float)$cantidad, 3);
+		$salidas = dbAll(
+			"SELECT m.idlote, SUM(m.cantidad) AS salio,
+				IFNULL((SELECT SUM(d.cantidad) FROM lote_movimiento d WHERE d.tipo='DEVOLUCION' AND d.iddetalle_venta=m.iddetalle_venta AND d.idlote=m.idlote),0) AS volvio
+			 FROM lote_movimiento m
+			 INNER JOIN lote l ON l.idlote=m.idlote
+			 WHERE m.tipo='VENTA' AND m.iddetalle_venta=? AND l.condicion=1
+			 GROUP BY m.idlote
+			 ORDER BY m.idlote DESC",
+			array((int)$iddetalleVenta)
+		);
+		foreach ($salidas as $s) {
+			if ($pendiente <= 0) {
+				break;
+			}
+			$puede = round((float)$s['salio'] - (float)$s['volvio'], 3);
+			if ($puede <= 0) {
+				continue;
+			}
+			$vuelve = min($puede, $pendiente);
+			$l = dbRow("SELECT idlote FROM lote WHERE idlote=? FOR UPDATE", array((int)$s['idlote']));
+			if (!$l) {
+				continue;
+			}
+			if (!dbExec("UPDATE lote SET stock=ROUND(stock+?,3) WHERE idlote=?", array($vuelve, (int)$s['idlote']))) {
+				return false;
+			}
+			$ok = dbInsert(
+				"INSERT INTO lote_movimiento (idlote,tipo,cantidad,iddetalle_venta,idventa,idnota,fecha_hora) VALUES (?,'DEVOLUCION',?,?,?,?,NOW())",
+				array((int)$s['idlote'], $vuelve, (int)$iddetalleVenta, (int)$idventa, (int)$idnota)
+			) > 0;
+			if (!$ok) {
+				return false;
+			}
+			$pendiente = round($pendiente - $vuelve, 3);
+		}
+		return true;
+	}
+
+	/**
 	 * Lotes de una compra que ya perdieron stock (vendido o dado de baja).
 	 * Si hay alguno, la compra no puede anularse sin descuadrar los lotes.
 	 */
@@ -236,12 +326,12 @@ class Lote
 	// ---------- Consultas ----------
 
 	/** Lotes con stock de un articulo, en orden FEFO. */
-	public static function deArticulo($idarticulo)
+	public static function deArticulo($idarticulo, $idalmacen = 0)
 	{
 		return dbAll(
-			"SELECT idlote, codigo_lote, fecha_vencimiento, cantidad_inicial, stock, costo_unitario, fecha_ingreso,
+			"SELECT idlote, idalmacen, codigo_lote, fecha_vencimiento, cantidad_inicial, stock, costo_unitario, fecha_ingreso,
 				DATEDIFF(fecha_vencimiento, CURDATE()) AS dias
-			 FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0
+			 FROM lote WHERE idarticulo=? AND condicion=1 AND stock>0" . ((int)$idalmacen > 0 ? " AND idalmacen=" . (int)$idalmacen : "") . "
 			 ORDER BY (fecha_vencimiento IS NULL), fecha_vencimiento ASC, idlote ASC",
 			array((int)$idarticulo)
 		);
@@ -271,8 +361,9 @@ class Lote
 			"SELECT l.idlote, l.idarticulo, a.nombre AS articulo, a.codigo, IFNULL(u.abreviatura,'und') AS unidad,
 				l.codigo_lote, l.fecha_vencimiento, DATEDIFF(l.fecha_vencimiento, CURDATE()) AS dias,
 				l.cantidad_inicial, l.stock, IF(l.costo_unitario>0, l.costo_unitario, a.precio_compra) AS costo, l.fecha_ingreso,
-				i.serie_comprobante, i.num_comprobante, p.nombre AS proveedor
+				i.serie_comprobante, i.num_comprobante, p.nombre AS proveedor, IFNULL(al.nombre,'') AS almacen, l.idalmacen
 			 FROM lote l
+			 LEFT JOIN almacen al ON al.idalmacen=l.idalmacen
 			 INNER JOIN articulo a ON a.idarticulo=l.idarticulo
 			 LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
 			 LEFT JOIN ingreso i ON i.idingreso=l.idingreso

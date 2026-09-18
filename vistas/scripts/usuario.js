@@ -28,6 +28,7 @@ function init(){
 
 function limpiar(){
 	$("#idusuario, #nombre, #num_documento, #direccion, #telefono, #email, #cargo, #login, #clave, #imagenactual").val("");
+	$("#idalmacen_usuario").val($("#idalmacen_usuario option[data-principal]").val() || $("#idalmacen_usuario option:first").val());
 	$("#tipo_documento").val("DNI");
 	$("#imagenmuestra").attr("src", "").hide();
 	$("#imagen").val("");
@@ -147,6 +148,11 @@ function mostrar(idusuario){
 		$("#telefono").val(data.telefono);
 		$("#email").val(data.email);
 		$("#cargo").val(data.cargo);
+		if ($("#idalmacen_usuario").length) {
+			var $almU = $("#idalmacen_usuario");
+			$almU.val(String(data.idalmacen || ""));
+			if (!$almU.val()) { $almU.val($almU.find("option[data-principal]").val() || $almU.find("option:first").val()); }
+		}
 		$("#login").val(data.login);
 		$("#clave").val("").removeAttr("required");
 		$("#claveReq").hide();

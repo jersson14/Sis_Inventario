@@ -1,19 +1,45 @@
 <?php
+/**
+ * Comprobante de venta en PDF A4.
+ *
+ *   ?id=N            desde el sistema (login + permiso ventas)
+ *   ?c=CODIGO        publico, desde el QR del ticket (comprobante.php): solo esa venta
+ *   &descargar=1     descarga el archivo en vez de abrirlo
+ */
 ob_start();
 require_once "../config/seguridad.php";
-requiereLogin(false);
-$idReporte = enteroSeguro(isset($_GET['id']) ? $_GET['id'] : 0);
+require_once "../config/comprobante.php";
+require_once "../config/qr.php";
 
-if (!isset($_SESSION['nombre'])) {
-  echo "Debe ingresar al sistema correctamente para visualizar el reporte";
-  ob_end_flush();
-  exit;
-}
+$codigoPublico = isset($_GET['c']) ? (string)$_GET['c'] : '';
+$esPublico = $codigoPublico !== '';
 
-if (!usuarioTienePermiso('ventas')) {
-  echo "No tiene permiso para visualizar el reporte";
-  ob_end_flush();
-  exit;
+if ($esPublico) {
+  enviarCabecerasSeguridad();
+  header('X-Robots-Tag: noindex, nofollow');
+  require_once "../modelos/Venta.php";
+  $idReporte = codigoPublicoValido($codigoPublico) ? (new Venta())->idPorCodigoPublico($codigoPublico) : 0;
+  if ($idReporte <= 0) {
+    http_response_code(404);
+    echo "Comprobante no encontrado";
+    ob_end_flush();
+    exit;
+  }
+} else {
+  requiereLogin(false);
+  $idReporte = enteroSeguro(isset($_GET['id']) ? $_GET['id'] : 0);
+
+  if (!isset($_SESSION['nombre'])) {
+    echo "Debe ingresar al sistema correctamente para visualizar el reporte";
+    ob_end_flush();
+    exit;
+  }
+
+  if (!usuarioTienePermiso('ventas')) {
+    echo "No tiene permiso para visualizar el reporte";
+    ob_end_flush();
+    exit;
+  }
 }
 
 require_once "../fpdf181/fpdf.php";
@@ -22,7 +48,7 @@ require_once "../modelos/Empresa.php";
 require_once "Letras.php";
 
 // Un vendedor sin "Consulta ventas" solo imprime sus propias ventas
-if (!puedeVerTodasLasVentas() && !(new Venta())->esDelUsuario($idReporte, (int)$_SESSION['idusuario'])) {
+if (!$esPublico && !puedeVerTodasLasVentas() && !(new Venta())->esDelUsuario($idReporte, (int)$_SESSION['idusuario'])) {
   echo "Solo puedes ver tus propias ventas";
   ob_end_flush();
   exit;
@@ -408,7 +434,7 @@ $pdf->SetXY(13, $startY + 2.5);
 $pdf->Cell(116, 5, $pdf->u('TOTAL EN LETRAS'), 0, 1, 'L');
 $pdf->SetFont('Arial', '', 9.2);
 $pdf->SetXY(13, $startY + 8);
-$pdf->MultiCell(116, 5, $pdf->u($con_letra." CON 00/100"), 0, 'L');
+$pdf->MultiCell(116, 5, $pdf->u($con_letra), 0, 'L');
 
 $boxX = 137;
 $boxW = 63;
@@ -434,8 +460,68 @@ $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(30, 4.8, 'TOTAL', 0, 0, 'L');
 $pdf->Cell(29, 4.8, $simboloMoneda.' '.number_format($total, 2), 0, 1, 'R');
 
+// Forma de pago: cada medio (pago mixto) o credito con su adelanto y saldo
+$mediosPdf = array('EFECTIVO' => 'Efectivo', 'DEPOSITO' => 'Depósito', 'TARJETA' => 'Tarjeta', 'TRANSFERENCIA' => 'Transferencia', 'YAPE' => 'Yape', 'PLIN' => 'Plin', 'OTRO' => 'Otro', 'NOTA_CREDITO' => 'Nota de crédito');
+$partesPago = array();
+$pagadoPdf = 0.0;
+foreach ($venta->pagos($idReporte) as $pg) {
+  $pagadoPdf += (float)$pg['monto'];
+  $partesPago[] = (isset($mediosPdf[$pg['medio_pago']]) ? $mediosPdf[$pg['medio_pago']] : $pg['medio_pago']) . ' ' . $simboloMoneda . ' ' . number_format((float)$pg['monto'], 2)
+    . (!empty($pg['num_operacion']) ? ' (op. ' . $pg['num_operacion'] . ')' : '')
+    . ((float)$pg['vuelto'] > 0 ? ' · vuelto ' . $simboloMoneda . ' ' . number_format((float)$pg['vuelto'], 2) : '');
+}
+if (strtoupper((string)$regv->tipo_pago) === 'CREDITO') {
+  $textoPago = 'Crédito' . (!empty($regv->fecha_vencimiento) ? ' (vence ' . date('d/m/Y', strtotime($regv->fecha_vencimiento)) . ')' : '')
+    . ($partesPago ? ' · Adelanto: ' . implode(' · ', $partesPago) : '')
+    . ' · Saldo: ' . $simboloMoneda . ' ' . number_format($total - $pagadoPdf, 2);
+} else {
+  $textoPago = 'Contado · ' . ($partesPago ? implode(' · ', $partesPago) : '');
+}
+$pdf->SetXY(10, $startY + 26);
+$pdf->SetFont('Arial', 'B', 9);
+$pdf->SetTextColor(30, 41, 59);
+$pdf->Cell(28, 5, $pdf->u('FORMA DE PAGO:'), 0, 0, 'L');
+$pdf->SetFont('Arial', '', 9);
+$pdf->MultiCell(162, 5, $pdf->u($textoPago), 0, 'L');
+$finPago = $pdf->GetY();
+
+// QR a la consulta publica y aviso de canje por comprobante electronico
+$cfgTicket = $empresaModel->configTicket();
+$codigoQr = $cfgTicket['qr'] ? $venta->codigoPublico($idReporte) : '';
+if ($codigoQr !== '' || $cfgTicket['leyenda'] !== '') {
+  $qrY = max($startY + 30, $finPago + 3);
+  if ($qrY > 245) {
+    $pdf->AddPage();
+    $qrY = $pdf->GetY() + 4;
+  }
+  $textoX = 10;
+  if ($codigoQr !== '') {
+    $urlQr = urlComprobantePublico($codigoQr);
+    qrDibujarPdf($pdf, $urlQr, 11, $qrY + 1, 28);
+    $textoX = 44;
+    $pdf->SetXY($textoX, $qrY + 2);
+    $pdf->SetFont('Arial', 'B', 9.5);
+    $pdf->SetTextColor(30, 41, 59);
+    $pdf->Cell(156, 5, $pdf->u('Consulte, imprima o descargue este comprobante escaneando el código QR'), 0, 1, 'L');
+    $pdf->SetX($textoX);
+    $pdf->SetFont('Arial', '', 8.5);
+    $pdf->SetTextColor(71, 85, 105);
+    $pdf->Cell(156, 4.5, $pdf->u($urlQr), 0, 1, 'L');
+  } else {
+    $pdf->SetXY($textoX, $qrY);
+  }
+  if ($cfgTicket['leyenda'] !== '') {
+    $pdf->SetX($textoX);
+    $pdf->Ln(2);
+    $pdf->SetX($textoX);
+    $pdf->SetFont('Arial', 'B', 8.8);
+    $pdf->SetTextColor(146, 64, 14);
+    $pdf->MultiCell(200 - $textoX, 4.6, $pdf->u($cfgTicket['leyenda']), 0, 'L');
+  }
+}
+
 $nombreSalida = 'Comprobante_'.$regv->serie_comprobante.'-'.$regv->num_comprobante.'.pdf';
-$pdf->Output($nombreSalida, 'I');
+$pdf->Output($nombreSalida, !empty($_GET['descargar']) ? 'D' : 'I');
 
 ob_end_flush();
 ?>

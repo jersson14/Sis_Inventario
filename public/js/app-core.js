@@ -245,6 +245,25 @@
     }
   }
 
+  // ---------- Almacen de trabajo (cabecera) ----------
+  $(document).on("click", ".cambiar-almacen", function (e) {
+    e.preventDefault();
+    if ($(this).hasClass("activo")) { return; }
+    var id = $(this).data("id");
+    var cambiar = function () {
+      $.post("../ajax/almacen.php?op=cambiarActual", { idalmacen: id }, function (resp) {
+        var r = window.appParseJson(resp, { ok: false, message: resp });
+        if (r.ok) { window.location.reload(); } else { window.appNotify("error", r.message || "No se pudo cambiar de almacén."); }
+      });
+    };
+    // La pagina puede avisar que hay trabajo sin guardar (p. ej. una venta a medias)
+    if (typeof window.appHayTrabajoSinGuardar === "function" && window.appHayTrabajoSinGuardar()) {
+      window.appConfirm("Al cambiar de almacén se recarga la página y se pierde lo que tienes sin guardar. ¿Continuar?", cambiar, { titulo: "Cambiar de almacén", ok: "Sí, cambiar", tipo: "warning" });
+      return;
+    }
+    cambiar();
+  });
+
   $(function () {
     marcarMenuActivo();
     cargarAlertas();

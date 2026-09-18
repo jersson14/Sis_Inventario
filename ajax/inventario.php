@@ -5,17 +5,28 @@ requierePermiso(array('inventario', 'almacen'));
 require_once "../modelos/Inventario.php";
 
 $inventario = new Inventario();
+// Los ajustes se hacen en el almacen donde trabaja la sesion
+$almacenAjuste = Stock::almacenActual();
 $op = isset($_GET['op']) ? $_GET['op'] : '';
 
 switch ($op) {
 	case 'selectArticulo':
-		$rs = $inventario->articulosActivos();
+		$rs = $inventario->articulosActivos($almacenAjuste);
 		if ($rs) {
 			while ($reg = $rs->fetch_object()) {
 				echo '<option value="' . (int)$reg->idarticulo . '" data-stock="' . round((float)$reg->stock, 3) . '" data-unidad="' . e($reg->unidad) . '" data-fraccion="' . ((negocioTiene('fracciones') && (int)$reg->permite_fraccion === 1) ? '1' : '0') . '" data-variantes="' . (int)$reg->variantes . '" data-costo="' . number_format((float)$reg->precio_compra, 2, '.', '') . '">'
 					. e($reg->nombre) . ($reg->codigo !== '' ? ' (' . e($reg->codigo) . ')' : '') . '</option>';
 			}
 		}
+		break;
+
+	// Codigo escaneado en el ajuste: articulo, caja (presentacion), talla/color o lote
+	case 'buscarCodigo':
+		$codigo = isset($_POST['codigo']) ? trim((string)$_POST['codigo']) : '';
+		$res = Inventario::resolverCodigo($codigo);
+		responderJson($res
+			? array('ok' => true) + $res
+			: array('ok' => false, 'message' => 'No hay ningún artículo, caja, talla o lote con el código ' . $codigo . '.'));
 		break;
 
 	case 'motivos':
@@ -47,7 +58,8 @@ switch ($op) {
 			enteroSeguro(isset($_POST['idlote']) ? $_POST['idlote'] : 0),
 			isset($_POST['lote_codigo']) ? limpiarCadena($_POST['lote_codigo']) : '',
 			isset($_POST['lote_vencimiento']) ? trim((string)$_POST['lote_vencimiento']) : '',
-			enteroSeguro(isset($_POST['idvariante']) ? $_POST['idvariante'] : 0)
+			enteroSeguro(isset($_POST['idvariante']) ? $_POST['idvariante'] : 0),
+			$almacenAjuste
 		);
 		if (!empty($r['ok'])) {
 			registrarAuditoria('inventario', 'ajuste_' . strtolower($tipo), $motivo . ' x' . $cantidad . ' ' . (isset($r['articulo']) ? $r['articulo'] : ('#' . $idarticulo)));
@@ -60,7 +72,7 @@ switch ($op) {
 		require_once "../modelos/Variante.php";
 		$lista = array();
 		foreach (Variante::deArticulo(enteroSeguro(isset($_GET['idarticulo']) ? $_GET['idarticulo'] : 0)) as $v) {
-			$lista[] = array('idvariante' => (int)$v['idvariante'], 'etiqueta' => html_entity_decode(Variante::etiqueta($v['talla'], $v['color']), ENT_QUOTES, 'UTF-8'), 'stock' => round((float)$v['stock'], 3));
+			$lista[] = array('idvariante' => (int)$v['idvariante'], 'etiqueta' => html_entity_decode(Variante::etiqueta($v['talla'], $v['color']), ENT_QUOTES, 'UTF-8'), 'stock' => Stock::enAlmacen($almacenAjuste, (int)$v['idarticulo'], (int)$v['idvariante']));
 		}
 		responderJson(array('ok' => true, 'variantes' => $lista));
 		break;
@@ -70,7 +82,7 @@ switch ($op) {
 		require_once "../modelos/Lote.php";
 		$lista = array();
 		if (Lote::activo()) {
-			foreach (Lote::deArticulo(enteroSeguro(isset($_GET['idarticulo']) ? $_GET['idarticulo'] : 0)) as $l) {
+			foreach (Lote::deArticulo(enteroSeguro(isset($_GET['idarticulo']) ? $_GET['idarticulo'] : 0), $almacenAjuste) as $l) {
 				$lista[] = array(
 					'idlote' => (int)$l['idlote'],
 					'codigo_lote' => (string)$l['codigo_lote'],
@@ -89,6 +101,7 @@ switch ($op) {
 		$tipo = isset($_GET['tipo']) ? strtoupper(trim($_GET['tipo'])) : '';
 		$idart = enteroSeguro(isset($_GET['idarticulo']) ? $_GET['idarticulo'] : 0);
 		$rs = $inventario->listar($fi, $ff, $tipo, $idart);
+		$multiAlm = Stock::multiAlmacen();
 		$data = array();
 		if ($rs) {
 			$motivos = Inventario::motivos();
@@ -100,7 +113,7 @@ switch ($op) {
 				$data[] = array(
 					'0' => date('d/m/Y H:i', strtotime($reg->fecha_hora)),
 					'1' => $badge,
-					'2' => e($reg->articulo) . ($reg->codigo !== '' ? ' <small class="text-soft">' . e($reg->codigo) . '</small>' : ''),
+					'2' => e($reg->articulo) . ($reg->codigo !== '' ? ' <small class="text-soft">' . e($reg->codigo) . '</small>' : '') . ($multiAlm && $reg->almacen !== '' ? '<br><small class="text-soft"><i class="fa fa-building-o"></i> ' . e($reg->almacen) . '</small>' : ''),
 					'3' => e($motivoTxt),
 					'4' => formatearCantidad($reg->cantidad) . ' ' . e($reg->unidad),
 					'5' => formatearCantidad($reg->stock_anterior) . ' → <strong>' . formatearCantidad($reg->stock_nuevo) . '</strong>',

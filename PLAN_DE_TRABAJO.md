@@ -53,7 +53,7 @@ Hallazgos críticos del código heredado:
 - ✅ Impresión masiva de etiquetas con código de barras (`vistas/etiquetas.php`)
 - ✅ Cotizaciones/proformas (`vistas/cotizacion.php`, PDF `reportes/exCotizacion.php`, conversión a venta desde el POS)
 - ✅ Importación desde Excel/CSV (`vistas/importar.php`): artículos, clientes y proveedores, sin librerías externas
-- 💡 Múltiples almacenes · 💡 Lotes y fechas de vencimiento · 💡 Notificaciones por correo (stock bajo, vencimientos) · 💡 API REST para app móvil
+- ✅ Múltiples almacenes · 💡 Lotes y fechas de vencimiento · 💡 Notificaciones por correo (stock bajo, vencimientos) · 💡 API REST para app móvil
 
 ## Fase 3 — UI/UX (vendible) ✅ (pendiente: capturas para el README)
 
@@ -111,7 +111,7 @@ Un solo sistema que se adapta al giro del cliente. El código pregunta por la **
 - ✅ Medio de pago `DEPOSITO` en ventas, compras, caja y cuentas; migración `20260919_pos_ticket.sql`; smoke a 173 comprobaciones
 - ✅ Cierre de caja: el efectivo esperado cuenta solo EFECTIVO (resuelto en la fase 7)
 - 💡 Apertura del cajón e impresión silenciosa sin depender del controlador ni de `--kiosk-printing` (agente local tipo QZ Tray con ESC/POS)
-- 💡 Pago mixto (parte efectivo, parte Yape) · 💡 Autoguardado también en el POS
+- ✅ Pago mixto (parte efectivo, parte Yape) · 💡 Autoguardado también en el POS
 
 ## Fase 7 — Roles, vendedor y marca en todo el sistema ✅ (v2.2.0)
 
@@ -131,14 +131,59 @@ Un solo sistema que se adapta al giro del cliente. El código pregunta por la **
 - ✅ **Arqueo ciego** (opción de empresa, activada): quien no es administrador no recibe del servidor totales, efectivo esperado ni diferencia (estado, cierre, historial, detalle, POS)
 - ✅ Migración `20260921_precios_arqueo.sql`; smoke a 207 comprobaciones
 
+## Fase 9 — Comprobante con QR y consulta pública ✅ (v2.3.3)
+
+- ✅ **QR en el ticket y en el PDF** (`config/qr.php`, generador propio sin internet, verificado decodificando con OpenCV): lleva a `comprobante.php?c=CLAVE`, donde el cliente ve solo esa venta (sin login, DNI enmascarado, sin cajero), la imprime o descarga el PDF (`exFactura.php?c=`)
+- ✅ Clave pública aleatoria de 16 caracteres por venta (`venta.codigo_publico`, se crea al imprimir); clave inventada = 404
+- ✅ Aviso configurable de canje por boleta/factura electrónica SUNAT en ticket, PDF y página pública; *Empresa → Ticket*: QR sí/no, aviso y **dirección pública** (avisa si el QR apuntaría a localhost)
+- ✅ Ticket más legible en térmica: Arial en negrita (antes Arial Narrow), 14 px en 80 mm, separadores gruesos
+- ✅ **Ticket con formato de comprobante** (18-sep-2026): logo, RUC y teléfono en una línea, recuadro con tipo y número (Boleta de venta / Factura / Nota de venta), datos del cliente alineados (Señor(es), DNI/RUC, domicilio, fecha, hora, moneda, tipo de pago), tabla Cant./Descripción/P.Unit/Dscto/Importe (Dscto solo si hay descuentos; en 58 mm el precio va bajo el nombre), op. gravada e IGV, importe total destacado, total en letras, cajero junto al QR. Sin textos de "electrónica" ni hash SUNAT (fuera de alcance)
+- ✅ Corregido el total en letras de los PDF (salía "SEISCIENTOSSEISCIENTOS … CON 00/100 CON 00/100" desde PHP 8)
+- ✅ Migración `20260923_comprobante_qr.sql`; smoke a 218 comprobaciones
+- ⬜ Configurar la dirección pública real (dominio o IP de red) para que el QR abra en el celular del cliente
+
+## Fase 10 — Toma de inventario con lector, lotes y tallas ✅ (v2.3.4)
+
+- ✅ **Toma de inventario** (`vistas/conteo.php`, `modelos/Conteo.php`): conteo físico de todo el almacén o de una categoría con el lector; por artículo, talla/color y **lote** (lotes nuevos encontrados con código y vencimiento, stock sin lote aparte); varias personas contando a la vez; diferencias en unidades y soles; pendientes por contar; vista previa y aplicación en una sola transacción (ajustes con motivo CONTEO ligados al conteo) con opción de poner en cero lo no contado; reporte imprimible con firmas (`reportes/rptconteo.php`)
+- ✅ Ventas durante el conteo no descuadran: cada línea guarda el stock del sistema en su última lectura y se ajusta solo la diferencia
+- ✅ **Ajuste de inventario con lector**: reconoce código de artículo, caja (suma su equivalencia), talla/color y lote; la entrada puede sumar a un lote existente (`Lote::sumarLote()`); movimiento de stock unificado en `Inventario::moverStock()`
+- ✅ **Lector sin Enter** (`public/js/app-lector.js`): detecta la ráfaga del lector (o Tab al final) en POS, compras, cotizaciones, ajustes y conteo; el tecleo humano no dispara nada
+- ✅ Migración `20260924_conteo_inventario.sql`; smoke a 237 comprobaciones; prueba de interfaz en Chrome simulando el lector (21 comprobaciones)
+
+## Fase 11 — Pago mixto ✅ (v2.4)
+
+- ✅ Tabla `venta_pago` (migración `20260925_pago_mixto.sql`, con los cobros de contado existentes pasados a una línea cada uno)
+- ✅ Cobro con varias líneas (efectivo + Yape + tarjeta…): pagado, falta y vuelto; el vuelto solo sale del efectivo; crédito con adelanto (la cuenta por cobrar queda por el saldo)
+- ✅ Caja: un movimiento por medio; el arqueo cuenta solo el efectivo
+- ✅ Ticket, PDF, detalle y comprobante público muestran cada pago; anular revierte por medio
+
+## Fase 12 — Devoluciones y notas de crédito ✅ (v2.5)
+
+- ✅ Tablas `nota_credito` / `detalle_nota_credito` (serie NC01 con correlativo bloqueado) y vistas `venta_linea`, `venta_total`, `kardex_movimiento` (migración `20260926_notas_credito.sql`)
+- ✅ Devolución por ítem con tope (vendido − ya devuelto), descuento prorrateado; stock a la misma talla, lote y almacén; opción "dañado" (no vuelve a stock)
+- ✅ Reintegro por medio, saldo a favor (se usa como medio de pago del mismo cliente) o descuento de la deuda si fue al crédito
+- ✅ Autorización de encargado sin permiso "Anular", motivo y auditoría; "Anular" emite una NC 01 por el total
+- ✅ Kardex, utilidad y reportes restan las devoluciones; PDF A4 y ticket de la NC; listado *Devoluciones (notas de crédito)*
+
+## Fase 13 — Varios almacenes y transferencias ✅ (v2.6)
+
+- ✅ Tablas `almacen` (NORMAL y un TRANSITO oculto) y `stock_almacen` por artículo y talla; `idalmacen` en venta, compra, ajuste, conteo, NC, lote y usuario; permiso 18 "Almacenes" (migración `20260927_almacenes.sql`)
+- ✅ Invariante: `articulo.stock` = suma de sus almacenes (incluido el tránsito); los triggers mueven también el almacén del documento; lo que cambia el total por fuera se cuadra en el principal (`Stock::asegurar`)
+- ✅ Almacén de trabajo por sesión (selector en la cabecera y en el POS; por defecto el del usuario): venta, compra ("Entra a"), ajustes, conteo y devolución usan su almacén; aviso de stock en otros almacenes
+- ✅ Transferencias ENVIADA → tránsito → RECIBIDA (faltante se da de baja) o ANULADA; "llega al instante"; con tallas y lotes (FEFO, el lote viaja con su código y vencimiento)
+- ✅ Kardex con filtro por almacén (traslados como entrada/salida; con "Todos" se omiten); stock por almacén; vencimientos con almacén; baja de lote en su almacén
+- ✅ Smoke a 258 comprobaciones; pruebas de backend (pago, NC, conteo, almacenes 29) y de interfaz en Chrome (22) sobre una copia de la base
+- ⬜ Series, caja y vendedores por local (multisucursal completa, v3.1)
+
 ## Próximas fases (propuesta)
 
 Detalle en [`docs/PLAN_FACTURACION_SUCURSALES.md`](docs/PLAN_FACTURACION_SUCURSALES.md):
 
-- ⬜ v2.4 Pago mixto (varios medios en una venta, adelanto en crédito)
-- ⬜ v2.5 Devoluciones parciales y notas de crédito
+- ✅ v2.4 Pago mixto (varios medios en una venta, adelanto en crédito)
+- ✅ v2.5 Devoluciones parciales y notas de crédito
+- ✅ v2.6 Varios almacenes y transferencias
 - ⬜ v3.0 Facturación electrónica SUNAT con conectores por proveedor (cada empresa usa sus credenciales)
-- ⬜ v3.1 Multisucursal (stock, caja, series y vendedores por local; transferencias)
+- ⬜ v3.1 Multisucursal (caja, series y vendedores por local; el stock por almacén y las transferencias ya están en v2.6)
 
 ### Antes de producción (pendiente del dueño)
 
@@ -151,6 +196,9 @@ Detalle en [`docs/PLAN_FACTURACION_SUCURSALES.md`](docs/PLAN_FACTURACION_SUCURSA
 
 | Fecha | Avance |
 |-------|--------|
+| 2026-09-18 (v2.6.0) | Pago mixto y adelanto en crédito, devoluciones parciales con notas de crédito (saldo a favor, dañados, autorización) y varios almacenes con transferencias en tránsito, kardex por almacén y almacén de trabajo por usuario; esquema base y demo al día; smoke a 258, pruebas de interfaz en Chrome |
+| 2026-09-18 (v2.3.4) | Toma de inventario con lector (lotes, tallas, varias personas, pendientes, reporte), ajustes con lector y lotes existentes, lector sin Enter en todas las pantallas; smoke a 237 y prueba de interfaz en Chrome |
+| 2026-09-18 (v2.3.3) | QR en ticket y PDF hacia la consulta pública del comprobante (ver, imprimir, descargar), aviso de canje SUNAT, ticket más legible y total en letras corregido; QR verificado con OpenCV, smoke a 218 comprobaciones |
 | 2026-09-17 (v2.3.2) | Librerías de seguridad: jQuery 3.3.1 → 3.7.1 y Bootstrap 3.3.7 → 3.4.1 (fallas XSS conocidas corregidas); se cargan con `?v=` para que las cajas no usen la copia vieja en caché. Verificado en las 24 vistas, POS, compras y componentes (menús, modales, selectores, tooltips) sin errores |
 | 2026-09-17 (v2.3.1) | Preparación para facturación electrónica: la boleta lleva el IGV de la empresa (el servidor lo fija por tipo de comprobante), IGV antiguo 0.18 → 18 (migración `20260922_igv_correlativo.sql`), número de comprobante siempre automático y boletas/facturas no eliminables; smoke a 212 comprobaciones |
 | 2026-09-17 (cierre) | v2.3.0: precio de lista obligatorio sin permiso, anulación con clave de encargado y arqueo ciego; smoke a 207 comprobaciones y verificación en navegador |

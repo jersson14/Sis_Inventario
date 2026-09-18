@@ -87,6 +87,14 @@ if (usuarioTienePermiso('compras')) {
                   <div class="form-group"><label for="num_comprobante">Número</label><input class="form-control" type="text" name="num_comprobante" id="num_comprobante" maxlength="10" placeholder="Del comprobante"></div>
                   <div class="form-group campo-fecha"><label for="fecha_hora">Fecha y hora <span class="req">*</span></label><input class="form-control" type="datetime-local" name="fecha_hora" id="fecha_hora" required></div>
                   <div class="form-group campo-impuesto"><label for="impuesto">Impuesto %</label><input class="form-control" type="number" step="0.01" min="0" max="100" name="impuesto" id="impuesto" value="0"></div>
+<?php require_once "../modelos/Stock.php"; if (Stock::multiAlmacen()) { $almActualI = Stock::almacenActual(); $puedeElegirAlm = usuarioTienePermiso('almacenes'); ?>
+                  <div class="form-group campo-almacen">
+                    <label for="idalmacen_compra"><i class="fa fa-building-o"></i> Entra a</label>
+                    <select class="form-control" name="idalmacen" id="idalmacen_compra" data-default="<?php echo $almActualI; ?>"<?php echo $puedeElegirAlm ? '' : ' disabled title="Solo quien gestiona almacenes puede elegir otro"'; ?>>
+                      <?php foreach (Stock::almacenes() as $alI) { ?><option value="<?php echo (int)$alI['idalmacen']; ?>"<?php echo (int)$alI['idalmacen'] === $almActualI ? ' selected' : ''; ?>><?php echo e(html_entity_decode($alI['nombre'], ENT_QUOTES, 'UTF-8')); ?></option><?php } ?>
+                    </select>
+                  </div>
+<?php } ?>
                 </div>
               </div>
             </div>

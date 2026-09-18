@@ -15,8 +15,12 @@ if (usuarioTienePermiso('inventario') || usuarioTienePermiso('almacen')) {
         <div class="breadcrumb-app"><a href="escritorio.php">Inicio</a> <i class="fa fa-chevron-right"></i> Inventario <i class="fa fa-chevron-right"></i> Ajustes</div>
         <h1><span class="page-icon"><i class="fa fa-exchange"></i></span> Ajustes de inventario</h1>
         <p>Entradas y salidas de stock que no son compras ni ventas: conteos, mermas, vencimientos, devoluciones o uso interno. Todo queda en el kardex.</p>
+<?php require_once "../modelos/Stock.php"; if (Stock::multiAlmacen()) { ?>
+        <p class="text-soft"><i class="fa fa-building-o"></i> Los ajustes se hacen en <strong><?php echo e(Stock::nombre(Stock::almacenActual())); ?></strong> (el almacén donde trabajas; cámbialo arriba a la derecha).</p>
+<?php } ?>
       </div>
       <div class="page-actions">
+        <a href="conteo.php" class="btn btn-primary" title="Contar todo el almacén con el lector y ajustar las diferencias"><i class="fa fa-barcode"></i> Toma de inventario</a>
         <button class="btn btn-success" id="btnNuevaEntrada"><i class="fa fa-arrow-down"></i> Entrada</button>
         <button class="btn btn-danger" id="btnNuevaSalida"><i class="fa fa-arrow-up"></i> Salida</button>
       </div>
@@ -57,6 +61,14 @@ if (usuarioTienePermiso('inventario') || usuarioTienePermiso('almacen')) {
       <div class="modal-header"><button type="button" class="close" data-dismiss="modal">&times;</button><h4 class="modal-title" id="aj_titulo"><i class="fa fa-arrow-down"></i> Entrada de inventario</h4></div>
       <div class="modal-body">
         <div class="form-group">
+          <label for="aj_scan">Escanear código</label>
+          <div class="input-group">
+            <span class="input-group-addon"><i class="fa fa-barcode"></i></span>
+            <input type="text" id="aj_scan" class="form-control input-lg" placeholder="Artículo, caja, talla/color o lote" autocomplete="off">
+          </div>
+          <span class="help-block" id="aj_scan_info">Con el lector: cada lectura del mismo producto suma a la cantidad.</span>
+        </div>
+        <div class="form-group">
           <label>Artículo <span class="req">*</span></label>
           <select name="idarticulo" id="aj_articulo" class="form-control selectpicker" data-live-search="true" data-width="100%" data-size="8" required></select>
           <span class="help-block" id="aj_info">Selecciona un artículo para ver su stock actual.</span>
@@ -70,13 +82,13 @@ if (usuarioTienePermiso('inventario') || usuarioTienePermiso('almacen')) {
           <div class="form-group col-xs-6"><label>Costo unitario</label><input type="number" step="0.01" min="0" class="form-control" name="costo_unitario" id="aj_costo" placeholder="Precio de compra"><span class="help-block">Vacío = costo del artículo.</span></div>
         </div>
 <?php if (negocioTiene('lotes') || negocioTiene('vencimientos')): ?>
-        <div class="row lote-entrada">
-          <div class="form-group col-xs-6"><label>Lote</label><input type="text" class="form-control" name="lote_codigo" id="aj_lote_codigo" maxlength="40" placeholder="Opcional"></div>
-          <div class="form-group col-xs-6"><label>Fecha de vencimiento</label><input type="date" class="form-control" name="lote_vencimiento" id="aj_lote_vence"></div>
+        <div class="form-group">
+          <label for="aj_idlote" id="aj_lote_label">Lote</label>
+          <select name="idlote" id="aj_idlote" class="form-control"></select>
         </div>
-        <div class="form-group lote-salida" style="display:none">
-          <label>Retirar del lote</label>
-          <select name="idlote" id="aj_idlote" class="form-control"><option value="0">Automático: primero lo vencido y lo que vence antes</option></select>
+        <div class="row lote-entrada" style="display:none">
+          <div class="form-group col-xs-6"><label>Código del lote</label><input type="text" class="form-control" name="lote_codigo" id="aj_lote_codigo" maxlength="40" placeholder="Opcional"></div>
+          <div class="form-group col-xs-6"><label>Fecha de vencimiento</label><input type="date" class="form-control" name="lote_vencimiento" id="aj_lote_vence"></div>
         </div>
 <?php endif; ?>
         <div class="form-group">

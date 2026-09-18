@@ -18,7 +18,7 @@ $__cfg = array(
 
 	// Aplicacion
 	'PRO_NOMBRE'      => 'Mi Tienda',
-	'APP_VERSION'     => '2.3.2',
+	'APP_VERSION'     => '2.6.0',
 	'APP_ENV'         => 'development', // development | production
 	'APP_TIMEZONE'    => 'America/Lima',
 

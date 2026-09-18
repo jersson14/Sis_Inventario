@@ -43,6 +43,8 @@ window.appUser = <?php echo json_encode(array(
 // Perfil de negocio: los modulos consultan window.appNegocioTiene('lotes') para
 // mostrar u ocultar lo que corresponde al rubro configurado.
 window.appNegocio = <?php echo json_encode(function_exists('negocioParaJs') ? negocioParaJs() : array('perfil' => 'GENERAL', 'capacidades' => array()), JSON_UNESCAPED_UNICODE); ?>;
+// Almacen de trabajo (varios almacenes): los modulos muestran su nombre
+window.appAlmacen = <?php require_once "../modelos/Stock.php"; echo json_encode(array("multi" => Stock::multiAlmacen(), "id" => Stock::almacenActual(), "nombre" => Stock::nombre(Stock::almacenActual()), "puede_cambiar" => usuarioTienePermiso("almacenes")), JSON_UNESCAPED_UNICODE); ?>;
 window.appNegocioTiene = function (capacidad) {
   return !!(window.appNegocio && window.appNegocio.capacidades && window.appNegocio.capacidades.indexOf(capacidad) !== -1);
 };
@@ -68,3 +70,4 @@ window.appMoney = function(value, decimals) {
 <script src="../public/js/app-notify.js?v=<?php echo e(APP_VERSION); ?>"></script>
 <script src="../public/js/app-datatable.js?v=<?php echo e(APP_VERSION); ?>"></script>
 <script src="../public/js/app-core.js?v=<?php echo e(APP_VERSION); ?>"></script>
+<script src="../public/js/app-lector.js?v=<?php echo e(APP_VERSION); ?>"></script>

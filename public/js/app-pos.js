@@ -98,7 +98,7 @@
 
   window.appMedioPagoTexto = {
     EFECTIVO: "Efectivo", DEPOSITO: "Depósito en cuenta", TRANSFERENCIA: "Transferencia",
-    YAPE: "Yape", PLIN: "Plin", TARJETA: "Tarjeta", OTRO: "Otro"
+    YAPE: "Yape", PLIN: "Plin", TARJETA: "Tarjeta", OTRO: "Otro", MIXTO: "Mixto", CREDITO: "Crédito", NOTA_CREDITO: "Nota de crédito"
   };
 
   window.appFijarMedioPago = function ($grid, medio) {

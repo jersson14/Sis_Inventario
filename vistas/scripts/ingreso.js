@@ -140,6 +140,7 @@ function limpiar(){
 	$("#idingreso, #serie_comprobante, #num_comprobante, #observacion, #fecha_vencimiento, #cuenta_pago, #num_operacion, #buscarArticulo").val("");
 	if (proveedoresCargados) { $("#idproveedor").val($("#idproveedor option:first").val() || "").selectpicker("refresh"); }
 	$("#impuesto").val("0");
+	$("#idalmacen_compra").val($("#idalmacen_compra").data("default"));
 	$("#total_compra").val("");
 	$("#detalles tbody").empty();
 	cont = 0; detalles = 0;
@@ -283,7 +284,7 @@ function mostrar(idingreso){
 		if (d.cuenta_pago) { datosPago += '<p><strong>Cuenta:</strong> ' + appEscapeHtml(d.cuenta_pago) + '</p>'; }
 		if (d.num_operacion) { datosPago += '<p><strong>N° operación:</strong> ' + appEscapeHtml(d.num_operacion) + '</p>'; }
 		$("#detCabecera").html(
-			'<div class="col-sm-6"><p><strong>Proveedor:</strong> ' + appEscapeHtml(d.proveedor) + '</p><p><strong>Registrado por:</strong> ' + appEscapeHtml(d.usuario) + '</p><p><strong>Fecha:</strong> ' + appEscapeHtml(d.fecha) + '</p></div>' +
+			'<div class="col-sm-6"><p><strong>Proveedor:</strong> ' + appEscapeHtml(d.proveedor) + '</p><p><strong>Registrado por:</strong> ' + appEscapeHtml(d.usuario) + '</p>' + (d.almacen && $("#idalmacen_compra").length ? '<p><strong>Almacén:</strong> ' + appEscapeHtml(d.almacen) + '</p>' : '') + '<p><strong>Fecha:</strong> ' + appEscapeHtml(d.fecha) + '</p></div>' +
 			'<div class="col-sm-6"><p><strong>Estado:</strong> ' + estado + '</p><p><strong>Pago:</strong> ' + appEscapeHtml(pago) + '</p>' + datosPago + '<p><strong>Impuesto:</strong> ' + appEscapeHtml(d.impuesto) + ' % &nbsp; <strong>Total:</strong> <span class="money">' + money(d.total_compra) + '</span></p>' + (d.observacion ? '<p><strong>Obs.:</strong> ' + appEscapeHtml(d.observacion) + '</p>' : '') + '</div>'
 		);
 		$.post("../ajax/ingreso.php?op=listarDetalle&id=" + idingreso, function(r){ $("#detTabla").html(r); });
@@ -353,6 +354,8 @@ function iniciarBuscador(){
 		elegirResultado($(this).data("id"));
 	});
 	$input.on("blur", function(){ setTimeout(cerrarResultados, 150); });
+	// Lectores sin Enter: la rafaga del lector agrega directo, igual que Enter
+	window.appLectorCodigo($input, function(codigo){ clearTimeout(busquedaTimer); buscarArticulos(codigo, true); }, { enter: false });
 }
 
 // directo=true (Enter): con un codigo exacto o un unico resultado se agrega sin preguntar

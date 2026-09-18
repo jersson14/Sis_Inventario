@@ -1,5 +1,10 @@
 /* Ticket de venta para ticketera termica (80 o 58 mm).
-   Todo en negro puro: las termicas no imprimen grises ni fondos. */
+   Formato de comprobante peruano: cabecera con logo, recuadro con el tipo y
+   numero, datos del cliente alineados, tabla Cant/Descripcion/P.Unit/Dscto/
+   Importe, total destacado, importe en letras y QR al pie.
+   Todo en negro puro: las termicas no imprimen grises ni fondos.
+   Letra Arial (no "Narrow") y con peso alto: los trazos finos salen cortados o
+   desvaidos en el papel termico, sobre todo cuando el cabezal esta gastado. */
 * {
   box-sizing: border-box;
 }
@@ -10,16 +15,18 @@ body {
   padding: 0;
   background: #e5e7eb;
   color: #000;
-  font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+  text-rendering: optimizeLegibility;
 }
 
 .ticket {
   margin: 12px auto;
   background: #fff;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-  line-height: 1.3;
+  line-height: 1.2;
+  font-weight: 600;
   word-wrap: break-word;
   overflow-wrap: anywhere;
 }
@@ -27,67 +34,234 @@ body {
 /* Area imprimible real: 80 mm de rollo = ~72 mm; 58 mm = ~48 mm */
 .ticket-80 .ticket {
   width: 72mm;
-  padding: 3mm 2mm 6mm;
+  padding: 2mm 1.5mm 4mm;
   font-size: 12.5px;
 }
 
 .ticket-58 .ticket {
   width: 48mm;
-  padding: 2mm 1mm 5mm;
-  font-size: 10.5px;
+  padding: 1.5mm 1mm 4mm;
+  font-size: 11px;
 }
 
 .t-center {
   text-align: center;
 }
 
+b {
+  font-weight: 900;
+}
+
+/* ---------- Cabecera de la empresa ---------- */
 .t-logo {
   display: block;
-  max-width: 60%;
-  max-height: 22mm;
-  margin: 0 auto 4px;
-  filter: grayscale(1) contrast(1.4);
+  max-width: 70%;
+  max-height: 15mm;
+  margin: 0 auto 3px;
+  filter: grayscale(1) contrast(1.6);
 }
 
 .t-empresa {
-  font-size: 1.35em;
-  font-weight: 800;
+  font-size: 1.25em;
+  font-weight: 900;
   text-transform: uppercase;
-  line-height: 1.15;
-  margin-bottom: 2px;
+  line-height: 1.1;
+  letter-spacing: 0.2px;
+}
+
+.t-razon {
+  font-weight: 900;
+  font-size: 1.05em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.t-contacto {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 12px;
+  margin-top: 1px;
+}
+
+.t-direccion {
+  font-size: 0.95em;
+  text-transform: uppercase;
 }
 
 .t-nota {
   margin-top: 3px;
-  font-size: 0.92em;
+  font-size: 0.93em;
 }
 
-.t-doc {
-  font-weight: 800;
-  font-size: 1.12em;
-  letter-spacing: 0.3px;
+/* ---------- Tipo y numero de comprobante ---------- */
+.t-documento {
+  margin: 5px 3mm 4px;
+  padding: 2px 4px 2px;
+  border: 2px solid #000;
+  border-radius: 4px;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.t-doc-tipo {
+  font-size: 1.1em;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+}
+
+.t-doc-num {
+  font-size: 1.15em;
+  font-weight: 900;
+  letter-spacing: 1px;
+  margin-top: 1px;
+}
+
+.ticket-58 .t-documento {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .t-anulado {
-  font-weight: 800;
+  font-weight: 900;
+  font-size: 1.1em;
   margin-top: 3px;
 }
 
 .t-copia {
-  font-size: 0.9em;
+  font-size: 0.93em;
   margin-top: 2px;
 }
 
-.t-sep {
-  border-top: 1px dashed #000;
-  margin: 5px 0;
+/* ---------- Separadores ---------- */
+.t-doble {
+  border-top: 4px double #000;
+  margin: 4px 0;
 }
 
-.t-sep-fina {
-  border-top-style: dotted;
+.t-linea {
+  border-top: 2px solid #000;
   margin: 3px 0;
 }
 
+.t-sep {
+  border-top: 2px dashed #000;
+  margin: 6px 0;
+}
+
+/* ---------- Datos del cliente: etiqueta : valor ---------- */
+.t-datos {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 4px;
+  row-gap: 0;
+  margin: 0;
+}
+
+.t-datos dt {
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.t-datos dt::after {
+  content: " :";
+}
+
+.t-datos dd {
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* ---------- Detalle ---------- */
+.t-items {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 0.93em;
+}
+
+/* Las palabras no se parten a la mitad dentro de la tabla */
+.t-items td,
+.t-items th {
+  overflow-wrap: normal;
+  word-wrap: normal;
+}
+
+.t-sin-dscto .t-c-dscto {
+  display: none;
+}
+
+.t-items th {
+  font-weight: 900;
+  font-size: 0.95em;
+  padding: 0 0 2px;
+  border-bottom: 4px double #000;
+  white-space: nowrap;
+}
+
+.t-items td {
+  padding: 2px 0 2px;
+  vertical-align: top;
+  border-bottom: 1px dashed #000;
+}
+
+.t-items tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.t-c-cant {
+  text-align: center;
+  width: 1%;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.t-c-desc {
+  text-align: left;
+  padding-left: 3px !important;
+}
+
+.t-c-num {
+  text-align: right;
+  padding-left: 4px !important;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.t-c-importe {
+  font-weight: 900;
+}
+
+.t-item-nombre {
+  display: inline;
+  font-weight: 700;
+  overflow-wrap: break-word;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.t-item-unidad {
+  display: inline;
+  margin-left: 3px;
+  font-size: 0.82em;
+  font-weight: 700;
+}
+
+.t-solo58 {
+  display: none;
+}
+
+/* 58 mm: sin espacio para 5 columnas; precio y descuento van bajo el nombre */
+.ticket-58 .t-c-precio,
+.ticket-58 .t-c-dscto {
+  display: none;
+}
+
+.ticket-58 .t-solo58 {
+  display: inline;
+}
+
+/* ---------- Totales ---------- */
 .t-fila {
   display: flex;
   justify-content: space-between;
@@ -104,47 +278,143 @@ body {
   white-space: nowrap;
 }
 
-/* Cliente o cajero largos pueden partirse en dos lineas */
-.t-fila > span:last-child:not(:only-child) {
-  white-space: normal;
+.t-totales .t-fila {
+  padding-left: 18%;
 }
 
-.t-cab {
-  font-weight: 800;
-  text-transform: uppercase;
-  font-size: 0.9em;
-}
-
-.t-item {
-  margin-bottom: 3px;
-}
-
-.t-item-nombre {
-  font-weight: 700;
-}
-
-.t-desc {
-  font-size: 0.92em;
+.ticket-58 .t-totales .t-fila {
+  padding-left: 0;
 }
 
 .t-total {
-  font-size: 1.45em;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  margin: 3px 0 2px;
+  padding: 3px 0 2px;
+  border-top: 2px solid #000;
+  border-bottom: 2px solid #000;
+  font-size: 1.3em;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.t-total span:last-child {
+  white-space: nowrap;
+}
+
+.ticket-58 .t-total {
+  font-size: 1.25em;
+}
+
+.t-letras {
   font-weight: 800;
-  margin-top: 2px;
+  font-style: italic;
+  font-size: 0.9em;
+  margin: 2px 0 3px;
+}
+
+.t-pagos {
+  border-top: 1px dashed #000;
+  padding-top: 2px;
+}
+
+.t-pagos:empty {
+  display: none;
+}
+
+.t-desc {
+  font-size: 0.93em;
 }
 
 .t-vuelto {
-  font-weight: 800;
-  font-size: 1.12em;
+  font-weight: 900;
+  font-size: 1.1em;
 }
 
-.t-mensaje {
+/* ---------- Cierre: cajero y QR lado a lado ---------- */
+.t-cierre {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 2px solid #000;
+  font-size: 0.9em;
+}
+
+.t-cierre.t-con-qr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.t-cierre-datos {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.t-cierre-datos > div + div {
+  margin-top: 1px;
+}
+
+/* QR del comprobante: modulos nitidos, tamano fijo en mm para que la
+   ticketera no lo reescale borroso */
+.t-qr {
+  flex: 0 0 auto;
+}
+
+.t-qr svg {
+  display: block;
+  margin: 0 auto;
+  width: 22mm;
+  height: 22mm;
+  image-rendering: pixelated;
+}
+
+.t-qr-texto {
+  font-size: 0.88em;
   font-weight: 700;
-  margin-bottom: 2px;
+  font-style: italic;
+}
+
+/* 58 mm: el QR va debajo de los datos */
+.ticket-58 .t-cierre.t-con-qr {
+  display: block;
+  text-align: center;
+}
+
+.ticket-58 .t-qr {
+  margin-top: 3px;
+}
+
+.ticket-58 .t-qr svg {
+  width: 22mm;
+  height: 22mm;
+}
+
+/* ---------- Pie ---------- */
+footer.t-center {
+  margin-top: 3px;
 }
 
 .t-pie {
   font-size: 0.85em;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.t-mensaje {
+  font-weight: 900;
+  font-size: 1em;
+  margin-top: 3px;
+}
+
+.t-leyenda {
+  border: 2px solid #000;
+  padding: 2px 4px;
+  margin: 3px 0 2px;
+  font-size: 0.78em;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 /* Barra de pantalla (no se imprime) */
@@ -152,6 +422,7 @@ body {
   position: sticky;
   top: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   justify-content: center;
@@ -173,6 +444,16 @@ body {
 
 .ticket-toolbar button + button {
   background: #334155;
+}
+
+.ticket-aviso {
+  flex-basis: 100%;
+  text-align: center;
+  color: #fcd34d;
+}
+
+.ticket-aviso a {
+  color: #fde68a;
 }
 
 @media print {

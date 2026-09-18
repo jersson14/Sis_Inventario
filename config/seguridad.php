@@ -39,6 +39,7 @@ if (!function_exists('iniciarSesionSegura')) {
 			'inventario' => 15,
 			'anular'     => 16,
 			'precios'    => 17,
+			'almacenes'  => 18,
 		);
 	}
 
@@ -59,8 +60,9 @@ if (!function_exists('iniciarSesionSegura')) {
 			'backup'     => 'Crear y descargar copias de seguridad.',
 			'reportes'   => 'Centro de reportes (ventas, compras, utilidad, inventario).',
 			'caja'       => 'Abrir, registrar movimientos y cerrar su propia caja.',
-			'inventario' => 'Ajustes de inventario (entradas y salidas) y vencimientos.',
-			'anular'     => 'Anular ventas y compras (el stock se revierte). Recomendado solo para encargados.',
+			'inventario' => 'Ajustes de inventario (entradas y salidas), vencimientos y aplicar la toma de inventario.',
+			'anular'     => 'Anular ventas y compras y registrar devoluciones (notas de crédito). Sin él, un encargado autoriza con su clave.',
+			'almacenes'  => 'Varios almacenes: crear almacenes, transferir mercadería entre ellos, elegir en qué almacén se trabaja y a cuál entra cada compra.',
 			'precios'    => 'Cambiar el precio y poner descuentos en ventas y cotizaciones. Sin este permiso se vende al precio de lista.',
 		);
 	}
@@ -83,14 +85,14 @@ if (!function_exists('iniciarSesionSegura')) {
 				'cargo' => 'Encargado',
 				'icono' => 'fa-user-circle',
 				'descripcion' => 'Vende, compra, ajusta stock, cambia precios, anula y autoriza anulaciones; ve todas las ventas, cuentas y reportes. No administra usuarios.',
-				'permisos' => array('escritorio', 'almacen', 'compras', 'ventas', 'consultac', 'consultav', 'procenter', 'cuentas', 'reportes', 'caja', 'inventario', 'anular', 'precios'),
+				'permisos' => array('escritorio', 'almacen', 'compras', 'ventas', 'consultac', 'consultav', 'procenter', 'cuentas', 'reportes', 'caja', 'inventario', 'anular', 'precios', 'almacenes'),
 			),
 			'almacenero' => array(
 				'nombre' => 'Almacenero',
 				'cargo' => 'Almacenero',
 				'icono' => 'fa-cubes',
-				'descripcion' => 'Artículos, ajustes de inventario, vencimientos y kardex.',
-				'permisos' => array('almacen', 'inventario', 'procenter'),
+				'descripcion' => 'Artículos, ajustes de inventario, vencimientos, almacenes, transferencias y kardex.',
+				'permisos' => array('almacen', 'inventario', 'procenter', 'almacenes'),
 			),
 			'compras' => array(
 				'nombre' => 'Compras',

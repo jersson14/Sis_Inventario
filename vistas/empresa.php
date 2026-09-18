@@ -144,6 +144,16 @@ if (usuarioTienePermiso('empresa') || usuarioTienePermiso('acceso')) {
                 </div>
                 <div class="form-group col-md-6"><label for="ticket_cabecera">Texto bajo el nombre de la tienda</label><input type="text" class="form-control" name="ticket_cabecera" id="ticket_cabecera" maxlength="200" placeholder="Ej.: Lun a Sáb 8am - 8pm · Síguenos en Facebook"></div>
                 <div class="form-group col-md-6"><label for="mensaje_ticket">Mensaje al pie del ticket</label><input type="text" class="form-control" name="mensaje_ticket" id="mensaje_ticket" maxlength="160" placeholder="Gracias por su compra"></div>
+                <div class="form-group col-md-12"><label for="ticket_leyenda">Aviso al pie (canje por comprobante electrónico)</label><input type="text" class="form-control" name="ticket_leyenda" id="ticket_leyenda" maxlength="250" placeholder="Vacío = sin aviso"></div>
+                <div class="form-group col-md-4 col-sm-12">
+                  <label>Código QR</label>
+                  <div class="checkbox" style="margin-top:4px"><label><input type="checkbox" name="ticket_qr" id="ticket_qr" value="1"> Imprimir QR para que el cliente vea y descargue su comprobante</label></div>
+                </div>
+                <div class="form-group col-md-8 col-sm-12">
+                  <label for="url_publica">Dirección pública del sistema</label>
+                  <input type="url" class="form-control" name="url_publica" id="url_publica" maxlength="200" placeholder="Ej.: https://mitienda.pe">
+                  <p class="help-block" id="urlPublicaAyuda">La dirección con la que el cliente abre el QR desde su celular. Vacía = la dirección con la que entras ahora.</p>
+                </div>
               </div>
               <div class="callout-soft">
                 <strong><i class="fa fa-info-circle"></i> Para que el ticket salga sin preguntar y abra el cajón:</strong>

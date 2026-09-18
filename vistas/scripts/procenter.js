@@ -47,15 +47,18 @@ function construirKardex(data) {
     dtKardex.destroy();
   }
   var body = "";
+  // Con varios almacenes y "Todos", cada fila dice de que almacen es
+  var verAlmacen = $("#kardex_almacen").length > 0 && !data.almacen;
   for (var i = 0; i < data.movimientos.length; i++) {
     var r = data.movimientos[i];
     var costoTxt = window.appMoney ? window.appMoney(parseFloat(r.costo || 0), 2) : ("S/ " + parseFloat(r.costo || 0).toFixed(2));
     var precioRefTxt = window.appMoney ? window.appMoney(parseFloat(r.precio_ref || 0), 2) : ("S/ " + parseFloat(r.precio_ref || 0).toFixed(2));
     body += "<tr>" +
       // data-order con la fecha ISO: si no, DataTables ordena el texto dd/mm y el saldo pierde sentido
-      "<td data-order='" + (r.fecha_orden || "") + "'>" + r.fecha + "</td>" +
-      "<td><span class='label " + (r.tipo === "INGRESO" ? "bg-aqua" : "bg-green") + "'>" + r.tipo + "</span></td>" +
-      "<td>" + r.documento + "</td>" +
+      // El servidor ya los ordena por fecha (en el mismo minuto, entradas primero): se ordena por posicion
+      "<td data-order='" + ("00000" + i).slice(-6) + "'>" + r.fecha + "</td>" +
+      "<td><span class='label " + (r.tipo === "INGRESO" ? "bg-aqua" : (r.tipo.indexOf("TRASLADO") === 0 ? "bg-purple" : (r.tipo.indexOf("AJUSTE") === 0 ? "bg-yellow" : "bg-green"))) + "'>" + r.tipo + "</span></td>" +
+      "<td>" + r.documento + (verAlmacen && r.almacen ? "<br><small class='text-soft'><i class='fa fa-building-o'></i> " + window.appEscapeHtml(r.almacen) + "</small>" : "") + "</td>" +
       "<td>" + r.tercero + "</td>" +
       "<td>" + r.entrada + "</td>" +
       "<td>" + r.salida + "</td>" +
@@ -83,7 +86,7 @@ function construirKardex(data) {
   fixDataTableLayout("#tblkardex", dtKardex);
 
   $("#kardexResumen").html(
-    "<strong>" + data.articulo + "</strong> (" + data.codigo + ") | Unidad: " + data.unidad +
+    "<strong>" + data.articulo + "</strong> (" + data.codigo + ") | " + (data.almacen ? "Almacén: <strong>" + window.appEscapeHtml(data.almacen) + "</strong> | " : "") + "Unidad: " + data.unidad +
     " | Saldo inicial: <strong>" + data.saldo_inicial + "</strong> | Stock actual: <strong>" + data.stock_actual +
     "</strong> | Stock minimo: <strong>" + data.stock_minimo + "</strong>"
   );
@@ -119,7 +122,8 @@ function cargarKardex() {
     op: "kardex",
     idarticulo: idarticulo,
     desde: desde,
-    hasta: hasta
+    hasta: hasta,
+    idalmacen: $("#kardex_almacen").val() || 0
   }, function (resp) {
     var r;
     try {

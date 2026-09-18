@@ -50,7 +50,7 @@ class Usuario{
 	// Fila del usuario SIN el hash de clave (array asociativo) o null.
 	public function mostrar($idusuario){
 		return dbRow(
-			"SELECT idusuario,nombre,tipo_documento,num_documento,direccion,telefono,email,cargo,login,imagen,condicion,ultimo_acceso
+			"SELECT idusuario,nombre,tipo_documento,num_documento,direccion,telefono,email,cargo,login,imagen,condicion,ultimo_acceso,IFNULL(idalmacen,0) AS idalmacen
 			 FROM usuario WHERE idusuario=?",
 			array((int)$idusuario)
 		);
@@ -87,7 +87,7 @@ class Usuario{
 	// Listado SIN el hash de clave (mysqli_result).
 	public function listar(){
 		return dbQuery(
-			"SELECT idusuario,nombre,tipo_documento,num_documento,direccion,telefono,email,cargo,login,imagen,condicion,ultimo_acceso
+			"SELECT idusuario,nombre,tipo_documento,num_documento,direccion,telefono,email,cargo,login,imagen,condicion,ultimo_acceso,IFNULL(idalmacen,0) AS idalmacen
 			 FROM usuario ORDER BY nombre ASC"
 		);
 	}

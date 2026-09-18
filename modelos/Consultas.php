@@ -73,7 +73,7 @@ class Consultas
 
 	public function totalventahoy()
 	{
-		$sql = "SELECT IFNULL(SUM(total_venta),0) AS total_venta FROM venta
+		$sql = "SELECT IFNULL(SUM(total),0) AS total_venta FROM venta_total
 			WHERE DATE(fecha_hora)=CURDATE() AND estado='Aceptado'";
 		return dbQuery($sql);
 	}
@@ -90,8 +90,8 @@ class Consultas
 
 	public function ventasultimos_12meses()
 	{
-		$sql = "SELECT DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_venta),0) AS total
-			FROM venta
+		$sql = "SELECT DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total),0) AS total
+			FROM venta_total
 			WHERE fecha_hora >= DATE_SUB(CURDATE(), INTERVAL 11 MONTH) AND estado='Aceptado'
 			GROUP BY YEAR(fecha_hora), MONTH(fecha_hora)
 			ORDER BY YEAR(fecha_hora), MONTH(fecha_hora)";
@@ -107,7 +107,7 @@ class Consultas
 
 	public function totalventasmes()
 	{
-		$sql = "SELECT IFNULL(SUM(total_venta),0) AS total_venta FROM venta
+		$sql = "SELECT IFNULL(SUM(total),0) AS total_venta FROM venta_total
 			WHERE YEAR(fecha_hora)=YEAR(CURDATE()) AND MONTH(fecha_hora)=MONTH(CURDATE()) AND estado='Aceptado'";
 		return dbQuery($sql);
 	}
@@ -129,10 +129,9 @@ class Consultas
 		$sql = "SELECT a.nombre AS producto,
 			IFNULL(SUM(dv.cantidad*dv.factor),0) AS cantidad,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
-			FROM detalle_venta dv
+			FROM venta_linea dv
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
-			INNER JOIN venta v ON v.idventa=dv.idventa
-			WHERE v.estado='Aceptado'
+			WHERE dv.estado='Aceptado'
 			GROUP BY dv.idarticulo, a.nombre
 			ORDER BY total DESC
 			LIMIT " . (int)$limit;
@@ -144,12 +143,11 @@ class Consultas
 		$limit = $this->limite($limit, 8);
 		$sql = "SELECT c.nombre AS categoria,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
-			FROM detalle_venta dv
-			INNER JOIN venta v ON v.idventa=dv.idventa
+			FROM venta_linea dv
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
 			INNER JOIN categoria c ON c.idcategoria=a.idcategoria
-			WHERE v.estado='Aceptado'
-			AND YEAR(v.fecha_hora)=YEAR(CURDATE()) AND MONTH(v.fecha_hora)=MONTH(CURDATE())
+			WHERE dv.estado='Aceptado'
+			AND YEAR(dv.fecha_hora)=YEAR(CURDATE()) AND MONTH(dv.fecha_hora)=MONTH(CURDATE())
 			GROUP BY c.idcategoria, c.nombre
 			ORDER BY total DESC
 			LIMIT " . (int)$limit;
@@ -168,8 +166,8 @@ class Consultas
 
 	public function ventasultimos_6meses()
 	{
-		$sql = "SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_venta),0) AS total
-			FROM venta
+		$sql = "SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total),0) AS total
+			FROM venta_total
 			WHERE fecha_hora >= DATE_SUB(CURDATE(), INTERVAL 5 MONTH) AND estado='Aceptado'
 			GROUP BY DATE_FORMAT(fecha_hora,'%Y-%m'), DATE_FORMAT(fecha_hora,'%b %Y')
 			ORDER BY YEAR(fecha_hora), MONTH(fecha_hora)";
@@ -192,9 +190,8 @@ class Consultas
 			IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
 			IFNULL(SUM(dv.cantidad*dv.factor),0) AS cantidad_vendida,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS venta_total,
-			IFNULL(SUM(dv.cantidad*dv.factor*IFNULL(cp.costo_unitario, a.precio_compra)),0) AS costo_estimado
-			FROM detalle_venta dv
-			INNER JOIN venta v ON v.idventa=dv.idventa
+			IFNULL(SUM(dv.cantidad_costo*dv.factor*IFNULL(cp.costo_unitario, a.precio_compra)),0) AS costo_estimado
+			FROM venta_linea dv
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
 			LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
 			LEFT JOIN (
@@ -205,7 +202,7 @@ class Consultas
 				WHERE DATE(i.fecha_hora)>=? AND DATE(i.fecha_hora)<=? AND i.estado='Aceptado'
 				GROUP BY di.idarticulo
 			) cp ON cp.idarticulo=dv.idarticulo
-			WHERE DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=? AND v.estado='Aceptado'
+			WHERE DATE(dv.fecha_hora)>=? AND DATE(dv.fecha_hora)<=? AND dv.estado='Aceptado'
 			GROUP BY a.idarticulo, a.codigo, a.nombre, c.nombre, a.precio_compra
 			ORDER BY venta_total DESC";
 		return dbQuery($sql, array((string)$fecha_inicio, (string)$fecha_fin, (string)$fecha_inicio, (string)$fecha_fin));
@@ -221,14 +218,13 @@ class Consultas
 			a.nombre AS articulo,
 			IFNULL(c.nombre,'SIN CATEGORIA') AS categoria,
 			IFNULL(u.abreviatura,'und') AS unidad,
-			IFNULL(SUM(CASE WHEN v.idventa IS NOT NULL THEN dv.cantidad*dv.factor ELSE 0 END),0) AS cantidad,
-			IFNULL(SUM(CASE WHEN v.idventa IS NOT NULL THEN ((dv.cantidad*dv.precio_venta)-dv.descuento) ELSE 0 END),0) AS total
+			IFNULL(SUM(dv.cantidad*dv.factor),0) AS cantidad,
+			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
 			FROM articulo a
 			LEFT JOIN categoria c ON c.idcategoria=a.idcategoria
 			LEFT JOIN unidad_medida u ON u.idunidad=a.idunidad
-			LEFT JOIN detalle_venta dv ON dv.idarticulo=a.idarticulo
-			LEFT JOIN venta v ON v.idventa=dv.idventa
-				AND DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=? AND v.estado='Aceptado'
+			LEFT JOIN venta_linea dv ON dv.idarticulo=a.idarticulo
+				AND DATE(dv.fecha_hora)>=? AND DATE(dv.fecha_hora)<=? AND dv.estado='Aceptado'
 			WHERE a.condicion=1
 			GROUP BY a.idarticulo, a.codigo, a.nombre, c.nombre, u.abreviatura
 			ORDER BY total " . $orden . ", cantidad " . $orden . "
@@ -320,10 +316,9 @@ class Consultas
 				GROUP BY di.idarticulo
 			) ent ON ent.idarticulo=a.idarticulo
 			LEFT JOIN (
-				SELECT dv.idarticulo, IFNULL(SUM(dv.cantidad*dv.factor),0) AS salida
-				FROM detalle_venta dv
-				INNER JOIN venta v ON v.idventa=dv.idventa
-				WHERE DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=? AND v.estado='Aceptado'
+				SELECT dv.idarticulo, IFNULL(SUM(dv.cantidad_costo*dv.factor),0) AS salida
+				FROM venta_linea dv
+				WHERE DATE(dv.fecha_hora)>=? AND DATE(dv.fecha_hora)<=? AND dv.estado='Aceptado'
 				GROUP BY dv.idarticulo
 			) sal ON sal.idarticulo=a.idarticulo
 			LEFT JOIN (
@@ -356,10 +351,10 @@ class Consultas
 			IFNULL(p.nombre,'-') AS persona,
 			IFNULL(p.num_documento,'-') AS documento,
 			IFNULL(p.telefono,'-') AS telefono,
-			COUNT(v.idventa) AS operaciones,
-			IFNULL(SUM(v.total_venta),0) AS total,
+			COUNT(DISTINCT CASE WHEN v.idnota=0 THEN v.idventa END) AS operaciones,
+			IFNULL(SUM(v.total),0) AS total,
 			IFNULL(DATE_FORMAT(MAX(v.fecha_hora),'%d/%m/%Y'),'--') AS ultimo_mov
-			FROM venta v
+			FROM venta_total v
 			LEFT JOIN persona p ON p.idpersona=v.idcliente
 			WHERE DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=? AND v.estado='Aceptado'
 			GROUP BY v.idcliente, p.nombre, p.num_documento, p.telefono";
@@ -422,8 +417,8 @@ class Consultas
 
 	public function totalventarango($fecha_inicio, $fecha_fin)
 	{
-		$sql = "SELECT IFNULL(SUM(total_venta),0) AS total_venta
-			FROM venta
+		$sql = "SELECT IFNULL(SUM(total),0) AS total_venta
+			FROM venta_total
 			WHERE DATE(fecha_hora)>=? AND DATE(fecha_hora)<=? AND estado='Aceptado'";
 		return dbQuery($sql, array((string)$fecha_inicio, (string)$fecha_fin));
 	}
@@ -440,8 +435,8 @@ class Consultas
 
 	public function ventasmensualesrango($fecha_inicio, $fecha_fin)
 	{
-		$sql = "SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total_venta),0) AS total
-			FROM venta
+		$sql = "SELECT DATE_FORMAT(fecha_hora,'%Y-%m') AS periodo, DATE_FORMAT(fecha_hora,'%b %Y') AS fecha, IFNULL(SUM(total),0) AS total
+			FROM venta_total
 			WHERE DATE(fecha_hora)>=? AND DATE(fecha_hora)<=? AND estado='Aceptado'
 			GROUP BY DATE_FORMAT(fecha_hora,'%Y-%m'), DATE_FORMAT(fecha_hora,'%b %Y')
 			ORDER BY periodo ASC";
@@ -463,11 +458,10 @@ class Consultas
 		$limit = $this->limite($limit, 8);
 		$sql = "SELECT c.nombre AS categoria,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
-			FROM detalle_venta dv
-			INNER JOIN venta v ON v.idventa=dv.idventa
+			FROM venta_linea dv
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
 			INNER JOIN categoria c ON c.idcategoria=a.idcategoria
-			WHERE v.estado='Aceptado' AND DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=?
+			WHERE dv.estado='Aceptado' AND DATE(dv.fecha_hora)>=? AND DATE(dv.fecha_hora)<=?
 			GROUP BY c.idcategoria, c.nombre
 			ORDER BY total DESC
 			LIMIT " . (int)$limit;
@@ -480,10 +474,9 @@ class Consultas
 		$sql = "SELECT a.nombre AS producto,
 			IFNULL(SUM(dv.cantidad*dv.factor),0) AS cantidad,
 			IFNULL(SUM((dv.cantidad*dv.precio_venta)-dv.descuento),0) AS total
-			FROM detalle_venta dv
+			FROM venta_linea dv
 			INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
-			INNER JOIN venta v ON v.idventa=dv.idventa
-			WHERE v.estado='Aceptado' AND DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=?
+			WHERE dv.estado='Aceptado' AND DATE(dv.fecha_hora)>=? AND DATE(dv.fecha_hora)<=?
 			GROUP BY dv.idarticulo, a.nombre
 			ORDER BY total DESC
 			LIMIT " . (int)$limit;
@@ -503,6 +496,12 @@ class Consultas
 			LEFT JOIN persona p ON p.idpersona=v.idcliente
 			WHERE DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=?
 			UNION ALL
+			SELECT 'Nota de crédito' AS tipo, n.fecha_hora AS fecha, CONCAT('NC ',n.serie,'-',n.numero) AS documento,
+				IFNULL(p.nombre,'-') AS persona, -n.total AS total, IF(n.estado='EMITIDA','Aceptado','Anulado') AS estado
+			FROM nota_credito n
+			LEFT JOIN persona p ON p.idpersona=n.idcliente
+			WHERE DATE(n.fecha_hora)>=? AND DATE(n.fecha_hora)<=?
+			UNION ALL
 			SELECT 'Compra' AS tipo, i.fecha_hora AS fecha,
 				CONCAT(i.tipo_comprobante,' ',i.serie_comprobante,'-',i.num_comprobante) AS documento,
 				IFNULL(p.nombre,'-') AS persona, i.total_compra AS total, i.estado
@@ -512,7 +511,7 @@ class Consultas
 			) t
 			ORDER BY t.fecha DESC
 			LIMIT " . (int)$limit;
-		return dbQuery($sql, array($fi, $ff, $fi, $ff));
+		return dbQuery($sql, array($fi, $ff, $fi, $ff, $fi, $ff));
 	}
 
 	// ---------------------------------------------------------------
@@ -535,7 +534,7 @@ class Consultas
 			(SELECT IFNULL(SUM(saldo),0) FROM cuenta_pagar WHERE estado='PENDIENTE' AND fecha_vencimiento<CURDATE()) AS cxp_vencidas_monto,
 			(SELECT IFNULL(SUM(saldo),0) FROM cuenta_pagar WHERE estado='PENDIENTE') AS cxp_pendiente_monto,
 			(SELECT IF(COUNT(*)>0,1,0) FROM caja_diaria WHERE idusuario=? AND estado='ABIERTA') AS caja_abierta,
-			(SELECT IFNULL(SUM(total_venta),0) FROM venta WHERE estado='Aceptado' AND DATE(fecha_hora)=CURDATE()) AS ventas_hoy_monto,
+			(SELECT IFNULL(SUM(total),0) FROM venta_total WHERE estado='Aceptado' AND DATE(fecha_hora)=CURDATE()) AS ventas_hoy_monto,
 			(SELECT COUNT(*) FROM venta WHERE estado='Aceptado' AND DATE(fecha_hora)=CURDATE()) AS ventas_hoy_cantidad,
 			(SELECT IFNULL(SUM(total_compra),0) FROM ingreso WHERE estado='Aceptado' AND DATE(fecha_hora)=CURDATE()) AS compras_hoy_monto";
 		$row = dbRow($sql, array((int)$idusuario));
@@ -596,18 +595,17 @@ class Consultas
 			FROM (
 				SELECT
 					(dv.cantidad*dv.precio_venta)-dv.descuento AS venta,
-					dv.cantidad*dv.factor*IFNULL((
+					dv.cantidad_costo*dv.factor*IFNULL((
 						SELECT di2.precio_compra/di2.factor
 						FROM detalle_ingreso di2
 						INNER JOIN ingreso i2 ON i2.idingreso=di2.idingreso
-						WHERE di2.idarticulo=dv.idarticulo AND i2.estado='Aceptado' AND i2.fecha_hora<=v.fecha_hora
+						WHERE di2.idarticulo=dv.idarticulo AND i2.estado='Aceptado' AND i2.fecha_hora<=dv.fecha_hora
 						ORDER BY i2.fecha_hora DESC, di2.iddetalle_ingreso DESC
 						LIMIT 1
 					), a.precio_compra) AS costo
-				FROM detalle_venta dv
-				INNER JOIN venta v ON v.idventa=dv.idventa
+				FROM venta_linea dv
 				INNER JOIN articulo a ON a.idarticulo=dv.idarticulo
-				WHERE v.estado='Aceptado' AND DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=?
+				WHERE dv.estado='Aceptado' AND DATE(dv.fecha_hora)>=? AND DATE(dv.fecha_hora)<=?
 			) t";
 		$row = dbRow($sql, array($fi, $ff));
 		$ventaTotal = $row ? (float)$row['venta_total'] : 0.0;
@@ -633,17 +631,25 @@ class Consultas
 		);
 	}
 
-	/** Ventas aceptadas agrupadas por medio de pago. */
+	/**
+	 * Ventas aceptadas agrupadas por medio de pago. Un pago mixto se reparte
+	 * en sus medios (venta_pago); lo vendido al credito sin cobrar va como CREDITO.
+	 */
 	public function ventasPorMedioPago($fecha_inicio, $fecha_fin)
 	{
-		$sql = "SELECT IFNULL(NULLIF(medio_pago,''),'OTRO') AS medio_pago,
-			IFNULL(SUM(total_venta),0) AS total,
-			COUNT(*) AS cantidad
-			FROM venta
-			WHERE estado='Aceptado' AND DATE(fecha_hora)>=? AND DATE(fecha_hora)<=?
-			GROUP BY IFNULL(NULLIF(medio_pago,''),'OTRO')
+		$sql = "SELECT medio_pago, IFNULL(SUM(monto),0) AS total, COUNT(DISTINCT idventa) AS cantidad
+			FROM (
+				SELECT vp.medio_pago, vp.monto, v.idventa
+				FROM venta_pago vp INNER JOIN venta v ON v.idventa=vp.idventa
+				WHERE v.estado='Aceptado' AND DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=?
+				UNION ALL
+				SELECT 'CREDITO', v.total_venta - IFNULL((SELECT SUM(p.monto) FROM venta_pago p WHERE p.idventa=v.idventa),0), v.idventa
+				FROM venta v
+				WHERE v.estado='Aceptado' AND v.tipo_pago='CREDITO' AND DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=?
+			) t
+			GROUP BY medio_pago
 			ORDER BY total DESC";
-		return dbAll($sql, array((string)$fecha_inicio, (string)$fecha_fin));
+		return dbAll($sql, array((string)$fecha_inicio, (string)$fecha_fin, (string)$fecha_inicio, (string)$fecha_fin));
 	}
 
 	/** Ventas aceptadas por vendedor (usuario). */
@@ -651,9 +657,9 @@ class Consultas
 	{
 		$limit = $this->limite($limit, 8);
 		$sql = "SELECT u.nombre AS vendedor,
-			IFNULL(SUM(v.total_venta),0) AS total,
-			COUNT(v.idventa) AS cantidad
-			FROM venta v
+			IFNULL(SUM(v.total),0) AS total,
+			COUNT(DISTINCT CASE WHEN v.idnota=0 THEN v.idventa END) AS cantidad
+			FROM venta_total v
 			INNER JOIN usuario u ON u.idusuario=v.idusuario
 			WHERE v.estado='Aceptado' AND DATE(v.fecha_hora)>=? AND DATE(v.fecha_hora)<=?
 			GROUP BY v.idusuario, u.nombre
@@ -665,8 +671,8 @@ class Consultas
 	/** Ventas aceptadas por dia. */
 	public function ventasPorDiaRango($fecha_inicio, $fecha_fin)
 	{
-		$sql = "SELECT DATE(fecha_hora) AS fecha, IFNULL(SUM(total_venta),0) AS total
-			FROM venta
+		$sql = "SELECT DATE(fecha_hora) AS fecha, IFNULL(SUM(total),0) AS total
+			FROM venta_total
 			WHERE estado='Aceptado' AND DATE(fecha_hora)>=? AND DATE(fecha_hora)<=?
 			GROUP BY DATE(fecha_hora)
 			ORDER BY DATE(fecha_hora) ASC";
@@ -676,8 +682,8 @@ class Consultas
 	/** Ventas aceptadas por hora del dia (0-23) para detectar horas pico. */
 	public function ventasPorHora($fecha_inicio, $fecha_fin)
 	{
-		$sql = "SELECT HOUR(fecha_hora) AS hora, IFNULL(SUM(total_venta),0) AS total, COUNT(*) AS cantidad
-			FROM venta
+		$sql = "SELECT HOUR(fecha_hora) AS hora, IFNULL(SUM(total),0) AS total, SUM(idnota=0) AS cantidad
+			FROM venta_total
 			WHERE estado='Aceptado' AND DATE(fecha_hora)>=? AND DATE(fecha_hora)<=?
 			GROUP BY HOUR(fecha_hora)
 			ORDER BY hora ASC";

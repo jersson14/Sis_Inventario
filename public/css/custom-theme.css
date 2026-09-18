@@ -4108,3 +4108,394 @@ body.modo-caja .pos-side {
   border-color: var(--brand-primary);
   background: var(--brand-primary-soft);
 }
+
+/* ---------- Toma de inventario (conteo con lector) ---------- */
+.conteo-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.conteo-cabecera h2 {
+  margin: 0 0 2px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.conteo-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.conteo-lector {
+  border-top: 3px solid var(--brand-primary);
+}
+
+.conteo-lector-fila {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.conteo-cantidad {
+  flex: 0 0 120px;
+}
+
+.conteo-scan {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.conteo-lector label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-soft);
+}
+
+.conteo-lector #cScan {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.conteo-lector #cCantidad {
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.conteo-ultima {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+  border: 1px solid #bbf7d0;
+  min-height: 64px;
+}
+
+.conteo-ultima.vacia {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: var(--text-soft);
+}
+
+.conteo-ultima.is-error {
+  background: var(--danger-soft);
+  border-color: #fecaca;
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.conteo-ultima-cant {
+  flex: 0 0 auto;
+  min-width: 64px;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--success);
+  text-align: center;
+}
+
+.conteo-ultima-info {
+  font-size: 16px;
+  min-width: 0;
+}
+
+.conteo-ultima-num {
+  font-size: 14px;
+  color: #334155;
+  margin-top: 2px;
+}
+
+.conteo-recordado {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.conteo-recordado .label {
+  display: inline-block;
+  margin: 2px 4px 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.conteo-recordado .label a {
+  color: #fff;
+  margin-left: 4px;
+  font-weight: 800;
+}
+
+.conteo-tabla td {
+  vertical-align: middle !important;
+}
+
+.conteo-editar {
+  width: 120px;
+  margin-left: auto;
+}
+
+.conteo-editar .form-control {
+  font-weight: 700;
+}
+
+.conteo-resaltado > td {
+  background: var(--brand-primary-soft) !important;
+}
+
+.conteo-opciones .conteo-opcion {
+  display: flex;
+  justify-content: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  text-align: left;
+  white-space: normal;
+  padding: 12px 14px;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.conteo-tecla {
+  display: inline-block;
+  min-width: 24px;
+  margin-right: 10px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+}
+
+.conteo-lote-nuevo {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-sm);
+}
+
+.conteo-resultados {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 767px) {
+  .conteo-lector-fila {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .conteo-cantidad {
+    flex-basis: auto;
+  }
+  .conteo-lector #cScan {
+    font-size: 16px;
+  }
+  .conteo-acciones .btn {
+    flex: 1 1 auto;
+  }
+}
+
+.conteo-opcion .conteo-ya {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+/* ---------- Pago mixto en la ventana de cobro ---------- */
+.cobro-link {
+  padding: 6px 0 0;
+  font-weight: 600;
+}
+
+.cobro-mixto {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius);
+  background: #f8fafc;
+}
+
+.cobro-mixto-cab {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.pago-linea {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr auto;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.pago-linea .pl-monto {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.cobro-mixto-resumen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.cobro-mixto-resumen > div {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+
+.cobro-mixto-resumen span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.cobro-mixto-resumen strong {
+  font-size: 18px;
+}
+
+.cobro-mixto-resumen .falta {
+  background: var(--danger-soft);
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.cobro-mixto-resumen .ok {
+  background: var(--success-soft);
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.det-pagos {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+@media (max-width: 480px) {
+  .pago-linea {
+    grid-template-columns: 1fr 1fr auto;
+  }
+  .pago-linea .pl-recibido,
+  .pago-linea .pl-op {
+    grid-column: 1 / 3;
+  }
+}
+
+/* ---------- Devoluciones y saldo a favor ---------- */
+.cobro-saldo-favor {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-weight: 600;
+}
+
+.dev-tabla td {
+  vertical-align: middle !important;
+}
+
+.dev-tabla .input-group {
+  width: 150px;
+  margin-left: auto;
+}
+
+.dev-tabla tr.warning > td {
+  background: #fffbeb !important;
+}
+
+/* ---------- Almacenes ---------- */
+.navbar-almacen > a {
+  font-weight: 600;
+  color: var(--brand-primary-dark) !important;
+}
+
+.navbar-almacen .dropdown-menu a.activo {
+  font-weight: 700;
+  color: var(--brand-primary) !important;
+}
+
+.almacen-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.almacen-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.almacen-card.inactivo {
+  opacity: 0.6;
+}
+
+.almacen-card.transito {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.almacen-card.ayuda {
+  border-style: dashed;
+  color: var(--text-soft);
+}
+
+.almacen-card-cab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.almacen-acciones {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.almacen-card-num {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.almacen-card-num strong {
+  display: block;
+  font-size: 16px;
+}
+
+.almacen-card-num span {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.tr-lineas td {
+  vertical-align: middle !important;
+}
+
+.pos-almacen {
+  font-weight: 700;
+}
+
+/* Chip del almacen en el punto de venta */
+.pos-almacen { display: inline-block; }
+.chip-almacen { background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; cursor: default; text-decoration: none; }
+a.chip-almacen { cursor: pointer; }
+a.chip-almacen:hover, a.chip-almacen:focus { background: #e0e7ff; color: #312e81; text-decoration: none; }
+.pos-almacen .dropdown-menu .activo { font-weight: 700; }

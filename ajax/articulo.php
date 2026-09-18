@@ -4,6 +4,7 @@ requiereLogin();                 // 401 JSON si no hay sesion; valida CSRF en PO
 // Lectura (listar, mostrar, selects) tambien para ventas y compras; escritura solo almacen (se valida en cada case).
 requierePermiso(array('almacen', 'ventas', 'compras'));
 require_once "../modelos/Articulo.php";
+require_once "../modelos/Stock.php";
 
 $articulo = new Articulo();
 
@@ -296,7 +297,8 @@ switch ($op) {
 				if ($resVar !== true) { $errorGuardado = $resVar; return false; }
 			}
 			// Con tallas/colores el stock del articulo es la suma de sus variantes, en cualquier rubro
-			if (!Variante::recalcularArticulo($id) || !Lote::ajustarAlStock($id)) {
+			// El stock por almacen se cuadra con el total (la diferencia va al almacen principal)
+			if (!Variante::recalcularArticulo($id) || !Stock::cuadrar($id) || !Lote::ajustarAlStock($id)) {
 				$errorGuardado = "No se pudo actualizar el stock del artículo"; return false;
 			}
 			if ($usaTemporada && !$articulo->guardarTemporada($id, $temporada, $coleccion)) {

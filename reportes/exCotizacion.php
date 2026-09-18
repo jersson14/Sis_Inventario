@@ -166,7 +166,7 @@ $pdf->SetDrawColor(214, 223, 233); $pdf->SetFillColor(248, 250, 252);
 $pdf->Rect(10, $y, 122, 24, 'DF');
 $pdf->SetFont('Arial', 'B', 9.5); $pdf->SetTextColor(30, 41, 59);
 $pdf->SetXY(13, $y + 2.5); $pdf->Cell(116, 5, $pdf->u('TOTAL EN LETRAS'), 0, 1, 'L');
-$pdf->SetFont('Arial', '', 9.2); $pdf->SetXY(13, $y + 8); $pdf->MultiCell(116, 5, $pdf->u($letras . " CON 00/100"), 0, 'L');
+$pdf->SetFont('Arial', '', 9.2); $pdf->SetXY(13, $y + 8); $pdf->MultiCell(116, 5, $pdf->u($letras), 0, 'L');
 
 $bx = 137; $bw = 63;
 $pdf->SetFillColor(248, 250, 252); $pdf->Rect($bx, $y, $bw, 24, 'DF');
